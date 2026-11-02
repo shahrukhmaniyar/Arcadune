@@ -40,7 +40,7 @@ class BaselineProfileGenerator {
     fun generate() {
         // This example works only with the variant with application id `com.swordfish.lemuroid`."
         rule.collect(
-            packageName = "com.swordfish.lemuroid",
+            packageName = "com.swordfish.lemuroidplus",
             // See: https://d.android.com/topic/performance/baselineprofiles/dex-layout-optimizations
             includeInStartupProfile = true,
         ) {

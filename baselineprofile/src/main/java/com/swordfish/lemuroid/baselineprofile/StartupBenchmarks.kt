@@ -46,7 +46,7 @@ class StartupBenchmarks {
     private fun benchmark(compilationMode: CompilationMode) {
         // This example works only with the variant with application id `com.swordfish.lemuroid`."
         rule.measureRepeated(
-            packageName = "com.swordfish.lemuroid",
+            packageName = "com.swordfish.lemuroidplus",
             metrics = listOf(StartupTimingMetric()),
             compilationMode = compilationMode,
             startupMode = StartupMode.COLD,
