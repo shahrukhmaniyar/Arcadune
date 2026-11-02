@@ -87,10 +87,11 @@ class PPSSPPAssetsManager : CoreID.AssetsManager {
     companion object {
         const val PPSSPP_ASSETS_VERSION = "1.15"
 
+        // Hosted on Arcadune's own GitHub releases. The file is the original PPSSPP assets bundle.
         val PPSSPP_ASSETS_URL: Uri =
-            Uri.parse("https://github.com/Swordfish90/LemuroidCores/")
+            Uri.parse("https://github.com/shahrukhmaniyar/Arcadune/")
                 .buildUpon()
-                .appendEncodedPath("raw/$PPSSPP_ASSETS_VERSION/assets/ppsspp.zip")
+                .appendEncodedPath("releases/download/ppsspp-assets-$PPSSPP_ASSETS_VERSION/ppsspp.zip")
                 .build()
 
         const val PPSSPP_ASSETS_VERSION_KEY = "ppsspp_assets_version_key"
