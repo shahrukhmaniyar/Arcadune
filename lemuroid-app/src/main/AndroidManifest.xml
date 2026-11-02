@@ -79,6 +79,10 @@
             tools:node="merge" />
 
         <activity
+            android:name="com.swordfish.lemuroid.app.mobile.feature.coversearch.CoverSearchActivity"
+            android:theme="@style/LemuroidMaterialTheme" />
+
+        <activity
             android:name="com.swordfish.lemuroid.app.mobile.feature.gamemenu.GameMenuActivity"
             android:process=":game"
             android:theme="@style/LemuroidMaterialTheme.Menu" />

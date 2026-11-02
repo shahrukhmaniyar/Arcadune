@@ -167,6 +167,15 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 infoDialogDisplayed.value = true
             }
 
+            val layoutPreferences =
+                remember { SharedPreferencesHelper.getLegacySharedPreferences(applicationContext) }
+            val gamesGridView =
+                remember { mutableStateOf(layoutPreferences.getBoolean(PREF_GAMES_GRID_VIEW, false)) }
+            val onToggleGamesLayout = {
+                gamesGridView.value = !gamesGridView.value
+                layoutPreferences.edit().putBoolean(PREF_GAMES_GRID_VIEW, gamesGridView.value).apply()
+            }
+
             val mainUIState =
                 mainViewModel.state
                     .collectAsState(MainViewModel.UiState())
@@ -180,6 +189,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                         onHelpPressed = onHelpPressed,
                         mainUIState = mainUIState,
                         onUpdateQueryString = { mainViewModel.changeQueryString(it) },
+                        gamesGridView = gamesGridView.value,
+                        onToggleGamesLayout = onToggleGamesLayout,
                     )
                 },
                 bottomBar = { MainNavigationBar(currentRoute, navController) },
@@ -257,6 +268,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                             MetaSystemID.valueOf(metaSystemId!!),
                                         ),
                                 ),
+                            isGridView = gamesGridView.value,
                             onGameClick = onGameClick,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
@@ -432,3 +444,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         }
     }
 }
+
+/** Remembers whether the games of a system are shown as a grid (true) or as a list (false). */
+private const val PREF_GAMES_GRID_VIEW = "pref_games_grid_view"

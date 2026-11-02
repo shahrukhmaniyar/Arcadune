@@ -43,6 +43,7 @@ object CoverUtils {
             }
             .okHttpClient {
                 OkHttpClient.Builder()
+                    .addInterceptor(LibretroThumbnailsMirrorInterceptor(applicationContext.cacheDir))
                     .addNetworkInterceptor(ThrottleFailedThumbnailsInterceptor)
                     .build()
             }

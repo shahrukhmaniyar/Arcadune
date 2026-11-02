@@ -16,7 +16,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.BottomAppBarDefaults
@@ -54,6 +56,8 @@ fun MainTopBar(
     onHelpPressed: () -> Unit,
     onUpdateQueryString: (String) -> Unit,
     mainUIState: MainViewModel.UiState,
+    gamesGridView: Boolean,
+    onToggleGamesLayout: () -> Unit,
 ) {
     Column {
         LemuroidTopAppBar(
@@ -62,6 +66,8 @@ fun MainTopBar(
             mainUIState = mainUIState,
             onHelpPressed = onHelpPressed,
             onUpdateQueryString = onUpdateQueryString,
+            gamesGridView = gamesGridView,
+            onToggleGamesLayout = onToggleGamesLayout,
         )
 
         AnimatedVisibility(mainUIState.operationInProgress) {
@@ -78,6 +84,8 @@ fun LemuroidTopAppBar(
     mainUIState: MainViewModel.UiState,
     onHelpPressed: () -> Unit,
     onUpdateQueryString: (String) -> Unit,
+    gamesGridView: Boolean,
+    onToggleGamesLayout: () -> Unit,
 ) {
     val context = LocalContext.current
     val topBarColor = BottomAppBarDefaults.containerColor
@@ -120,6 +128,8 @@ fun LemuroidTopAppBar(
                 saveSyncEnabled = mainUIState.saveSyncEnabled,
                 onHelpPressed = onHelpPressed,
                 operationsInProgress = mainUIState.operationInProgress,
+                gamesGridView = gamesGridView,
+                onToggleGamesLayout = onToggleGamesLayout,
             )
         },
     )
@@ -133,8 +143,28 @@ fun LemuroidTopBarActions(
     saveSyncEnabled: Boolean,
     operationsInProgress: Boolean,
     onHelpPressed: () -> Unit,
+    gamesGridView: Boolean,
+    onToggleGamesLayout: () -> Unit,
 ) {
     Row {
+        if (route == MainRoute.SYSTEM_GAMES) {
+            IconButton(onClick = onToggleGamesLayout) {
+                Icon(
+                    if (gamesGridView) {
+                        Icons.AutoMirrored.Outlined.ViewList
+                    } else {
+                        Icons.Outlined.GridView
+                    },
+                    stringResource(
+                        if (gamesGridView) {
+                            R.string.games_switch_to_list_view
+                        } else {
+                            R.string.games_switch_to_grid_view
+                        },
+                    ),
+                )
+            }
+        }
         IconButton(
             onClick = { onHelpPressed() },
         ) {

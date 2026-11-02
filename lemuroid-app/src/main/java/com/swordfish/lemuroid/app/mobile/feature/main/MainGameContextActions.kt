@@ -1,5 +1,7 @@
 package com.swordfish.lemuroid.app.mobile.feature.main
 
+import android.app.Activity
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Divider
@@ -60,6 +63,8 @@ import androidx.compose.ui.unit.dp
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameTexts
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImage
+import com.swordfish.lemuroid.app.mobile.feature.coversearch.CoverSearchActivity
+import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import timber.log.Timber
 
@@ -140,6 +145,16 @@ private fun ContextActionContent(
                 Timber.e(e, "Failed to persist read URI permission for custom cover")
             }
             onSetCustomCoverUri(selectedGame, uri.toString())
+            selectedGameState.value = null
+        }
+    }
+
+    val coverSearchLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val resultUri = result.data?.data
+        if (result.resultCode == Activity.RESULT_OK && resultUri != null) {
+            onSetCustomCoverUri(selectedGame, resultUri.toString())
             selectedGameState.value = null
         }
     }
@@ -238,6 +253,23 @@ private fun ContextActionContent(
                 },
             )
         }
+
+        ContextActionEntry(
+            label = stringResource(id = R.string.game_context_menu_search_custom_artwork),
+            icon = Icons.Default.Search,
+            onClick = {
+                val systemName =
+                    context.getString(GameSystem.findById(selectedGame.systemId).titleResId)
+                val intent =
+                    Intent(context, CoverSearchActivity::class.java).apply {
+                        putExtra(
+                            CoverSearchActivity.EXTRA_QUERY,
+                            "${cleanTitleForSearch(selectedGame.displayName())} $systemName box art",
+                        )
+                    }
+                coverSearchLauncher.launch(intent)
+            },
+        )
     }
 
     if (showCustomNameDialog) {
@@ -325,3 +357,9 @@ private fun FakeScrim(modalSheetState: SheetState) {
         )
     }
 }
+
+private val SEARCH_TITLE_TAGS = Regex("\\s*[(\\[][^)\\]]*[)\\]]")
+
+/** Drops "(Hudson) (Japan)[tr en ...]" style tags so the artwork search starts from a plain title. */
+private fun cleanTitleForSearch(title: String): String =
+    title.replace(SEARCH_TITLE_TAGS, "").trim().ifEmpty { title }

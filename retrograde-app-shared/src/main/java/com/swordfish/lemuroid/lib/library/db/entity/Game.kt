@@ -23,7 +23,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.swordfish.lemuroid.lib.library.GameSystem
 import java.io.Serializable
+import java.net.URLEncoder
 
 @Entity(
     tableName = "games",
@@ -54,9 +56,28 @@ data class Game(
 ) : Serializable {
 
     fun displayName(): String = customName ?: title
-    fun displayCoverUrl(): String? = customCoverUri ?: coverFrontUrl
+    /**
+     * A custom image wins. Otherwise a renamed game looks for its cover under the new name, and
+     * keeps the cover it originally had as a fallback.
+     */
+    fun displayCoverUrl(): String? {
+        customCoverUri?.let { return it }
+
+        val renamed = customName?.trim()?.takeIf { it.isNotEmpty() } ?: return coverFrontUrl
+        val systemFolder =
+            runCatching { GameSystem.findById(systemId).libretroFullName }.getOrNull()
+                ?: return coverFrontUrl
+
+        val safeName = renamed.replace(UNSAFE_THUMBNAIL_CHARACTERS, "_")
+        val renamedUrl = "http://thumbnails.libretro.com/$systemFolder/Named_Boxarts/$safeName.png"
+        return coverFrontUrl
+            ?.let { "$renamedUrl?fallback=${URLEncoder.encode(it, "UTF-8")}" }
+            ?: renamedUrl
+    }
 
     companion object {
+        private val UNSAFE_THUMBNAIL_CHARACTERS = Regex("[&*/:`<>?\\\\|#%]")
+
         val DIFF_CALLBACK =
             object : DiffUtil.ItemCallback<Game>() {
                 override fun areItemsTheSame(
