@@ -4,9 +4,11 @@ Arcadune is an open-source emulation app for Android based on Libretro. It focus
 
 ## Download
 
-**[Download the latest APK](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 180 MB, emulator cores included)
+**[Download Arcadune](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 12 MB). It downloads each console's emulator engine the first time you play that console, so it needs internet at first. After that it works offline.
 
-All versions are on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). To install, open the APK on your phone and allow installs from your browser or file manager when Android asks. Arcadune needs Android 6.0 or newer.
+**[Download the full version](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune-full.apk)** (about 180 MB). Every emulator engine is built in, so it works with no internet at all.
+
+Both are the same app, so you can switch between them without losing your library. All versions are on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). To install, open the APK on your phone and allow installs from your browser or file manager when Android asks. Arcadune needs Android 6.0 or newer.
 
 Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swordfish90, which itself grew out of [Retrograde](https://github.com/retrograde/retrograde-android) and is built on [LibretroDroid](https://github.com/Swordfish90/LibretroDroid). Many thanks to their authors.
 
