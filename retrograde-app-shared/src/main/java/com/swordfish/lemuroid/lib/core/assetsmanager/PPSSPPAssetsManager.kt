@@ -85,13 +85,14 @@ class PPSSPPAssetsManager : CoreID.AssetsManager {
     }
 
     companion object {
-        const val PPSSPP_ASSETS_VERSION = "1.15"
+        // Version of Arcadune's hosted PSP files (the "psp-files-<version>" release on GitHub).
+        const val PPSSPP_ASSETS_VERSION = "1"
 
         // Hosted on Arcadune's own GitHub releases. The file is the original PPSSPP assets bundle.
         val PPSSPP_ASSETS_URL: Uri =
             Uri.parse("https://github.com/shahrukhmaniyar/Arcadune/")
                 .buildUpon()
-                .appendEncodedPath("releases/download/ppsspp-assets-$PPSSPP_ASSETS_VERSION/ppsspp.zip")
+                .appendEncodedPath("releases/download/psp-files-$PPSSPP_ASSETS_VERSION/ppsspp.zip")
                 .build()
 
         const val PPSSPP_ASSETS_VERSION_KEY = "ppsspp_assets_version_key"

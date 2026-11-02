@@ -42,12 +42,16 @@ class CoreUpdaterImpl(
     private val directoriesManager: DirectoriesManager,
     retrofit: Retrofit,
 ) : CoreUpdater {
-    // This is the last tagged versions of cores.
+    // Version of Arcadune's hosted cores (the "cores-<version>" release on GitHub).
     companion object {
-        private const val CORES_VERSION = "1.17.0"
+        private const val CORES_VERSION = "1"
+
+        // Phone chips we publish cores for. Other chips (PC emulators) are not supported.
+        private val HOSTED_ABIS = setOf("arm64-v8a", "armeabi-v7a")
     }
 
-    private val baseUri = Uri.parse("https://github.com/Swordfish90/LemuroidCores/")
+    // Cores are hosted on Arcadune's own GitHub releases (one file per core and phone chip).
+    private val baseUri = Uri.parse("https://github.com/shahrukhmaniyar/Arcadune/")
 
     private val api = retrofit.create(CoreUpdater.CoreManagerApi::class.java)
 
@@ -97,11 +101,10 @@ class CoreUpdaterImpl(
             deleteOutdatedCores(mainCoresDirectory, CORES_VERSION)
         }
 
+        val abi = Build.SUPPORTED_ABIS.firstOrNull { it in HOSTED_ABIS } ?: Build.SUPPORTED_ABIS.first()
         val uri =
             baseUri.buildUpon()
-                .appendEncodedPath("raw/$CORES_VERSION/lemuroid_core_${coreID.coreName}/src/main/jniLibs/")
-                .appendPath(Build.SUPPORTED_ABIS.first())
-                .appendPath(libFileName)
+                .appendEncodedPath("releases/download/cores-$CORES_VERSION/${abi}__$libFileName")
                 .build()
 
         try {
