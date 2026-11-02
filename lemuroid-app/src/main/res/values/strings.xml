@@ -224,7 +224,9 @@
         <b>&#8226;How do I use Arcadune?</b><br/>
         Copy all your ROMs files into a directory on your device and select it within Arcadune. This directory is allowed to have subdirectories. After the scan completes you should see your games.<br/><br/>
         <b>&#8226;Why aren\'t my games detected?</b><br/>
-        If your games are compressed, try uncompressing them. If this doesn\'t work try putting ROMs into separate directories, one for each system with the following names: $SYSTEMS.
+        If your games are compressed, try uncompressing them. If this doesn\'t work try putting ROMs into separate directories, one for each system with the following names: $SYSTEMS.<br/><br/>
+        <b>&#8226;Credits</b><br/>
+        Arcadune is based on Lemuroid by Swordfish90 and is free software released under the GNU GPL v3. Emulation is provided by Libretro cores, each under its own license.
     ]]></string>
 
     <string name="lemuroid_crash_disclamer">It looks like the Libretro core has experienced an unexpected issue. If it\'s persistent please try the following:\n

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -7,6 +9,13 @@ plugins {
     id("androidx.baselineprofile")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val keystoreProperties =
+    Properties().apply {
+        val file = rootProject.file("keystore.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
+val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
     defaultConfig {
@@ -83,18 +92,22 @@ android {
             storeFile = file("$rootDir/debug.keystore")
         }
 
-        maybeCreate("release").apply {
-            storeFile = file("$rootDir/release.jks")
-            keyAlias = "lemuroid"
-            storePassword = "lemuroid"
-            keyPassword = "lemuroid"
+        // The release key lives outside the repository. See "Signing a release" in the README.
+        if (hasReleaseKey) {
+            maybeCreate("release").apply {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
-            signingConfig = signingConfigs["release"]
+            // Without keystore.properties, release builds are signed with the debug key.
+            signingConfig = signingConfigs[if (hasReleaseKey) "release" else "debug"]
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             resValue("string", "lemuroid_name", "Arcadune")
         }

@@ -17,3 +17,10 @@ project.properties
 .externalNativeBuild
 local.properties
 release.jks
+
+# Signing keys and secrets
+keystore.properties
+*.jks
+
+# JVM crash dumps
+*.hprof

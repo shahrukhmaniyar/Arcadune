@@ -1,23 +1,17 @@
-# Lemuroid
+# Arcadune
 
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
-     alt="Get it on F-Droid"
-     height="80">](https://f-droid.org/packages/com.swordfish.lemuroid/)
-[<img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png"
-     alt="Get it on Google Play"
-     height="80">](https://play.google.com/store/apps/details?id=com.swordfish.lemuroid)
+Arcadune is an open-source emulation app for Android based on Libretro. It focuses on ease of use, good Android integration and a clean experience.
 
-## Description
+Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swordfish90, which itself grew out of [Retrograde](https://github.com/retrograde/retrograde-android) and is built on [LibretroDroid](https://github.com/Swordfish90/LibretroDroid). Many thanks to their authors.
 
-Lemuroid is an open-source emulation project for Android based on Libretro. Its main goal is ease of use, good Android integration and a great user experience.
+## What's different from Lemuroid
 
-It originated from a rib of [Retrograde](https://github.com/retrograde/retrograde-android), but graduated to a standalone project integrating [LibretroDroid](https://github.com/Swordfish90/LibretroDroid).
+- **Search artwork online:** pick a cover from Google Images with an editable search box, from a game's long-press menu.
+- **Smarter automatic covers:** covers are fetched from the libretro-thumbnails GitHub mirror first, then retried under other region names and matched against the real list of covers.
+- **Rename a game and its cover follows:** the cover is looked up again under the new name.
+- **Grid view** for the games of a system, remembered between launches.
 
-|Screen 1|Screen 2|Screen 3|
-|---|---|---|
-|![Screen1](https://github.com/Swordfish90/Lemuroid/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/1.jpg)|![Screen2](https://github.com/Swordfish90/Lemuroid/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/2.jpg)|![Screen3](https://github.com/Swordfish90/Lemuroid/blob/master/fastlane/metadata/android/en-US/images/phoneScreenshots/3.jpg)|
-
-### Supported Systems:
+### Supported systems
 - Atari 2600 (A26) ([stella](https://docs.libretro.com/library/stella/))
 - Atari 7800 (A78) ([prosystem](https://docs.libretro.com/library/prosystem/))
 - Atari Lynx (Lynx) ([handy](https://docs.libretro.com/library/handy/))
@@ -42,9 +36,9 @@ It originated from a rib of [Retrograde](https://github.com/retrograde/retrograd
 - WonderSwan Color (WSC) ([beetle_cygne](https://docs.libretro.com/library/beetle_cygne/))
 - Nintendo 3DS (3DS) ([citra](https://docs.libretro.com/library/citra/))
 
-### Features:
+### Features
 - Android TV support
-- Automatically save and restore game states.
+- Automatically save and restore game states
 - ROMs scanning and indexing
 - Optimized touch controls
 - Quick save/load
@@ -57,5 +51,37 @@ It originated from a rib of [Retrograde](https://github.com/retrograde/retrograd
 - Cloud save sync
 - HD mode
 
-### Languages:
-You can help translate Lemuroid in your native language by going here: https://crowdin.com/project/lemuroid
+## Building
+
+You need JDK 17 and the Android SDK (platform 35).
+
+```bash
+git clone --recurse-submodules https://github.com/shahrukhmaniyar/Lemuroid.git
+cd Lemuroid
+./gradlew :lemuroid-app:assembleFreeBundleDebug
+```
+
+Gradle may run out of memory while merging dex files. If it does, raise the limit in `~/.gradle/gradle.properties`, for example `org.gradle.jvmargs=-Xmx6g`.
+
+**Windows:** the emulator cores in `lemuroid-cores/bundled-cores` are git symlinks, which Windows git checks out as small text files. Run this once after cloning, before building, or every game will fail with "libretro core was not loaded":
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\fix-bundled-cores.ps1
+```
+
+### Signing a release
+
+Create `keystore.properties` in the project root (it is git-ignored) and keep the key file and its passwords somewhere safe:
+
+```properties
+storeFile=path/to/your-release-key.jks
+keyAlias=your-alias
+storePassword=your-store-password
+keyPassword=your-key-password
+```
+
+Without this file, release builds fall back to the debug key and cannot be used to update an app signed with your real key.
+
+## License
+
+Arcadune is free software released under the [GNU General Public License v3.0](COPYING), the same license as Lemuroid. The original copyright notices are kept in the source files. The Libretro cores bundled with the app are distributed under their own licenses.
