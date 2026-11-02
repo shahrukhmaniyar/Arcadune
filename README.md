@@ -57,9 +57,9 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - Cloud save sync
 - HD mode
 
-## Building
+## Build from source
 
-You need JDK 17 and the Android SDK (platform 35).
+You only need this if you want to compile Arcadune yourself. You need JDK 17 and the Android SDK.
 
 ```bash
 git clone --recurse-submodules https://github.com/shahrukhmaniyar/Arcadune.git
@@ -67,26 +67,7 @@ cd Arcadune
 ./gradlew :lemuroid-app:assembleFreeBundleDebug
 ```
 
-Gradle may run out of memory while merging dex files. If it does, raise the limit in `~/.gradle/gradle.properties`, for example `org.gradle.jvmargs=-Xmx6g`.
-
-**Windows:** the emulator cores in `lemuroid-cores/bundled-cores` are git symlinks, which Windows git checks out as small text files. Run this once after cloning, before building, or every game will fail with "libretro core was not loaded":
-
-```bash
-powershell -ExecutionPolicy Bypass -File scripts\fix-bundled-cores.ps1
-```
-
-### Signing a release
-
-Create `keystore.properties` in the project root (it is git-ignored) and keep the key file and its passwords somewhere safe:
-
-```properties
-storeFile=path/to/your-release-key.jks
-keyAlias=your-alias
-storePassword=your-store-password
-keyPassword=your-key-password
-```
-
-Without this file, release builds fall back to the debug key and cannot be used to update an app signed with your real key.
+On Windows, run `powershell -ExecutionPolicy Bypass -File scripts\fix-bundled-cores.ps1` once after cloning and before building. Without it the emulator cores are broken and every game fails to start.
 
 ## License
 
