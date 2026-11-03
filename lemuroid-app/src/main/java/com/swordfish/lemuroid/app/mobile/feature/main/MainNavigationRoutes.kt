@@ -2,6 +2,8 @@ package com.swordfish.lemuroid.app.mobile.feature.main
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -12,7 +14,10 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.VideogameAsset
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
@@ -26,8 +31,29 @@ fun NavGraphBuilder.composable(
     route: MainRoute,
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) {
-    this.composable(route = route.route, arguments = route.arguments, content = content)
+    this.composable(route = route.route, arguments = route.arguments) { entry ->
+        Box(Modifier.fillMaxSize()) {
+            content(entry)
+
+            // While two screens cross-fade, the one fading out is still underneath and a tap on an
+            // empty part of the new screen would reach it (for example opening a game of the home
+            // screen). Nothing can be touched until the transition is over.
+            if (transition.currentState != transition.targetState) {
+                Box(Modifier.fillMaxSize().consumeAllTouches())
+            }
+        }
+    }
 }
+
+private fun Modifier.consumeAllTouches(): Modifier =
+    pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                event.changes.forEach { it.consume() }
+            }
+        }
+    }
 
 fun NavController.navigateToRoute(route: MainRoute) {
     this.navigate(route.route)

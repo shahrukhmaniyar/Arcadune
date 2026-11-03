@@ -19,8 +19,8 @@ val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
     defaultConfig {
-        versionCode = 255
-        versionName = "1.0.3" // Always remember to update Cores Tag!
+        versionCode = 256
+        versionName = "1.0.4" // Always remember to update Cores Tag!
         applicationId = "io.github.shahrukhmaniyar.arcadune"
     }
     flavorDimensions += listOf("opensource", "cores")

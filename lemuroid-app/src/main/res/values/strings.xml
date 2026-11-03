@@ -119,6 +119,8 @@
     <string name="cheats_add_code_hint">Use the format your emulator expects, for example 0033:09 on NES</string>
     <string name="cheats_credit">Cheat library: libretro database (CC BY-SA 4.0)</string>
     <string name="cheats_too_long">Too long for the emulator, this cheat cannot be switched on</string>
+    <string name="setting_restart_to_apply">Restart the game to apply this setting</string>
+    <string name="cheats_switched_off_after_crash">The game closed unexpectedly last time, so its cheats were switched off</string>
     <string name="cheats_no_support">The emulator for this console has no cheat support</string>
     <string name="cheats_not_needed">Not needed here: this code is for a real cheat cartridge and could freeze the game</string>
     <string name="cheats_code_too_long">This code is too long for the emulator (255 characters at most)</string>

@@ -8,6 +8,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -199,6 +202,12 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     modifier = Modifier.fillMaxSize(),
                     navController = navController,
                     startDestination = MainRoute.HOME.route,
+                    // Short transitions: the default fade lasts 700 ms, which leaves a long window in
+                    // which the screen being left is still on screen.
+                    enterTransition = { fadeIn(tween(150)) },
+                    exitTransition = { fadeOut(tween(100)) },
+                    popEnterTransition = { fadeIn(tween(150)) },
+                    popExitTransition = { fadeOut(tween(100)) },
                 ) {
                     composable(MainRoute.HOME) {
                         HomeScreen(

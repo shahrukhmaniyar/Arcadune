@@ -1,6 +1,8 @@
 package com.swordfish.lemuroid.app.shared.game.viewmodel
 
 import android.content.Context
+import android.widget.Toast
+import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.lib.cheats.CheatApplier
 import com.swordfish.lemuroid.lib.cheats.CheatTarget
 import com.swordfish.lemuroid.lib.cheats.CheatsStore
@@ -25,7 +27,7 @@ import java.io.File
  * switched off the next time it starts.
  */
 class GameViewModelCheats(
-    appContext: Context,
+    private val appContext: Context,
     private val game: Game,
     private val retroGameView: GameViewModelRetroGameView,
     private val scope: CoroutineScope,
@@ -36,12 +38,20 @@ class GameViewModelCheats(
 
     /** Applies the cheats once the game is running and drawing frames. */
     fun applyWhenReady() {
-        store.switchOffAfterCrash()?.let { Timber.w("Cheats of $it were switched off: the game stopped while applying them") }
+        store.switchOffAfterCrash()?.let {
+            Timber.w("Cheats of $it were switched off: the game stopped while they were on")
+            Toast.makeText(appContext, R.string.cheats_switched_off_after_crash, Toast.LENGTH_LONG).show()
+        }
 
         scope.launch(Dispatchers.Default) {
             runCatching { retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>() }
             applyNow()
         }
+    }
+
+    /** Call when the game is closed normally, so its cheats are not switched off at the next start. */
+    fun gameClosed() {
+        runCatching { store.endSession() }
     }
 
     /** Applies the cheats in the background. */
@@ -53,17 +63,24 @@ class GameViewModelCheats(
         synchronized(applyLock) {
             val view = retroGameView.retroGameView ?: return@synchronized
             val cheats = store.load(key)
+            val previouslyApplied = store.loadApplied(key)
+            val applier = CheatApplier(target(view), game.systemId)
 
             // Nothing here may throw: this runs in a background coroutine, where an exception ends the app.
             val active =
                 runCatching {
                     store.startApplying(key)
                     try {
-                        CheatApplier(target(view), game.systemId).apply(cheats)
+                        applier.apply(cheats, previouslyApplied)
                     } finally {
                         store.finishApplying()
                     }
                 }.onFailure { Timber.e(it, "Could not apply the cheats") }.getOrNull()
+
+            if (active != null) runCatching { store.saveApplied(key, applier.activeCheats(cheats)) }
+
+            // While cheats are on, a game that dies without being closed normally gets them switched off.
+            runCatching { if (active != null && active > 0) store.startSession(key) else store.endSession() }
 
             if (active == null) {
                 Timber.w("The emulator's cheats could not be cleared, no cheat was changed")

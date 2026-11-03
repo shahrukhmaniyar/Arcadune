@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.shared.game.viewmodel
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -326,16 +327,30 @@ class GameViewModelRetroGameView(
             .collect { handleRetroViewError(it) }
     }
 
+    // Values of the restart-only options when the game started (they are passed to the core at load).
+    private var restartOnlyAtStart: Map<String, String>? = null
+
     private fun updateCoreVariables(options: List<CoreVariable>) {
+        val (restartOnly, live) = options.partition { it.key in RESTART_ONLY_VARIABLES }
+
+        // Changing these while the game runs makes the PSP core crash (it rebuilds its graphics on the
+        // fly and aborts), so they are not sent now: they apply the next time the game starts.
+        val atStart = restartOnlyAtStart
+        if (atStart == null) {
+            restartOnlyAtStart = restartOnly.associate { it.key to it.value }
+        } else if (restartOnly.any { atStart[it.key] != it.value }) {
+            Toast.makeText(appContext, R.string.setting_restart_to_apply, Toast.LENGTH_LONG).show()
+        }
+
         val updatedVariables =
-            options.map { Variable(it.key, it.value) }
+            live.map { Variable(it.key, it.value) }
                 .toTypedArray()
 
         updatedVariables.forEach {
             Timber.i("Updating core variable: ${it.key} ${it.value}")
         }
 
-        retroGameView?.updateVariables(*updatedVariables)
+        if (updatedVariables.isNotEmpty()) retroGameView?.updateVariables(*updatedVariables)
     }
 
     private fun handleRetroViewError(errorCode: Int) {
@@ -379,5 +394,16 @@ class GameViewModelRetroGameView(
             }
 
         return message
+    }
+
+    private companion object {
+        // PSP options that rebuild the emulator's graphics or CPU engine, see updateCoreVariables.
+        val RESTART_ONLY_VARIABLES =
+            setOf(
+                "ppsspp_internal_resolution",
+                "ppsspp_texture_scaling_level",
+                "ppsspp_texture_scaling_type",
+                "ppsspp_cpu_core",
+            )
     }
 }

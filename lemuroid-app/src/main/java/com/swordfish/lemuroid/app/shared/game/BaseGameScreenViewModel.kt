@@ -207,6 +207,8 @@ class BaseGameScreenViewModel(
     /** Applies the cheats the player has switched on in the game menu. */
     fun applyCheats() = cheats.apply()
 
+    fun onGameClosed() = cheats.gameClosed()
+
     fun showEditControls(show: Boolean) {
         touchControls.showEditControls(show)
     }

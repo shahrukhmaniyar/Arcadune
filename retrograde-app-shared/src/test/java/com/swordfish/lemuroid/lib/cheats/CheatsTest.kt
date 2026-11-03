@@ -173,6 +173,43 @@ class CheatApplierTest {
             Cheat("Extra life", "NYAIUZ", enabled = true),
         )
 
+    private val autoKill = Cheat("Auto Kill Mode", "_L 0x200513FC 0x0E200804", enabled = true)
+    private val autoKillOff = Cheat("Auto Kill Mode [Disable]", "_L 0x200513FC 0x0E213A5C", enabled = false)
+
+    @Test
+    fun switchingACheatOffSendsItsDisableTwinOnce() {
+        val core = FakeCore()
+        val before = listOf(autoKill, autoKillOff)
+        val after = listOf(autoKill.copy(enabled = false), autoKillOff)
+
+        val active = CheatApplier(core, "psp").apply(after, previouslyApplied = CheatApplier(core, "psp").activeCheats(before))
+
+        assertEquals(0, active)
+        assertEquals(listOf(autoKillOff.code), core.activeCodes)
+    }
+
+    @Test
+    fun theTwinIsNotSentWhileTheCheatIsStillOnOrWasNeverOn() {
+        val core = FakeCore()
+        val list = listOf(autoKill, autoKillOff)
+
+        CheatApplier(core, "psp").apply(list, previouslyApplied = listOf(autoKill))
+        assertEquals(listOf(autoKill.code), core.activeCodes)
+
+        CheatApplier(core, "psp").apply(listOf(autoKill.copy(enabled = false), autoKillOff), previouslyApplied = emptyList())
+        assertTrue(core.activeCodes.isEmpty())
+    }
+
+    @Test
+    fun aCheatWithoutATwinJustDisappears() {
+        val core = FakeCore()
+        val lives = Cheat("Infinite lives", "0033:09", enabled = false)
+
+        CheatApplier(core, "nes").apply(listOf(lives), previouslyApplied = listOf(lives.copy(enabled = true)))
+
+        assertTrue(core.activeCodes.isEmpty())
+    }
+
     @Test
     fun clearsFirstThenAddsOnlyTheSwitchedOnCheatsThatTheCoreCanTake() {
         val core = FakeCore()
@@ -394,6 +431,30 @@ class CheatSafetyTest {
 
         assertEquals("nes__Contra.nes", store.switchOffAfterCrash())
         assertNull(store.switchOffAfterCrash())
+    }
+
+    @Test
+    fun aGameThatDiedWithCheatsOnGetsThemSwitchedOffAtTheNextStart() {
+        val store = CheatsStore(temp.newFolder("cheats"))
+        store.save("psp__GTA.iso", listOf(Cheat("a", "1", true), Cheat("b", "2", true)))
+
+        store.startSession("psp__GTA.iso")
+
+        assertEquals("psp__GTA.iso", store.switchOffAfterCrash())
+        assertTrue(store.load("psp__GTA.iso").none { it.enabled })
+        assertNull(store.switchOffAfterCrash())
+    }
+
+    @Test
+    fun aGameClosedNormallyKeepsItsCheats() {
+        val store = CheatsStore(temp.newFolder("cheats"))
+        store.save("psp__GTA.iso", listOf(Cheat("a", "1", true)))
+
+        store.startSession("psp__GTA.iso")
+        store.endSession()
+
+        assertNull(store.switchOffAfterCrash())
+        assertTrue(store.load("psp__GTA.iso").single().enabled)
     }
 
     @Test
