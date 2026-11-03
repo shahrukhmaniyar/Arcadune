@@ -56,7 +56,6 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - Local multiplayer
 - Tilt input
 - Customizable touch controls (size and position)
-- Cloud save sync
 - HD mode
 
 ## Build from source
