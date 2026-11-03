@@ -1,5 +1,8 @@
 package com.swordfish.lemuroid.app.mobile.feature.settings.advanced
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -45,6 +48,62 @@ fun AdvancedSettingsScreen(
 
         InputSettings()
         GeneralSettings(uiState.cache, viewModel, navController)
+        BackupSettings(viewModel)
+    }
+}
+
+@Composable
+private fun BackupSettings(viewModel: AdvancedSettingsViewModel) {
+    val pendingRestore = remember { mutableStateOf<Uri?>(null) }
+
+    val backupLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) viewModel.backupSaves(uri)
+        }
+    val restoreLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) pendingRestore.value = uri
+        }
+
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.settings_category_backup)) },
+    ) {
+        LemuroidSettingsMenuLink(
+            title = { Text(text = stringResource(id = R.string.settings_title_backup_saves)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_backup_saves)) },
+            onClick = { backupLauncher.launch(viewModel.backupFileName) },
+        )
+        LemuroidSettingsMenuLink(
+            title = { Text(text = stringResource(id = R.string.settings_title_restore_saves)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_restore_saves)) },
+            onClick = {
+                restoreLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+            },
+        )
+    }
+
+    pendingRestore.value?.let { uri ->
+        val dismiss = { pendingRestore.value = null }
+        AlertDialog(
+            title = { Text(stringResource(id = R.string.restore_saves_warning_title)) },
+            text = { Text(stringResource(id = R.string.restore_saves_warning_message)) },
+            onDismissRequest = dismiss,
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.restoreSaves(uri)
+                        dismiss()
+                    },
+                ) {
+                    Text(text = stringResource(id = R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = dismiss) {
+                    Text(text = stringResource(id = R.string.cancel))
+                }
+            },
+        )
     }
 }
 

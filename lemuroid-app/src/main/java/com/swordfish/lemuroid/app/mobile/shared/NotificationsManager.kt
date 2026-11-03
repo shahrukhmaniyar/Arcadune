@@ -33,7 +33,7 @@ class NotificationsManager(private val applicationContext: Context) {
 
         val builder =
             NotificationCompat.Builder(applicationContext, DEFAULT_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_lemuroid_tiny)
+                .setSmallIcon(R.drawable.ic_arcadune_notification)
                 .setContentTitle(title)
                 .setContentText(applicationContext.getString(R.string.game_running_notification_message))
                 .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -59,7 +59,7 @@ class NotificationsManager(private val applicationContext: Context) {
 
         val builder =
             NotificationCompat.Builder(applicationContext, DEFAULT_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_lemuroid_tiny)
+                .setSmallIcon(R.drawable.ic_arcadune_notification)
                 .setContentTitle(applicationContext.getString(R.string.library_index_notification_title))
                 .setContentText(applicationContext.getString(R.string.library_index_notification_message))
                 .setProgress(100, 0, true)
@@ -89,7 +89,7 @@ class NotificationsManager(private val applicationContext: Context) {
 
         val builder =
             NotificationCompat.Builder(applicationContext, DEFAULT_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_lemuroid_tiny)
+                .setSmallIcon(R.drawable.ic_arcadune_notification)
                 .setContentTitle(
                     applicationContext.getString(
                         com.swordfish.lemuroid.ext.R.string.installing_core_notification_title,
@@ -118,7 +118,7 @@ class NotificationsManager(private val applicationContext: Context) {
 
         val builder =
             NotificationCompat.Builder(applicationContext, DEFAULT_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_lemuroid_tiny)
+                .setSmallIcon(R.drawable.ic_arcadune_notification)
                 .setContentTitle(applicationContext.getString(R.string.save_sync_notification_title))
                 .setContentText(applicationContext.getString(R.string.save_sync_notification_message))
                 .setProgress(100, 0, true)

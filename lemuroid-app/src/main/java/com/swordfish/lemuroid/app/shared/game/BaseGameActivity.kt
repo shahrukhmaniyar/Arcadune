@@ -365,6 +365,10 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == DIALOG_REQUEST) {
             Timber.i("Game menu dialog response: ${data?.extras.dump()}")
+            // Cheats are applied in the background, and not at all when the player is quitting.
+            if (data?.getBooleanExtra(GameMenuContract.RESULT_QUIT, false) != true) {
+                baseGameScreenViewModel.applyCheats()
+            }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_RESET, false) == true) {
                 GlobalScope.launch {
                     baseGameScreenViewModel.reset()

@@ -18,6 +18,8 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - **Smarter automatic covers:** covers are fetched from the libretro-thumbnails GitHub mirror first, then retried under other region names and matched against the real list of covers.
 - **Rename a game and its cover follows:** the cover is looked up again under the new name.
 - **Grid view** for the games of a system, remembered between launches.
+- **Cheats:** find cheats for a game online (matched by its name) or add your own codes, then switch them on and off from the game menu. Not every emulator supports cheats; the Cheats screen tells you when one does not.
+- **Back up and restore your saves:** save everything (game saves and save states) to one file you can keep on Google Drive or move to another phone (Settings > Advanced settings > Backup).
 
 ### Supported systems
 - Atari 2600 (A26) ([stella](https://docs.libretro.com/library/stella/))
@@ -73,3 +75,5 @@ On Windows, run `powershell -ExecutionPolicy Bypass -File scripts\fix-bundled-co
 ## License
 
 Arcadune is free software released under the [GNU General Public License v3.0](COPYING), the same license as Lemuroid. The original copyright notices are kept in the source files. The Libretro cores bundled with the app are distributed under their own licenses.
+
+Cheat codes come from the [libretro cheat database](https://github.com/libretro/libretro-database), licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
