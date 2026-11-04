@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
@@ -35,6 +36,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.SideEffect
+import com.swordfish.touchinput.skin.hasTwoScreens
+import com.swordfish.touchinput.skin.trackFingers
+import com.swordfish.touchinput.skin.signature
+import com.swordfish.touchinput.skin.SkinInput
+import com.swordfish.libretrodroid.LibretroDroid
+import android.view.View
+import com.swordfish.touchinput.radial.settings.TouchControllerID
+import com.swordfish.touchinput.skin.SkinPalettes
+import com.swordfish.touchinput.skin.ScreenSpecs
+import com.swordfish.touchinput.skin.placeShell
+import com.swordfish.touchinput.skin.ConsoleShell
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +86,7 @@ import com.swordfish.touchinput.radial.ui.LemuroidButtonPressFeedback
 import com.swordfish.touchinput.skin.ArcaduneSkin
 import com.swordfish.touchinput.skin.ArcaduneSkinView
 import com.swordfish.touchinput.skin.ArcaduneSkins
+import com.swordfish.touchinput.skin.SkinStyle
 import com.swordfish.touchinput.skin.SkinCustomization
 import gg.padkit.PadKit
 import gg.padkit.PadKitScope
@@ -79,6 +102,7 @@ import gg.padkit.inputstate.InputState
 fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isLandscape = constraints.maxWidth > constraints.maxHeight
+        LaunchedEffect(isLandscape) { viewModel.onOrientationChanged(isLandscape) }
 
         LaunchedEffect(isLandscape) {
             val orientation =
@@ -121,16 +145,44 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             }
 
         // Consoles with an Arcadune skin use it; the others keep the original round pads.
-        val skin = currentControllerConfig?.let { ArcaduneSkins.forController(it.touchControllerID) }
         val screenContext = LocalContext.current
         val skinStore = remember { SkinCustomizationStore(screenContext) }
-        val skinKey = "${currentControllerConfig?.touchControllerID?.name}_${if (isLandscape) "landscape" else "portrait"}"
+        val controllerName = currentControllerConfig?.touchControllerID?.name
+        val skinMonochrome = remember(controllerName) { mutableStateOf(controllerName?.let { skinStore.isMonochrome(it) } ?: false) }
+        val controllerId = currentControllerConfig?.touchControllerID
+        // Built once per controller and colour choice, not at every redraw, so the controls keep the
+        // same layout objects for the whole game.
+        val skin = remember(controllerId, skinMonochrome.value) { controllerId?.let { ArcaduneSkins.forController(it, skinMonochrome.value) } }
+        // Whether this controller has colours of its own that can be switched to black and white.
+        val skinHasColours =
+            remember(controllerId) {
+                controllerId?.let { ArcaduneSkins.forController(it)?.portrait?.style }
+                    .let { it == SkinStyle.CONSOLE || it == SkinStyle.NES_CLASSIC }
+            }
+        // Every finger on a skin goes through this tracker (buttons, d-pad, sticks, and the DS / 3DS
+        // touch screen), see SkinInput.
+        val skinInput =
+            remember {
+                SkinInput(
+                    vibrate = SkinInput.vibrator(screenContext),
+                    onEvents = { viewModel.handleVirtualInputEvent(it) },
+                    onTouchScreen = { position -> LibretroDroid.onTouchEvent(position?.x ?: -10f, position?.y ?: 10f) },
+                )
+            }
+        skinInput.hapticFeedback = padHapticFeedback
+        val skinTakesScreenTouches = skin != null && controllerId?.hasTwoScreens() == true
+        // One saved set of changes per controller, orientation and layout version (see signature()).
+        val skinLayoutSignature = skin?.let { (if (isLandscape) it.landscape else it.portrait).signature() }
+        val skinKey = "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_$skinLayoutSignature"
         val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey)) }
+        val screenValues = viewModel.getScreenLayout().collectAsState(emptyMap())
         val rewindAvailable = viewModel.isRewindAvailable().collectAsState(false)
         val editingControls = viewModel.isEditControlShown().collectAsState(false)
+        // Where the upright controller panel is, so the editor shows it at the same place.
+        val skinPanel = remember { mutableStateOf<Rect?>(null) }
 
         PadKit(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().then(if (skin != null) Modifier.trackFingers(skinInput) else Modifier),
             onInputEvents = { viewModel.handleVirtualInputEvent(it) },
             hapticFeedbackType = padHapticFeedback,
             simulatedState = tiltSimulatedStates,
@@ -150,6 +202,9 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 factory = {
                     viewModel.createRetroView(localContext, lifecycle)
                 },
+                // With a DS / 3DS skin the tracker feeds the touch screen (every finger, not only the
+                // first, and only fingers that start in a screen window): the view must not do it too.
+                update = { view -> view.setOnTouchListener(if (skinTakesScreenTouches) View.OnTouchListener { _, _ -> true } else null) },
             )
 
             val fullPos = fullScreenPosition.value
@@ -174,10 +229,16 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 SkinnedGameLayout(
                     isLandscape = isLandscape,
                     skin = skin,
+                    controllerId = controllerId!!,
+                    screenValues = screenValues.value,
                     controlsVisible = controlsVisible,
                     rewindAvailable = rewindAvailable.value,
                     customization = skinCustomization.value,
                     onViewportPositioned = { viewportPosition.value = it },
+                    onPanelPositioned = { skinPanel.value = it },
+                    input = skinInput,
+                    gameView = fullPos,
+                    takesScreenTouches = skinTakesScreenTouches,
                 )
             } else ConstraintLayout(
                 modifier = Modifier.fillMaxSize(),
@@ -249,6 +310,21 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 rewindAvailable = rewindAvailable.value,
                 // Kept in memory while dragging (saving on every move made dragging stutter), saved on Done.
                 customizationState = skinCustomization,
+                panel = skinPanel.value,
+                monochrome = skinMonochrome.value.takeIf { skinHasColours },
+                onMonochromeChange = { mono ->
+                    skinMonochrome.value = mono
+                    controllerName?.let { skinStore.setMonochrome(it, mono) }
+                },
+                // Back to the console's own layout, size, opacity and colours, saved at once.
+                onReset = {
+                    skinCustomization.value = SkinCustomization()
+                    skinStore.save(skinKey, SkinCustomization())
+                    if (skinHasColours) {
+                        skinMonochrome.value = false
+                        controllerName?.let { skinStore.setMonochrome(it, false) }
+                    }
+                },
                 onDone = {
                     skinStore.save(skinKey, skinCustomization.value)
                     viewModel.showEditControls(false)
@@ -273,70 +349,94 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
 }
 
 /**
- * The game with an Arcadune skin. Portrait: the game on top and the controller panel under it on
- * black, like Delta. Landscape: the game fills the screen and the controls sit over it.
+ * The game with an Arcadune skin, like Delta: the console's body fills the screen, the game shows
+ * through a window cut in it for each screen, and the controls sit on the body. Upright the
+ * windows are above the controller panel; sideways (for skins with a shell) they sit between the
+ * two wings of controls. Skins without a sideways shell keep their controls over the game.
+ * With the controls hidden (a gamepad in use) the game simply fills the screen.
  */
 @Composable
 private fun PadKitScope.SkinnedGameLayout(
     isLandscape: Boolean,
     skin: ArcaduneSkin,
+    controllerId: TouchControllerID,
+    screenValues: Map<String, String>,
     controlsVisible: Boolean,
     rewindAvailable: Boolean,
     customization: SkinCustomization,
     onViewportPositioned: (Rect) -> Unit,
+    onPanelPositioned: (Rect) -> Unit,
+    input: SkinInput,
+    gameView: Rect?,
+    takesScreenTouches: Boolean,
 ) {
-    if (isLandscape) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val cutout = WindowInsets.displayCutout
+    val layout = if (isLandscape) skin.landscape else skin.portrait
+    val shell = controlsVisible && (!isLandscape || layout.screenArea != null)
+    var origin by remember { mutableStateOf(Offset.Zero) }
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().onGloballyPositioned { origin = it.boundsInRoot().topLeft },
+    ) {
+        val width = constraints.maxWidth.toFloat()
+        val height = constraints.maxHeight.toFloat()
+        fun px(value: Dp) = with(density) { value.toPx() }
+        val left = cutout.getLeft(density, layoutDirection).toFloat()
+        val top = cutout.getTop(density).toFloat()
+        val right = width - cutout.getRight(density, layoutDirection)
+
+        val spec = if (shell) ScreenSpecs.forController(controllerId, screenValues, isLandscape) else null
+        val placement = placeShell(skin, isLandscape, shell, spec, width, height, Rect(left, top, right, height), px(1.dp))
+        val windows = placement.windows
+        val picture = placement.picture
+        val panel = placement.panel
+        LaunchedEffect(panel, origin) { onPanelPositioned(panel.translate(origin)) }
+
+        LaunchedEffect(picture, origin) { onViewportPositioned(picture.translate(origin)) }
+        // The DS / 3DS touch screen: fingers that start in a screen window touch the game there.
+        SideEffect {
+            input.touchWindows = if (takesScreenTouches) windows.map { it.translate(origin) } else emptyList()
+            input.gameViewSize = gameView ?: Rect.Zero
+        }
+
+        if (shell) {
+            ConsoleShell(
+                modifier = Modifier.fillMaxSize(),
+                palette = layout.palette ?: SkinPalettes.MONO,
+                screens = windows,
+            )
+        }
+
+        if (controlsVisible && isLandscape) {
+            ArcaduneSkinView(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .onGloballyPositioned { onViewportPositioned(it.boundsInRoot()) },
+                        .padding(4.dp),
+                layout = layout,
+                pinToEdges = true,
+                customization = customization,
+                rewindAvailable = rewindAvailable,
+                input = input,
+                shell = shell,
             )
-            if (controlsVisible) {
+        } else if (controlsVisible) {
+            with(density) {
                 ArcaduneSkinView(
                     modifier =
                         Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.displayCutout)
-                            .padding(4.dp),
-                    layout = skin.landscape,
-                    pinToEdges = true,
+                            .absoluteOffset { IntOffset(panel.left.toInt(), panel.top.toInt()) }
+                            .size(panel.width.toDp(), panel.height.toDp()),
+                    layout = layout,
+                    pinToEdges = false,
                     customization = customization,
                     rewindAvailable = rewindAvailable,
+                    input = input,
+                    shell = true,
                 )
-            }
-        }
-    } else {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
-                        .onGloballyPositioned { onViewportPositioned(it.boundsInRoot()) },
-            )
-            if (controlsVisible) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .background(Color.Black)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                ) {
-                    ArcaduneSkinView(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(skin.portrait.width / skin.portrait.height),
-                        layout = skin.portrait,
-                        pinToEdges = false,
-                        customization = customization,
-                        rewindAvailable = rewindAvailable,
-                    )
-                }
             }
         }
     }

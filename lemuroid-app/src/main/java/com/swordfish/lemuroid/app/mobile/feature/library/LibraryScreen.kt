@@ -115,6 +115,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.unit.sp
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -347,13 +353,22 @@ private fun GameGrid(
     }
 
     // Room for the bottom bar, and for the keyboard while searching, so no result hides behind them.
+    // In landscape the bar is a single row, so it needs less.
     val keyboard = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val landscape = isLandscape()
+    BoxWithConstraints(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                // Clear of the camera cutout and the side navigation bar in landscape.
+                .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal)),
+    ) {
     LazyVerticalGrid(
         // Its own drawing layer: while pages slide, the phone moves the finished picture of the page
         // instead of drawing every cover again on every frame, and skips pages that are off screen.
         modifier = Modifier.fillMaxSize().graphicsLayer(),
-        columns = GridCells.Fixed(3),
-        contentPadding = PaddingValues(start = 26.dp, end = 26.dp, top = 6.dp, bottom = 120.dp + keyboard),
+        columns = GridCells.Fixed(libraryColumns(maxWidth)),
+        contentPadding = PaddingValues(start = 26.dp, end = 26.dp, top = 6.dp, bottom = (if (landscape) 84.dp else 120.dp) + keyboard),
         horizontalArrangement = Arrangement.spacedBy(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -362,7 +377,21 @@ private fun GameGrid(
             GameTile(game = game, onClick = { onGameClick(game) }, onLongClick = { onGameLongClick(game) })
         }
     }
+    }
 }
+
+/**
+ * How many covers fit in a row of [width]: three on a phone held upright (the size chosen for it),
+ * then one more for every 150dp: five on a phone held sideways, five to eight on tablets.
+ */
+private fun libraryColumns(width: Dp): Int {
+    val usable = width - 52.dp + 24.dp
+    return maxOf(3, (usable / 150.dp).toInt())
+}
+
+@Composable
+private fun isLandscape(): Boolean =
+    LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
 /**
  * A cover at its own shape (portrait, landscape or square) with rounded corners, and the name below.
@@ -446,19 +475,40 @@ private fun LibraryBottomBar(
     query: String,
     onQueryChange: (String) -> Unit,
 ) {
+    val barModifier =
+        modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime).union(WindowInsets.displayCutout))
+            .padding(horizontal = 28.dp, vertical = 8.dp)
+    if (isLandscape()) {
+        // Sideways the screen is short: the pages and the search sit side by side in one row,
+        // so the covers keep most of the height.
+        Row(
+            modifier = barModifier,
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AnimatedVisibility(visible = showPages, enter = ArcaduneMotion.appear, exit = ArcaduneMotion.disappear) {
+                PageIndicator(hazeState, pages, currentPage, onPageSelected, onScrub, height = 48.dp)
+            }
+            Box(modifier = Modifier.widthIn(max = 360.dp)) {
+                SearchField(hazeState, query, onQueryChange)
+            }
+        }
+        return
+    }
     Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime))
-                .padding(horizontal = 28.dp, vertical = 8.dp),
+        modifier = barModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         AnimatedVisibility(visible = showPages, enter = ArcaduneMotion.appear, exit = ArcaduneMotion.disappear) {
             PageIndicator(hazeState, pages, currentPage, onPageSelected, onScrub)
         }
-        SearchField(hazeState, query, onQueryChange)
+        // On a tablet the search stays a comfortable width instead of stretching across the screen.
+        Box(modifier = Modifier.widthIn(max = 560.dp)) {
+            SearchField(hazeState, query, onQueryChange)
+        }
     }
 }
 
@@ -531,6 +581,8 @@ private fun PageIndicator(
     currentPage: () -> Int,
     onPageSelected: (Int) -> Unit,
     onScrub: (Int) -> Unit,
+    // 36 under the search; 48 beside it (landscape), the same height as the search.
+    height: Dp = 36.dp,
 ) {
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -556,7 +608,7 @@ private fun PageIndicator(
                     scaleY = lift
                 }
                 .widthIn(max = 280.dp)
-                .height(36.dp)
+                .height(height)
                 .glass(hazeState, RoundedCornerShape(50))
                 .fadingEdges(listState)
                 .pointerInput(Unit) {
@@ -612,7 +664,7 @@ private fun PageIndicator(
             Box(
                 modifier =
                     Modifier
-                        .size(width = 28.dp, height = 36.dp)
+                        .size(width = 28.dp, height = height)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,

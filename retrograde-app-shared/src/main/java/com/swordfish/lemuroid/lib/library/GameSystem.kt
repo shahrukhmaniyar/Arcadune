@@ -976,6 +976,12 @@ data class GameSystem(
                             defaultSettings =
                                 listOf(
                                     CoreVariable("melonds_number_of_screen_layouts", "1"),
+                                    // A gap between the two screens, where the console shell draws its hinge.
+                                    CoreVariable("melonds_screen_gap", "16"),
+                                    // Sideways (hybrid layout) the small screen shows only the other screen, not both again.
+                                    CoreVariable("melonds_hybrid_small_screen", "one"),
+                                    // The big screen three times the small one: the main screen as big as the wings allow.
+                                    CoreVariable("melonds_hybrid_ratio", "3"),
                                     CoreVariable("melonds_touch_mode", "Touch"),
                                     CoreVariable("melonds_threaded_renderer", "enabled"),
                                 ),
@@ -1240,11 +1246,66 @@ data class GameSystem(
                                                 "Side by Side",
                                                 R.string.value_citra_layout_option_sidebyside,
                                             ),
+                                            ExposedSetting.Value(
+                                                "Large Screen, Small Screen",
+                                                R.string.value_citra_layout_option_large,
+                                            ),
+                                            ExposedSetting.Value(
+                                                "Single Screen Only",
+                                                R.string.value_citra_layout_option_single,
+                                            ),
                                         ),
+                                    ),
+                                    // Which screen is the big one (or the only one); the swap button changes it in game.
+                                    ExposedSetting(
+                                        "citra_swap_screen",
+                                        R.string.setting_citra_swap_screen,
+                                        arrayListOf(
+                                            ExposedSetting.Value("Top", R.string.value_citra_swap_screen_top),
+                                            ExposedSetting.Value("Bottom", R.string.value_citra_swap_screen_bottom),
+                                        ),
+                                    ),
+                                    ExposedSetting(
+                                        "citra_analog_function",
+                                        R.string.setting_citra_analog_function,
+                                        arrayListOf(
+                                            ExposedSetting.Value(
+                                                "C-Stick and Touchscreen Pointer",
+                                                R.string.value_citra_analog_function_both,
+                                            ),
+                                            ExposedSetting.Value("C-Stick", R.string.value_citra_analog_function_cstick),
+                                            ExposedSetting.Value(
+                                                "Touchscreen Pointer",
+                                                R.string.value_citra_analog_function_pointer,
+                                            ),
+                                        ),
+                                    ),
+                                    ExposedSetting(
+                                        "citra_deadzone",
+                                        R.string.setting_citra_deadzone,
                                     ),
                                     ExposedSetting(
                                         "citra_resolution_factor",
                                         R.string.setting_citra_resolution_factor,
+                                    ),
+                                    ExposedSetting(
+                                        "citra_texture_filter",
+                                        R.string.setting_citra_texture_filter,
+                                    ),
+                                ),
+                            exposedAdvancedSettings =
+                                listOf(
+                                    ExposedSetting(
+                                        "citra_is_new_3ds",
+                                        R.string.setting_citra_is_new_3ds,
+                                    ),
+                                    ExposedSetting(
+                                        "citra_region_value",
+                                        R.string.setting_citra_region_value,
+                                    ),
+                                    ExposedSetting(
+                                        "citra_language",
+                                        R.string.setting_citra_language,
                                     ),
                                     ExposedSetting(
                                         "citra_use_acc_mul",

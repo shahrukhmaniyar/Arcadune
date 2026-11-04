@@ -39,6 +39,7 @@ import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_REWIND
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_SWAP_SCREENS
 import gg.padkit.inputevents.InputEvent
 import gg.padkit.inputstate.InputState
 import kotlinx.coroutines.delay
@@ -315,13 +316,24 @@ class BaseGameScreenViewModel(
     }
 
     fun handleVirtualInputEvent(events: List<InputEvent>) {
-        // The rewind button is handled here and never reaches the emulator.
-        val (rewindEvents, gameEvents) = events.partition { it is InputEvent.Button && it.id == KEYCODE_REWIND }
-        rewindEvents.lastOrNull()?.let { rewind.onRewindPressed((it as InputEvent.Button).pressed) }
+        // The rewind and swap-screens buttons are handled here and never reach the emulator.
+        val (appEvents, gameEvents) =
+            events.partition { it is InputEvent.Button && (it.id == KEYCODE_REWIND || it.id == KEYCODE_SWAP_SCREENS) }
+        appEvents.lastOrNull { (it as InputEvent.Button).id == KEYCODE_REWIND }
+            ?.let { rewind.onRewindPressed((it as InputEvent.Button).pressed) }
+        if (appEvents.any { it is InputEvent.Button && it.id == KEYCODE_SWAP_SCREENS && it.pressed }) {
+            retroGameView.swapScreens()
+        }
         if (gameEvents.isNotEmpty()) touchControls.handleVirtualInputEvent(gameEvents)
     }
 
     fun isRewindAvailable(): Flow<Boolean> = rewind.available
+
+    /** Two-screen consoles show their screens side by side while the phone is sideways. */
+    fun onOrientationChanged(isLandscape: Boolean) = retroGameView.onOrientationChanged(isLandscape)
+
+    /** The screen settings the core draws with right now, for the console shell. */
+    fun getScreenLayout(): Flow<Map<String, String>> = retroGameView.screenLayout
 
     override fun onCreate(owner: LifecycleOwner) {
         super.onCreate(owner)

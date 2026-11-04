@@ -354,7 +354,68 @@ class GameViewModelRetroGameView(
     // Values of the restart-only options when the game started (they are passed to the core at load).
     private var restartOnlyAtStart: Map<String, String>? = null
 
-    private fun updateCoreVariables(options: List<CoreVariable>) {
+    // The core options as chosen (before the sideways change below), so the swap button knows which
+    // screen is the main one now and a rotation can send the layout again.
+    private val currentValues = mutableMapOf<String, String>()
+
+    private var landscape =
+        appContext.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    /**
+     * DS and 3DS screens stacked top and bottom are tiny on a phone held sideways (and the controls
+     * then cover the touch screen), so sideways they are shown side by side instead, and stacked
+     * again when the phone is turned back upright.
+     */
+    fun onOrientationChanged(isLandscape: Boolean) {
+        if (isLandscape == landscape) return
+        landscape = isLandscape
+        val layouts =
+            SIDEWAYS_LAYOUTS.keys.mapNotNull { key -> currentValues[key]?.let { Variable(key, sidewaysAware(key, it)) } }
+        if (layouts.isNotEmpty()) retroGameView?.updateVariables(*layouts.toTypedArray())
+        publishScreenLayout()
+    }
+
+    /**
+     * The screen settings the core draws with right now (layout after the sideways change, and
+     * which screen is the main one), so the console shell cuts its windows where the screens are.
+     */
+    val screenLayout = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    private fun publishScreenLayout() {
+        screenLayout.value =
+            (SIDEWAYS_LAYOUTS.keys + CITRA_SWAP_SCREEN)
+                .mapNotNull { key -> currentValues[key]?.let { key to sidewaysAware(key, it) } }
+                .toMap()
+    }
+
+    private fun sidewaysAware(
+        key: String,
+        value: String,
+    ): String {
+        val (stacked, sideBySide) = SIDEWAYS_LAYOUTS[key] ?: return value
+        return if (landscape && value == stacked) sideBySide else value
+    }
+
+    /**
+     * The 3DS swap-screens button: the other screen becomes the main one. Only for this session;
+     * the game menu's "Main screen" stays the choice the game starts with.
+     */
+    fun swapScreens() {
+        val next = if (currentValues[CITRA_SWAP_SCREEN] == "Bottom") "Top" else "Bottom"
+        currentValues[CITRA_SWAP_SCREEN] = next
+        retroGameView?.updateVariables(Variable(CITRA_SWAP_SCREEN, next))
+        publishScreenLayout()
+    }
+
+    private fun updateCoreVariables(chosen: List<CoreVariable>) {
+        // A layout the player never changed is not in the list: it is the core's stacked default.
+        val exposedKeys = systemCoreConfig.exposedSettings.map { it.key }.toSet()
+        val defaultLayouts =
+            SIDEWAYS_LAYOUTS
+                .filterKeys { key -> key in exposedKeys && chosen.none { it.key == key } }
+                .map { (key, layouts) -> CoreVariable(key, layouts.first) }
+        val options = chosen + defaultLayouts
+        options.forEach { currentValues[it.key] = it.value }
         val (restartOnly, live) = options.partition { it.key in RESTART_ONLY_VARIABLES }
 
         // Changing these while the game runs makes the PSP core crash (it rebuilds its graphics on the
@@ -367,7 +428,7 @@ class GameViewModelRetroGameView(
         }
 
         val updatedVariables =
-            live.map { Variable(it.key, it.value) }
+            live.map { Variable(it.key, sidewaysAware(it.key, it.value)) }
                 .toTypedArray()
 
         updatedVariables.forEach {
@@ -375,6 +436,7 @@ class GameViewModelRetroGameView(
         }
 
         if (updatedVariables.isNotEmpty()) retroGameView?.updateVariables(*updatedVariables)
+        publishScreenLayout()
     }
 
     private fun handleRetroViewError(errorCode: Int) {
@@ -422,6 +484,15 @@ class GameViewModelRetroGameView(
 
     private companion object {
         // PSP options that rebuild the emulator's graphics or CPU engine, see updateCoreVariables.
+        private const val CITRA_SWAP_SCREEN = "citra_swap_screen"
+
+        /** The stacked layout of each two-screen core, and what it becomes when the phone is sideways. */
+        private val SIDEWAYS_LAYOUTS =
+            mapOf(
+                "citra_layout_option" to ("Default Top-Bottom Screen" to "Large Screen, Small Screen"),
+                "melonds_screen_layout1" to ("top-bottom" to "hybrid-top"),
+            )
+
         val RESTART_ONLY_VARIABLES =
             setOf(
                 "ppsspp_internal_resolution",

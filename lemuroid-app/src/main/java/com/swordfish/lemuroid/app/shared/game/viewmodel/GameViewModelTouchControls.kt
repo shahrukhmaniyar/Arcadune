@@ -163,9 +163,61 @@ class GameViewModelTouchControls(
         showEditControls.value = show
     }
 
+    // The emulator reads the controls once a frame: a tap whose press and release both land between
+    // two reads never reaches the game. Releases that come sooner than MIN_PRESS_MS after the press
+    // wait until then, so every tap counts (a new press of the same key cancels the waiting release).
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val pressedAt = mutableMapOf<Int, Long>()
+    private val pendingReleases = mutableMapOf<Int, Runnable>()
+
     private fun handleVirtualInputButton(event: InputEvent.Button) {
-        val action = if (event.pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
-        retroGameView.retroGameView?.sendKeyEvent(action, event.id)
+        val view = retroGameView.retroGameView ?: return
+        val key = event.id
+        pendingReleases.remove(key)?.let { mainHandler.removeCallbacks(it) }
+        if (event.pressed) {
+            pressedAt[key] = android.os.SystemClock.uptimeMillis()
+            view.sendKeyEvent(KeyEvent.ACTION_DOWN, key)
+            return
+        }
+        val held = android.os.SystemClock.uptimeMillis() - (pressedAt[key] ?: 0L)
+        if (held >= MIN_PRESS_MS) {
+            view.sendKeyEvent(KeyEvent.ACTION_UP, key)
+        } else {
+            val release = Runnable {
+                pendingReleases.remove(key)
+                retroGameView.retroGameView?.sendKeyEvent(KeyEvent.ACTION_UP, key)
+            }
+            pendingReleases[key] = release
+            mainHandler.postDelayed(release, MIN_PRESS_MS - held)
+        }
+    }
+
+    // The same for the d-pad: a direction let go of too soon is held until it has been seen.
+    private var dpadSince = 0L
+    private var dpadNonZero = false
+    private var pendingDpadRelease: Runnable? = null
+
+    private fun sendDpad(
+        xAxis: Float,
+        yAxis: Float,
+    ) {
+        pendingDpadRelease?.let { mainHandler.removeCallbacks(it) }
+        pendingDpadRelease = null
+        val now = android.os.SystemClock.uptimeMillis()
+        val centred = xAxis == 0f && yAxis == 0f
+        if (centred && dpadNonZero && now - dpadSince < MIN_PRESS_MS) {
+            val release = Runnable {
+                pendingDpadRelease = null
+                dpadNonZero = false
+                retroGameView.retroGameView?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, 0f, 0f)
+            }
+            pendingDpadRelease = release
+            mainHandler.postDelayed(release, MIN_PRESS_MS - (now - dpadSince))
+            return
+        }
+        if (!centred && !dpadNonZero) dpadSince = now
+        dpadNonZero = !centred
+        retroGameView.retroGameView?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, xAxis, yAxis)
     }
 
     private fun handleVirtualInputDirection(
@@ -174,9 +226,7 @@ class GameViewModelTouchControls(
         yAxis: Float,
     ) {
         when (id) {
-            ComposeTouchLayouts.MOTION_SOURCE_DPAD -> {
-                retroGameView.retroGameView?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, xAxis, yAxis)
-            }
+            ComposeTouchLayouts.MOTION_SOURCE_DPAD -> sendDpad(xAxis, yAxis)
 
             ComposeTouchLayouts.MOTION_SOURCE_LEFT_STICK -> {
                 retroGameView.retroGameView?.sendMotionEvent(
@@ -215,5 +265,8 @@ class GameViewModelTouchControls(
 
     companion object {
         const val MENU_LOADING_ANIMATION_MILLIS = 500
+
+        /** Shortest press the game sees: 3 frames at 60 fps. */
+        private const val MIN_PRESS_MS = 50L
     }
 }

@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.mobile.feature.game
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +13,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -49,7 +52,17 @@ class SkinCustomizationStore(context: Context) {
         customization: SkinCustomization,
     ) = preferences.edit { putString(prefKey(key), customization.encode()) }
 
+    /** Black and white instead of the console's colours, one choice per controller ([controller] is its name). */
+    fun isMonochrome(controller: String): Boolean = preferences.getBoolean(monoKey(controller), false)
+
+    fun setMonochrome(
+        controller: String,
+        monochrome: Boolean,
+    ) = preferences.edit { putBoolean(monoKey(controller), monochrome) }
+
     private fun prefKey(key: String) = "arcadune_skin_$key"
+
+    private fun monoKey(controller: String) = "arcadune_skin_mono_$controller"
 }
 
 /**
@@ -62,8 +75,16 @@ fun SkinEditorOverlay(
     skin: ArcaduneSkin,
     rewindAvailable: Boolean,
     customizationState: MutableState<SkinCustomization>,
+    /** Where the game shows the upright controller panel (in pixels); the editor shows it there too. */
+    panel: androidx.compose.ui.geometry.Rect?,
+    /** Null when the controller has no colours of its own to switch off. */
+    monochrome: Boolean?,
+    onMonochromeChange: (Boolean) -> Unit,
+    onReset: () -> Unit,
     onDone: () -> Unit,
 ) {
+    // Back keeps the changes, like Done (it used to leave the editor and lose them).
+    androidx.activity.compose.BackHandler(onBack = onDone)
     val layout = if (isLandscape) skin.landscape else skin.portrait
     val customization = customizationState.value
 
@@ -96,19 +117,25 @@ fun SkinEditorOverlay(
                 onMove = ::move,
             )
         } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Spacer(modifier = Modifier.weight(1f))
-                Box(modifier = Modifier.fillMaxWidth().background(Color.Black).padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    ArcaduneSkinEditor(
-                        modifier = Modifier.fillMaxWidth().aspectRatio(layout.width / layout.height),
-                        layout = layout,
-                        pinToEdges = false,
-                        rewindAvailable = rewindAvailable,
-                        customization = customization,
-                        onMove = ::move,
-                    )
+            // Exactly over the controller of the game (the editor is drawn on top of it).
+            val editorModifier =
+                if (panel != null) {
+                    with(androidx.compose.ui.platform.LocalDensity.current) {
+                        Modifier
+                            .absoluteOffset { androidx.compose.ui.unit.IntOffset(panel.left.toInt(), panel.top.toInt()) }
+                            .size(panel.width.toDp(), panel.height.toDp())
+                    }
+                } else {
+                    Modifier.align(Alignment.BottomCenter).widthIn(max = 520.dp).fillMaxWidth().aspectRatio(layout.width / layout.height)
                 }
-            }
+            ArcaduneSkinEditor(
+                modifier = editorModifier,
+                layout = layout,
+                pinToEdges = false,
+                rewindAvailable = rewindAvailable,
+                customization = customization,
+                onMove = ::move,
+            )
         }
 
         Column(
@@ -140,8 +167,49 @@ fun SkinEditorOverlay(
                 valueRange = SkinCustomization.MIN_SIZE..SkinCustomization.MAX_SIZE,
                 onValueChange = { customizationState.value = customizationState.value.copy(size = it) },
             )
+            Text(
+                stringResource(R.string.skin_editor_opacity, (customization.opacity * 100).toInt()),
+                color = Color.White,
+                fontSize = 13.sp,
+            )
+            Slider(
+                value = customization.opacity,
+                valueRange = SkinCustomization.MIN_OPACITY..1f,
+                onValueChange = { customizationState.value = customizationState.value.copy(opacity = it) },
+            )
+            if (monochrome != null) {
+                // Two halves of one pill: the console's colours, or black and white.
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .background(Color(0xFF2A2738), RoundedCornerShape(50))
+                            .padding(3.dp),
+                ) {
+                    listOf(false to R.string.skin_editor_colours, true to R.string.skin_editor_mono).forEach { (mono, label) ->
+                        val selected = mono == monochrome
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .background(if (selected) Color(0xFF4A4560) else Color.Transparent, RoundedCornerShape(50))
+                                    .clickable { onMonochromeChange(mono) }
+                                    .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                stringResource(label),
+                                color = if (selected) Color.White else Color(0xFFA7A1B8),
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+            }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { customizationState.value = SkinCustomization() }) { Text(stringResource(R.string.skin_editor_reset)) }
+                TextButton(onClick = onReset) { Text(stringResource(R.string.skin_editor_reset)) }
                 TextButton(onClick = onDone) { Text(stringResource(R.string.skin_editor_done)) }
             }
         }

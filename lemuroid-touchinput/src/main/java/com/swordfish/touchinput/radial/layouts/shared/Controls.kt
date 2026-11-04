@@ -109,6 +109,9 @@ val LocalRewindAvailable = staticCompositionLocalOf { false }
 /** Key the rewind button sends. The app handles it itself; it never reaches the emulator. */
 const val KEYCODE_REWIND = KeyEvent.KEYCODE_MEDIA_REWIND
 
+/** Key the 3DS swap-screens button sends. The app handles it itself; it never reaches the emulator. */
+const val KEYCODE_SWAP_SCREENS = KeyEvent.KEYCODE_MEDIA_NEXT
+
 context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonMenuPlaceholder(settings: TouchControllerSettingsManager.Settings) {

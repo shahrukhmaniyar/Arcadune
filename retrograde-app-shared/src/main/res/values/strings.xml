@@ -64,6 +64,13 @@
     <string name="setting_citra_resolution_factor">Resolution scaling</string>
     <string name="setting_citra_use_acc_mul">Accurate shaders multiplication</string>
     <string name="setting_citra_use_acc_geo_shaders">Accurate geometry shaders</string>
+    <string name="setting_citra_swap_screen">Main screen</string>
+    <string name="setting_citra_analog_function">Right stick</string>
+    <string name="setting_citra_deadzone">Stick deadzone (%)</string>
+    <string name="setting_citra_texture_filter">Texture filter</string>
+    <string name="setting_citra_is_new_3ds">Console model</string>
+    <string name="setting_citra_region_value">Console region</string>
+    <string name="setting_citra_language">Console language</string>
 
     <!-- Core settings values. Duplicated here to ease the translation process. -->
     <string name="value_gambatte_mix_frames_disabled">Disabled</string>
@@ -115,15 +122,22 @@
     <string name="value_mupen64plus_mupen64plus_pak2_none">None</string>
     <string name="value_mupen64plus_mupen64plus_pak2_rumble">Rumble</string>
 
-    <string name="value_melonds_screen_layout_topbottom">Top - Bottom</string>
+    <string name="value_melonds_screen_layout_topbottom">Top and bottom (side by side when sideways)</string>
     <string name="value_melonds_screen_layout_leftright">Left - Right</string>
     <string name="value_melonds_screen_layout_hybridtop">Hybrid Top</string>
     <string name="value_melonds_screen_layout_hybridbottom">Hybrid Bottom</string>
     <string name="value_melonds_mic_input_microphone">Real microphone</string>
     <string name="value_melonds_mic_input_blow">Simulate blow sounds</string>
 
-    <string name="value_citra_layout_option_topbottom">Top - Bottom</string>
-    <string name="value_citra_layout_option_sidebyside">Left - Right</string>
+    <string name="value_citra_layout_option_topbottom">Top and bottom (side by side when sideways)</string>
+    <string name="value_citra_layout_option_sidebyside">Side by side</string>
+    <string name="value_citra_layout_option_large">Big main screen, small second screen</string>
+    <string name="value_citra_layout_option_single">One screen at a time</string>
+    <string name="value_citra_swap_screen_top">Top screen</string>
+    <string name="value_citra_swap_screen_bottom">Bottom screen</string>
+    <string name="value_citra_analog_function_both">C-Stick and touch pointer</string>
+    <string name="value_citra_analog_function_cstick">C-Stick</string>
+    <string name="value_citra_analog_function_pointer">Touch pointer</string>
 
 
     <string name="value_ppsspp_cpu_core_jit">JIT</string>

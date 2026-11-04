@@ -161,7 +161,14 @@
     <string name="skin_editor_title">Edit controls</string>
     <string name="skin_editor_hint">Drag any button to move it. The size changes every button at once.</string>
     <string name="skin_editor_size">Button size: %1$d%%</string>
-    <string name="skin_editor_reset">Reset</string>
+    <string name="skin_gallery_title">Controllers</string>
+    <string name="skin_gallery_description">See every console\'s controller and choose its colours or black and white</string>
+    <string name="skin_gallery_colours">Colours</string>
+    <string name="skin_gallery_mono">Black and white</string>
+    <string name="skin_editor_opacity">Opacity: %1$d%%</string>
+    <string name="skin_editor_colours">Console colours</string>
+    <string name="skin_editor_mono">Black and white</string>
+    <string name="skin_editor_reset">Reset to default</string>
     <string name="skin_editor_done">Done</string>
     <string name="pause_resume">Resume</string>
     <string name="game_menu_state_empty">Empty</string>

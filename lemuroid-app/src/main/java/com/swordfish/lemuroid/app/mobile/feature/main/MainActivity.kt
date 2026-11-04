@@ -244,6 +244,11 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             navController = navController,
                         )
                     }
+                    composable(MainRoute.SETTINGS_SKINS) {
+                        com.swordfish.lemuroid.app.mobile.feature.settings.skins.SkinGalleryScreen(
+                            modifier = Modifier.padding(padding),
+                        )
+                    }
                     composable(MainRoute.SETTINGS_BIOS) {
                         BiosScreen(
                             modifier = Modifier.padding(padding),
