@@ -140,19 +140,14 @@ class GameViewModelTouchControls(
         }
     }
 
+    /** Like Delta, a tap on the menu button opens the menu: it opens when the finger lifts. */
     private fun onMenuPressed(pressed: Boolean) {
+        val wasPressed = menuPressed.value
         menuPressed.value = pressed
 
-        if (pressed) {
+        if (!pressed && wasPressed) {
             loadingMenuJob?.cancel()
-            loadingMenuJob =
-                scope.launch {
-                    delay(MENU_LOADING_ANIMATION_MILLIS.toLong())
-                    sideEffects.showMenu(tilt, inputs)
-                }
-        } else {
-            loadingMenuJob?.cancel()
-            loadingMenuJob = null
+            loadingMenuJob = scope.launch { sideEffects.showMenu(tilt, inputs) }
         }
     }
 

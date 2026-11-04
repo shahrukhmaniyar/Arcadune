@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.app.mobile.feature.game.GameService
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelCheats
+import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRewind
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelInput
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRetroGameView
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelSaves
@@ -37,6 +38,7 @@ import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_REWIND
 import gg.padkit.inputevents.InputEvent
 import gg.padkit.inputstate.InputState
 import kotlinx.coroutines.delay
@@ -107,6 +109,7 @@ class BaseGameScreenViewModel(
             viewModelScope,
         )
     private val cheats = GameViewModelCheats(appContext, game, retroGameView, viewModelScope)
+    private val rewind = GameViewModelRewind(system, settingsManager, retroGameView, viewModelScope)
     private val tilt = GameViewModelTilt(appContext, settingsManager)
     private val inputs =
         GameViewModelInput(
@@ -312,8 +315,13 @@ class BaseGameScreenViewModel(
     }
 
     fun handleVirtualInputEvent(events: List<InputEvent>) {
-        touchControls.handleVirtualInputEvent(events)
+        // The rewind button is handled here and never reaches the emulator.
+        val (rewindEvents, gameEvents) = events.partition { it is InputEvent.Button && it.id == KEYCODE_REWIND }
+        rewindEvents.lastOrNull()?.let { rewind.onRewindPressed((it as InputEvent.Button).pressed) }
+        if (gameEvents.isNotEmpty()) touchControls.handleVirtualInputEvent(gameEvents)
     }
+
+    fun isRewindAvailable(): Flow<Boolean> = rewind.available
 
     override fun onCreate(owner: LifecycleOwner) {
         super.onCreate(owner)
@@ -322,6 +330,7 @@ class BaseGameScreenViewModel(
         owner.lifecycle.addObserver(inputs)
         owner.lifecycle.addObserver(retroGameView)
         owner.lifecycle.addObserver(touchControls)
+        owner.lifecycle.addObserver(rewind)
     }
 
     fun sendKeyEvent(

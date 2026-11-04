@@ -2,6 +2,13 @@ package com.swordfish.lemuroid.app.mobile.feature.settings.general
 
 import android.net.Uri
 import androidx.compose.material3.Text
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
@@ -14,6 +21,8 @@ import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.main.MainRoute
 import com.swordfish.lemuroid.app.mobile.feature.main.navigateToRoute
 import com.swordfish.lemuroid.app.shared.library.LibraryIndexScheduler
+import com.swordfish.lemuroid.app.shared.update.AppUpdater
+import com.swordfish.lemuroid.app.shared.update.UpdateSettingsContent
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidCardSettingsGroup
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsList
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsMenuLink
@@ -53,6 +62,8 @@ fun SettingsScreen(
             indexingInProgress = indexingInProgress,
             scanInProgress = scanInProgress,
         )
+        AppearanceSettings()
+        UpdateSettings()
         GeneralSettings()
         InputSettings(navController = navController)
         MiscSettings(
@@ -82,13 +93,6 @@ private fun MiscSettings(
             )
         }
         LemuroidSettingsMenuLink(
-            title = { Text(text = stringResource(id = R.string.settings_title_open_cores_selection)) },
-            subtitle = {
-                Text(text = stringResource(id = R.string.settings_description_open_cores_selection))
-            },
-            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_CORES_SELECTION) },
-        )
-        LemuroidSettingsMenuLink(
             title = { Text(text = stringResource(id = R.string.settings_title_display_bios_info)) },
             subtitle = {
                 Text(text = stringResource(id = R.string.settings_description_display_bios_info))
@@ -102,6 +106,12 @@ private fun MiscSettings(
                 Text(text = stringResource(id = R.string.settings_description_advanced_settings))
             },
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_ADVANCED) },
+        )
+        LemuroidSettingsMenuLink(
+            title = { Text(text = stringResource(id = R.string.cover_manager_title)) },
+            subtitle = { Text(text = stringResource(id = R.string.cover_manager_description)) },
+            enabled = !indexingInProgress,
+            onClick = { navController.navigateToRoute(MainRoute.COVER_MANAGER) },
         )
     }
 }
@@ -135,9 +145,6 @@ private fun InputSettings(navController: NavController) {
 
 @Composable
 private fun GeneralSettings() {
-    val hdMode = booleanPreferenceState(R.string.pref_key_hd_mode, false)
-    val immersiveMode = booleanPreferenceState(R.string.pref_key_enable_immersive_mode, false)
-
     LemuroidCardSettingsGroup(
         title = { Text(text = stringResource(id = R.string.settings_category_general)) },
     ) {
@@ -147,29 +154,11 @@ private fun GeneralSettings() {
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_autosave)) },
         )
         LemuroidSettingsSwitch(
-            state = immersiveMode,
-            title = { Text(text = stringResource(id = R.string.settings_title_immersive_mode)) },
-            subtitle = { Text(text = stringResource(id = R.string.settings_description_immersive_mode)) },
-        )
-        LemuroidSettingsSwitch(
-            state = hdMode,
-            title = { Text(text = stringResource(id = R.string.settings_title_hd_mode)) },
-            subtitle = { Text(text = stringResource(id = R.string.settings_description_hd_mode)) },
-        )
-        LemuroidSettingsSlider(
-            enabled = hdMode.value,
-            state =
-                intPreferenceState(
-                    key = stringResource(id = R.string.pref_key_hd_mode_quality),
-                    default = 2,
-                ),
-            steps = 1,
-            valueRange = 0f..2f,
-            title = { Text(text = stringResource(R.string.settings_title_hd_quality)) },
-            subtitle = { Text(text = stringResource(id = R.string.settings_description_hd_quality)) },
+            state = booleanPreferenceState(R.string.pref_key_rewind, true),
+            title = { Text(text = stringResource(id = R.string.settings_title_rewind)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_rewind)) },
         )
         LemuroidSettingsList(
-            enabled = !hdMode.value,
             state =
                 indexPreferenceState(
                     R.string.pref_key_shader_filter,
@@ -229,6 +218,63 @@ private fun RomsSettings(
                 onClick = { LibraryIndexScheduler.scheduleLibrarySync(context) },
                 enabled = !indexingInProgress,
             )
+        }
+    }
+}
+
+/** Checking for, downloading and installing new versions of Arcadune from GitHub. */
+@Composable
+private fun UpdateSettings() {
+    if (!AppUpdater.isSupported) return
+    LemuroidCardSettingsGroup(title = { Text(text = stringResource(id = R.string.update_title)) }) {
+        UpdateSettingsContent()
+    }
+}
+
+/** The accent colour of the whole app: five soft colours, shown as dots to tap. */
+@Composable
+private fun AppearanceSettings() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val current = com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.current.value
+    LemuroidCardSettingsGroup(title = { Text(text = stringResource(id = R.string.theme_color_title)) }) {
+        androidx.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .then(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+        ) {
+            for (accent in com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.entries) {
+                val selected = accent == current
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    modifier =
+                        Modifier.clickable(
+                            interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.choose(context, accent)
+                        },
+                ) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier =
+                            Modifier
+                                .size(44.dp)
+                                .border(
+                                    width = if (selected) 2.dp else 0.dp,
+                                    color = if (selected) accent.color else androidx.compose.ui.graphics.Color.Transparent,
+                                    shape = androidx.compose.foundation.shape.CircleShape,
+                                )
+                                .padding(5.dp)
+                                .background(accent.color, androidx.compose.foundation.shape.CircleShape),
+                    )
+                    Text(
+                        text = stringResource(accent.titleRes),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
         }
     }
 }

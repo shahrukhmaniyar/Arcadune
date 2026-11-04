@@ -13,7 +13,10 @@ import com.swordfish.lemuroid.common.displayToast
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.app.shared.covers.CoverCompression
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 class GameInteractor(
@@ -83,6 +86,8 @@ class GameInteractor(
     fun onSetCustomCoverUri(game: Game, sourceUri: String) {
         GlobalScope.launch {
             val localUri = customCoverManager.importCover(game.id, Uri.parse(sourceUri))
+            // A photo or a downloaded artwork can be several MB; keep a small copy, like other covers.
+            withContext(Dispatchers.IO) { Uri.parse(localUri).path?.let { CoverCompression.compressFile(java.io.File(it)) } }
             retrogradeDb.gameDao().update(game.copy(customCoverUri = localUri))
         }
     }

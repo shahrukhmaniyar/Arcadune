@@ -56,11 +56,22 @@ import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.touchinput.controller.R
 import com.swordfish.touchinput.radial.LemuroidPadTheme
 import com.swordfish.touchinput.radial.LocalLemuroidPadTheme
+import com.swordfish.touchinput.radial.layouts.shared.LocalRewindAvailable
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 import com.swordfish.touchinput.radial.ui.GlassSurface
 import com.swordfish.touchinput.radial.ui.LemuroidButtonPressFeedback
+import com.swordfish.touchinput.skin.ArcaduneSkin
+import com.swordfish.touchinput.skin.ArcaduneSkinView
+import com.swordfish.touchinput.skin.ArcaduneSkins
+import com.swordfish.touchinput.skin.SkinCustomization
 import gg.padkit.PadKit
+import gg.padkit.PadKitScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.ui.graphics.Color
 import gg.padkit.config.HapticFeedbackType
 import gg.padkit.inputstate.InputState
 
@@ -109,6 +120,15 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 HapticFeedbackMode.PRESS_RELEASE -> HapticFeedbackType.PRESS_RELEASE
             }
 
+        // Consoles with an Arcadune skin use it; the others keep the original round pads.
+        val skin = currentControllerConfig?.let { ArcaduneSkins.forController(it.touchControllerID) }
+        val screenContext = LocalContext.current
+        val skinStore = remember { SkinCustomizationStore(screenContext) }
+        val skinKey = "${currentControllerConfig?.touchControllerID?.name}_${if (isLandscape) "landscape" else "portrait"}"
+        val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey)) }
+        val rewindAvailable = viewModel.isRewindAvailable().collectAsState(false)
+        val editingControls = viewModel.isEditControlShown().collectAsState(false)
+
         PadKit(
             modifier = Modifier.fillMaxSize(),
             onInputEvents = { viewModel.handleVirtualInputEvent(it) },
@@ -148,7 +168,18 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 gameView.viewport = viewport
             }
 
-            ConstraintLayout(
+            if (skin != null) {
+                val controlsVisible =
+                    touchControllerSettings != null && touchControlsVisibleState.value
+                SkinnedGameLayout(
+                    isLandscape = isLandscape,
+                    skin = skin,
+                    controlsVisible = controlsVisible,
+                    rewindAvailable = rewindAvailable.value,
+                    customization = skinCustomization.value,
+                    onViewportPositioned = { viewportPosition.value = it },
+                )
+            } else ConstraintLayout(
                 modifier = Modifier.fillMaxSize(),
                 constraintSet =
                     GameScreenLayout.buildConstraintSet(
@@ -169,8 +200,13 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                         currentControllerConfig != null &&
                         touchControlsVisibleState.value
 
+                val rewindAvailable = viewModel.isRewindAvailable().collectAsState(false)
+
                 if (isVisible) {
-                    CompositionLocalProvider(LocalLemuroidPadTheme provides LemuroidPadTheme()) {
+                    CompositionLocalProvider(
+                        LocalLemuroidPadTheme provides LemuroidPadTheme(),
+                        LocalRewindAvailable provides rewindAvailable.value,
+                    ) {
                         if (!isLandscape) {
                             PadContainer(
                                 modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_BOTTOM_CONTAINER),
@@ -206,6 +242,20 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             }
         }
 
+        if (skin != null && editingControls.value) {
+            SkinEditorOverlay(
+                isLandscape = isLandscape,
+                skin = skin,
+                rewindAvailable = rewindAvailable.value,
+                // Kept in memory while dragging (saving on every move made dragging stutter), saved on Done.
+                customizationState = skinCustomization,
+                onDone = {
+                    skinStore.save(skinKey, skinCustomization.value)
+                    viewModel.showEditControls(false)
+                },
+            )
+        }
+
         val isLoading =
             viewModel.loadingState
                 .collectAsState(true)
@@ -217,6 +267,76 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator()
+            }
+        }
+    }
+}
+
+/**
+ * The game with an Arcadune skin. Portrait: the game on top and the controller panel under it on
+ * black, like Delta. Landscape: the game fills the screen and the controls sit over it.
+ */
+@Composable
+private fun PadKitScope.SkinnedGameLayout(
+    isLandscape: Boolean,
+    skin: ArcaduneSkin,
+    controlsVisible: Boolean,
+    rewindAvailable: Boolean,
+    customization: SkinCustomization,
+    onViewportPositioned: (Rect) -> Unit,
+) {
+    if (isLandscape) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .onGloballyPositioned { onViewportPositioned(it.boundsInRoot()) },
+            )
+            if (controlsVisible) {
+                ArcaduneSkinView(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.displayCutout)
+                            .padding(4.dp),
+                    layout = skin.landscape,
+                    pinToEdges = true,
+                    customization = customization,
+                    rewindAvailable = rewindAvailable,
+                )
+            }
+        }
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
+                        .onGloballyPositioned { onViewportPositioned(it.boundsInRoot()) },
+            )
+            if (controlsVisible) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    ArcaduneSkinView(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(skin.portrait.width / skin.portrait.height),
+                        layout = skin.portrait,
+                        pinToEdges = false,
+                        customization = customization,
+                        rewindAvailable = rewindAvailable,
+                    )
+                }
             }
         }
     }
@@ -246,11 +366,7 @@ private fun GameScreenRunningCentralMenu(
         modifier = modifier.wrapContentSize(),
         contentAlignment = Alignment.Center,
     ) {
-        LemuroidButtonPressFeedback(
-            pressed = menuPressed.value,
-            animationDurationMillis = MENU_LOADING_ANIMATION_MILLIS,
-            icon = R.drawable.button_menu,
-        )
+        // The menu opens on a tap now, so there is no "keep holding" ring over the game any more.
         MenuEditTouchControls(viewModel, controllerConfig, touchControllerSettings)
     }
 }

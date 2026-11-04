@@ -151,8 +151,11 @@ class LibretroThumbnailsMirrorInterceptor(cacheDir: File) : Interceptor {
         }
 
         val download =
-            pendingIndexes.computeIfAbsent(repository) {
-                indexExecutor.submit(Callable { downloadIndex(repository) })
+            // Not computeIfAbsent: it does not exist on Android 6.
+            synchronized(pendingIndexes) {
+                pendingIndexes.getOrPut(repository) {
+                    indexExecutor.submit(Callable { downloadIndex(repository) })
+                }
             }
 
         val names =

@@ -1,0 +1,44 @@
+# Arcadune baseline profile.
+#
+# Android compiles the code listed here ahead of time, when the app is installed, instead of while
+# it is used. That removes the stutter of the first swipes, screen changes and game launches on
+# older phones. Recorded profiles need Android 13+ or a rooted phone, so these rules are written by
+# hand and cover whole areas of the app (the libraries Arcadune uses ship their own profiles).
+
+# The library: pages, covers, search, page dots.
+HSPLcom/swordfish/lemuroid/app/mobile/feature/library/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/library/**
+
+# Main screen, navigation, theme, shared UI pieces and motion.
+HSPLcom/swordfish/lemuroid/app/mobile/feature/main/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/main/**
+HSPLcom/swordfish/lemuroid/app/mobile/shared/compose/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/shared/compose/**
+HSPLcom/swordfish/lemuroid/app/mobile/feature/home/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/home/**
+
+# Settings screens.
+HSPLcom/swordfish/lemuroid/app/mobile/feature/settings/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/settings/**
+HSPLcom/swordfish/lemuroid/app/utils/android/settings/**->**(**)**
+Lcom/swordfish/lemuroid/app/utils/android/settings/**
+
+# Starting and playing a game: game screen, skins, editor, input, rewind, cheats.
+HSPLcom/swordfish/lemuroid/app/mobile/feature/game/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/game/**
+HSPLcom/swordfish/lemuroid/app/shared/game/**->**(**)**
+Lcom/swordfish/lemuroid/app/shared/game/**
+HSPLcom/swordfish/touchinput/**->**(**)**
+Lcom/swordfish/touchinput/**
+
+# The pause menu and its pages.
+HSPLcom/swordfish/lemuroid/app/mobile/feature/gamemenu/**->**(**)**
+Lcom/swordfish/lemuroid/app/mobile/feature/gamemenu/**
+
+# Covers and the library database.
+HSPLcom/swordfish/lemuroid/app/shared/covers/**->**(**)**
+Lcom/swordfish/lemuroid/app/shared/covers/**
+HSPLcom/swordfish/lemuroid/lib/library/**->**(**)**
+Lcom/swordfish/lemuroid/lib/library/**
+HSPLcom/swordfish/lemuroid/lib/cheats/**->**(**)**
+Lcom/swordfish/lemuroid/lib/cheats/**

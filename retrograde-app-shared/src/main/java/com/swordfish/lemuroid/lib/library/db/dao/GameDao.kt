@@ -24,7 +24,9 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Update
+import androidx.sqlite.db.SupportSQLiteQuery
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.flow.Flow
 
@@ -72,6 +74,28 @@ interface GameDao {
 
     @Query("SELECT count(*) count, systemId systemId FROM games GROUP BY systemId")
     fun selectSystemsWithCount(): Flow<List<SystemCount>>
+
+    /** For lists whose order the player picks, see [GameListQuery]. */
+    @RawQuery(observedEntities = [Game::class])
+    fun selectPaged(query: SupportSQLiteQuery): PagingSource<Int, Game>
+
+    @Query("SELECT * FROM games ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC")
+    fun selectAllFlow(): Flow<List<Game>>
+
+    @Query("SELECT * FROM games WHERE lastPlayedAt IS NOT NULL ORDER BY lastPlayedAt DESC")
+    fun selectRecentlyPlayed(): PagingSource<Int, Game>
+
+    @Query("SELECT COUNT(*) FROM games WHERE isFavorite = 1")
+    fun countFavorites(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM games WHERE lastPlayedAt IS NOT NULL")
+    fun countRecentlyPlayed(): Flow<Int>
+
+    @Query("UPDATE games SET lastPlayedAt = :playedAt, playCount = playCount + 1 WHERE id = :id")
+    suspend fun markPlayed(
+        id: Int,
+        playedAt: Long,
+    )
 
     @Insert
     fun insert(games: List<Game>): List<Long>

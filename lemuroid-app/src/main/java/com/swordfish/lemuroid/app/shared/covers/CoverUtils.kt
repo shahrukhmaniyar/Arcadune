@@ -29,6 +29,7 @@ object CoverUtils {
     }
 
     fun buildImageLoader(applicationContext: Context): ImageLoader {
+        clearOldLargeCoversOnce(applicationContext)
         return ImageLoader.Builder(applicationContext)
             .diskCache(
                 DiskCache.Builder()
@@ -45,14 +46,29 @@ object CoverUtils {
                 OkHttpClient.Builder()
                     .addInterceptor(LibretroThumbnailsMirrorInterceptor(applicationContext.cacheDir))
                     .addNetworkInterceptor(ThrottleFailedThumbnailsInterceptor)
+                    .addNetworkInterceptor(CoverCompressionInterceptor())
                     .build()
             }
             .crossfade(true)
+            .allowRgb565(true)
             .interceptorDispatcher(Dispatchers.IO)
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .respectCacheHeaders(false)
             .build()
+    }
+
+    /**
+     * Covers cached before covers were shrunk on download are full-size PNGs. They are dropped once,
+     * so each cover is fetched again (small) the next time it is shown.
+     */
+    private fun clearOldLargeCoversOnce(context: Context) {
+        val marker = context.cacheDir.resolve("image_cache_small_v1")
+        if (marker.exists()) return
+        runCatching {
+            context.cacheDir.resolve("image_cache").deleteRecursively()
+            marker.createNewFile()
+        }
     }
 
     fun getFallbackDrawable(game: Game) = TextDrawable(computeTitle(game), computeColor(game))

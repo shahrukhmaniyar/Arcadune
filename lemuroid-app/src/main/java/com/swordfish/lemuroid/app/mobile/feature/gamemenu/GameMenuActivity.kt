@@ -9,7 +9,21 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -38,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -94,6 +109,20 @@ class GameMenuActivity : RetrogradeComponentActivity() {
             SystemBarStyle.dark(Color.TRANSPARENT),
         )
 
+        // Keep the game full screen while the menu is open: without this Android brings its
+        // navigation bar back and the game behind the menu jumps up to make room for it.
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+
+        // Blur the paused game behind the menu where the system can (Android 12 and newer).
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            window.attributes = window.attributes.apply { blurBehindRadius = 48 }
+        }
+
         val extras = intent.extras
 
         val gameMenuRequest =
@@ -136,64 +165,36 @@ class GameMenuActivity : RetrogradeComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun GameMenuScreen(gameMenuRequest: GameMenuRequest) {
         AppTheme {
             val navController = rememberNavController()
-            val navBackStackEntry = navController.currentBackStackEntryAsState()
-            val currentDestination = navBackStackEntry.value?.destination
 
-            val currentRoute =
-                currentDestination?.route
-                    ?.let { GameMenuRoute.findByRoute(it) }
-                    ?: GameMenuRoute.HOME
-
-            SideMenu {
-                TopAppBar(
-                    title = { Text(stringResource(currentRoute.titleId)) },
-                    windowInsets = WindowInsets(0.dp),
-                    navigationIcon = {
-                        AnimatedContent(targetState = currentRoute.canGoBack(), label = "Back") { canGoBack ->
-                            if (canGoBack) {
-                                IconButton(onClick = { navController.popBackStack() }) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        stringResource(R.string.back),
-                                    )
-                                }
-                            } else {
-                                IconButton(onClick = { onResult { } }) {
-                                    Icon(
-                                        Icons.Filled.Close,
-                                        stringResource(R.string.close),
-                                    )
-                                }
-                            }
-                        }
-                    },
-                )
-                Divider(modifier = Modifier.fillMaxWidth())
-                NavHost(
-                    modifier =
-                        Modifier
-                            .fillMaxSize(),
-                    navController = navController,
-                    startDestination = GameMenuRoute.HOME.route,
-                    enterTransition = { fadeIn() },
-                    exitTransition = { fadeOut() },
-                ) {
-                    composable(GameMenuRoute.HOME) {
-                        GameMenuHomeScreen(navController, gameMenuRequest, ::onResult)
-                    }
-                    composable(GameMenuRoute.CHEATS) {
+            // Like Delta's pause menu: every page fills the screen over the paused game, and the
+            // pages it opens (save states, cheats, settings) slide in from the right.
+            NavHost(
+                modifier = Modifier.fillMaxSize(),
+                navController = navController,
+                startDestination = GameMenuRoute.HOME.route,
+                enterTransition = { ArcaduneMotion.pushEnter },
+                exitTransition = { ArcaduneMotion.pushExit },
+                popEnterTransition = { ArcaduneMotion.popEnter },
+                popExitTransition = { ArcaduneMotion.popExit },
+            ) {
+                composable(GameMenuRoute.HOME) {
+                    GameMenuHomeScreen(navController, gameMenuRequest, ::onResult)
+                }
+                composable(GameMenuRoute.CHEATS) {
+                    SubMenu(GameMenuRoute.CHEATS, navController) {
                         GameMenuCheatsScreen(
                             viewModel(
                                 factory = GameMenuCheatsViewModel.Factory(application, gameMenuRequest.game),
                             ),
                         )
                     }
-                    composable(GameMenuRoute.SAVE) {
+                }
+                composable(GameMenuRoute.SAVE) {
+                    SubMenu(GameMenuRoute.SAVE, navController) {
                         GameMenuStatesScreen(
                             viewModel(
                                 factory =
@@ -210,7 +211,9 @@ class GameMenuActivity : RetrogradeComponentActivity() {
                             },
                         )
                     }
-                    composable(GameMenuRoute.LOAD) {
+                }
+                composable(GameMenuRoute.LOAD) {
+                    SubMenu(GameMenuRoute.LOAD, navController) {
                         GameMenuStatesScreen(
                             viewModel(
                                 factory =
@@ -227,7 +230,9 @@ class GameMenuActivity : RetrogradeComponentActivity() {
                             },
                         )
                     }
-                    composable(GameMenuRoute.OPTIONS) {
+                }
+                composable(GameMenuRoute.OPTIONS) {
+                    SubMenu(GameMenuRoute.OPTIONS, navController) {
                         GameMenuCoreOptionsScreen(
                             viewModel(
                                 factory = GameMenuCoreOptionsViewModel.Factory(inputDeviceManager),
@@ -240,28 +245,59 @@ class GameMenuActivity : RetrogradeComponentActivity() {
         }
     }
 
+    /**
+     * A page opened from the pause menu, like Delta's: it takes the whole screen over the paused
+     * game, with a round back button on the left and the title in the middle.
+     */
     @Composable
-    private fun SideMenu(content: @Composable () -> Unit) {
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.CenterEnd,
+    private fun SubMenu(
+        route: GameMenuRoute,
+        navController: NavController,
+        content: @Composable () -> Unit,
+    ) = androidx.compose.runtime.CompositionLocalProvider(
+        // Without a Surface around it, text and icons would default to black on this dark page.
+        androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    // Nearly solid, so lists stay readable over a busy game.
+                    .background(ArcaduneColors.Background.copy(alpha = 0.94f))
+                    .safeDrawingPadding(),
         ) {
-            val panelWidth =
-                remember(maxWidth) {
-                    minOf(maxWidth * 0.8f, 400f.dp)
-                }
-
-            Surface(
-                modifier =
-                    Modifier
-                        .padding()
-                        .fillMaxHeight()
-                        .width(panelWidth)
-                        .clip(MaterialTheme.shapes.large),
+            Box(
+                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    content()
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f))
+                            .border(1.dp, ArcaduneColors.GlassEdge, CircleShape)
+                            .clickable { navController.popBackStack() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back),
+                        modifier = Modifier.size(20.dp),
+                    )
                 }
+                Text(
+                    text = stringResource(route.titleId),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            // Without a Surface around it, text would default to black on this dark page.
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface,
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) { content() }
             }
         }
     }

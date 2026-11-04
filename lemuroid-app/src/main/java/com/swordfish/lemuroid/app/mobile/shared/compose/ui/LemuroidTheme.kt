@@ -1,13 +1,15 @@
 package com.swordfish.lemuroid.app.mobile.shared.compose.ui
 
-import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import android.content.Context
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 
 private val LightColorScheme =
     lightColorScheme(
@@ -75,21 +77,99 @@ private val DarkColorScheme =
         scrim = md_theme_dark_scrim,
     )
 
-@Composable
-fun AppTheme(
-    darkTheme: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val colors =
-        when {
-            dynamicColor && darkTheme -> dynamicDarkColorScheme(LocalContext.current)
-            dynamicColor && !darkTheme -> dynamicLightColorScheme(LocalContext.current)
-            darkTheme -> DarkColorScheme
-            else -> LightColorScheme
+/**
+ * The accent colours the player can pick. All are soft pastels: on a dark background strong,
+ * saturated colours seem to glow and vibrate, which tires the eyes (Material's dark theme
+ * guidance), so each one is a light, desaturated tone that stays easy to read.
+ */
+enum class ArcaduneAccent(val color: Color, val onColor: Color, val container: Color, val titleRes: Int) {
+    VIOLET(Color(0xFFBB9CFF), Color(0xFF1E0F3D), Color(0xFF3B2A63), com.swordfish.lemuroid.R.string.theme_color_violet),
+    TEAL(Color(0xFF5FD4C4), Color(0xFF00201C), Color(0xFF1C4A44), com.swordfish.lemuroid.R.string.theme_color_teal),
+    BLUE(Color(0xFF8AB4F8), Color(0xFF0B1D3A), Color(0xFF243D66), com.swordfish.lemuroid.R.string.theme_color_blue),
+    MINT(Color(0xFF81D9A3), Color(0xFF052313), Color(0xFF1F4A30), com.swordfish.lemuroid.R.string.theme_color_mint),
+    AMBER(Color(0xFFF6C177), Color(0xFF2B1A00), Color(0xFF5A4012), com.swordfish.lemuroid.R.string.theme_color_amber),
+    ;
+
+    companion object {
+        private const val PREF_KEY = "arcadune_accent"
+
+        /** The chosen accent. Reading it inside a composable redraws that part when it changes. */
+        val current = mutableStateOf(VIOLET)
+
+        // Read again by every screen that opens: the game runs in its own process, which would
+        // otherwise keep the colour it saw when it started.
+        fun load(context: Context): ArcaduneAccent {
+            val name = SharedPreferencesHelper.getSharedPreferences(context).getString(PREF_KEY, null)
+            current.value = entries.firstOrNull { it.name == name } ?: VIOLET
+            return current.value
         }
 
-    MaterialTheme(colorScheme = colors) {
+        fun choose(
+            context: Context,
+            accent: ArcaduneAccent,
+        ) {
+            current.value = accent
+            SharedPreferencesHelper.getSharedPreferences(context).edit().putString(PREF_KEY, accent.name).apply()
+        }
+    }
+}
+
+/** Arcadune's own look: always dark, with the accent the player chose. */
+object ArcaduneColors {
+    val Background = Color(0xFF0B0A12)
+    val Surface = Color(0xFF15131F)
+    val SurfaceHigh = Color(0xFF1F1C2D)
+
+    /** The accent colour (named Purple from when it was the only one). */
+    val Purple: Color get() = ArcaduneAccent.current.value.color
+    val OnAccent: Color get() = ArcaduneAccent.current.value.onColor
+    val Pink = Color(0xFFFF4FB7)
+    val Orange = Color(0xFFFF9A3C)
+    val OnSurface = Color(0xFFF2EEFA)
+    val OnSurfaceDim = Color(0xFFA7A1B8)
+
+    /** Fill and edge of the floating "glass" bars. */
+    val Glass = Color(0xE01C1A27)
+    val GlassEdge = Color(0x33FFFFFF)
+}
+
+private fun arcaduneColorScheme(accent: ArcaduneAccent) =
+    darkColorScheme(
+        primary = accent.color,
+        onPrimary = accent.onColor,
+        primaryContainer = accent.container,
+        onPrimaryContainer = Color(0xFFF2EEFA),
+        secondary = accent.color,
+        onSecondary = accent.onColor,
+        secondaryContainer = accent.container,
+        onSecondaryContainer = Color(0xFFF2EEFA),
+        tertiary = accent.color,
+        onTertiary = accent.onColor,
+        background = ArcaduneColors.Background,
+        onBackground = ArcaduneColors.OnSurface,
+        surface = ArcaduneColors.Background,
+        onSurface = ArcaduneColors.OnSurface,
+        surfaceVariant = ArcaduneColors.SurfaceHigh,
+        onSurfaceVariant = ArcaduneColors.OnSurfaceDim,
+        surfaceContainerLowest = ArcaduneColors.Background,
+        surfaceContainerLow = ArcaduneColors.Surface,
+        surfaceContainer = ArcaduneColors.Surface,
+        surfaceContainerHigh = ArcaduneColors.SurfaceHigh,
+        surfaceContainerHighest = Color(0xFF292538),
+        outline = Color(0xFF4A4559),
+        outlineVariant = Color(0xFF2E2A3B),
+    )
+
+@Composable
+fun AppTheme(
+    @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    remember { ArcaduneAccent.load(context.applicationContext) }
+    val accent = ArcaduneAccent.current.value
+    val scheme = remember(accent) { arcaduneColorScheme(accent) }
+    MaterialTheme(colorScheme = scheme) {
         content()
     }
 }

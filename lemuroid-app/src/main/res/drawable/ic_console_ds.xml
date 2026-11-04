@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Arcadune page icon. Drawn for Arcadune (filled silhouette, cut-out details). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M6.5,2 H17.5 A1.5,1.5 0 0 1 19,3.5 V10 H5 V3.5 A1.5,1.5 0 0 1 6.5,2 Z M7,3.5 H17 V8.8 H7 Z M5,12 H19 V20.5 A1.5,1.5 0 0 1 17.5,22 H6.5 A1.5,1.5 0 0 1 5,20.5 Z M8.5,13.5 H15.5 V19.5 H8.5 Z" />
+</vector>

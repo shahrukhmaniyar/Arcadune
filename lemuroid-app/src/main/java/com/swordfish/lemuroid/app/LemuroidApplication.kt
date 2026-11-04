@@ -35,6 +35,14 @@ class LemuroidApplication : DaggerApplication(), HasWorkerInjector, ImageLoaderF
 
         AppInitializer.getInstance(this).initializeComponent(initializeComponent)
 
+        // Android's automatic startup is switched off for this app (see the manifest), which also
+        // switched off the profile installer. It copies the baseline profile (src/main/baseline-prof.txt)
+        // to Android after the first launch, so the app's screens get compiled ahead of time.
+        if (isMainProcess()) {
+            AppInitializer.getInstance(this)
+                .initializeComponent(androidx.profileinstaller.ProfileInstallerInitializer::class.java)
+        }
+
         DynamicColors.applyToActivitiesIfAvailable(this)
     }
 

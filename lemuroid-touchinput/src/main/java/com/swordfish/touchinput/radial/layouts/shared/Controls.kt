@@ -3,6 +3,7 @@ package com.swordfish.touchinput.radial.layouts.shared
 import android.view.KeyEvent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import com.swordfish.touchinput.controller.R
 import com.swordfish.touchinput.radial.controls.LemuroidControlAnalog
@@ -102,15 +103,28 @@ fun SecondaryButtonMenu(settings: TouchControllerSettingsManager.Settings) {
     )
 }
 
+/** True when the running game can be rewound: the spot opposite the menu button then holds a rewind button. */
+val LocalRewindAvailable = staticCompositionLocalOf { false }
+
+/** Key the rewind button sends. The app handles it itself; it never reaches the emulator. */
+const val KEYCODE_REWIND = KeyEvent.KEYCODE_MEDIA_REWIND
+
 context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonMenuPlaceholder(settings: TouchControllerSettingsManager.Settings) {
-    Box(
-        modifier =
-            Modifier.radialPosition(
-                -120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
-            ),
-    )
+    val position =
+        Modifier.radialPosition(
+            -120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
+        )
+    if (LocalRewindAvailable.current) {
+        LemuroidControlButton(
+            modifier = position,
+            id = Id.Key(KEYCODE_REWIND),
+            icon = R.drawable.button_rewind,
+        )
+    } else {
+        Box(modifier = position)
+    }
 }
 
 context(PadKitScope, LayoutRadialSecondaryDialsScope)

@@ -12,7 +12,6 @@ import com.swordfish.lemuroid.app.shared.library.PendingOperationsMonitor
 import com.swordfish.lemuroid.app.shared.settings.StorageFrameworkPickerLauncher
 import com.swordfish.lemuroid.common.coroutines.combine
 import com.swordfish.lemuroid.lib.core.CoresSelection
-import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -59,7 +58,6 @@ class HomeViewModel(
         val showNoNotificationPermissionCard: Boolean = false,
         val showNoMicrophonePermissionCard: Boolean = false,
         val showNoGamesCard: Boolean = false,
-        val showDesmumeDeprecatedCard: Boolean = false,
     )
 
     private val microphonePermissionEnabledState = MutableStateFlow(true)
@@ -110,7 +108,6 @@ class HomeViewModel(
         indexInProgress: Boolean,
         notificationsPermissionEnabled: Boolean,
         showMicrophoneCard: Boolean,
-        showDesmumeWarning: Boolean,
     ): UIState {
         val noGames = recentGames.isEmpty() && favoritesGames.isEmpty() && discoveryGames.isEmpty()
 
@@ -122,7 +119,6 @@ class HomeViewModel(
             showNoNotificationPermissionCard = !notificationsPermissionEnabled,
             showNoMicrophonePermissionCard = showMicrophoneCard,
             showNoGamesCard = noGames,
-            showDesmumeDeprecatedCard = showDesmumeWarning,
         )
     }
 
@@ -136,7 +132,6 @@ class HomeViewModel(
                     indexingInProgress(appContext),
                     notificationsPermissionEnabledState,
                     microphoneNotification(retrogradeDb),
-                    desmumeWarningNotification(),
                     ::buildViewState,
                 )
 
@@ -187,11 +182,5 @@ class HomeViewModel(
                 }
                     .distinctUntilChanged()
             }
-    }
-
-    private fun desmumeWarningNotification(): Flow<Boolean> {
-        return coresSelection.getSelectedCores()
-            .map { cores -> cores.any { it.coreConfig.coreID == CoreID.DESMUME } }
-            .distinctUntilChanged()
     }
 }

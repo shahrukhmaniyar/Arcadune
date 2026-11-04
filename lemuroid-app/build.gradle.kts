@@ -19,9 +19,20 @@ val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
     defaultConfig {
-        versionCode = 256
-        versionName = "1.0.4" // Always remember to update Cores Tag!
+        versionCode = 257
+        versionName = "1.0.5" // Always remember to update Cores Tag!
         applicationId = "io.github.shahrukhmaniyar.arcadune"
+
+        // Only ARM phones: the cores Arcadune downloads exist only for these, and leaving out the
+        // x86 emulator/Chromebook copies keeps both APKs much smaller.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+
+        // The languages Arcadune has translations for; libraries bring dozens more that only add size.
+        resourceConfigurations +=
+            listOf(
+                "en", "af", "ar", "ca", "cs", "da", "de", "el", "es", "fi", "fr", "hu", "it", "iw", "ja", "ko",
+                "nl", "no", "pl", "pt", "ro", "ru", "sr", "sv", "tr", "uk", "vi", "zh",
+            )
     }
     flavorDimensions += listOf("opensource", "cores")
 
@@ -29,7 +40,6 @@ android {
         println("Building Google Play version. Bundling dynamic features.")
         dynamicFeatures.addAll(
             setOf(
-                ":lemuroid_core_desmume",
                 ":lemuroid_core_dosbox_pure",
                 ":lemuroid_core_fbneo",
                 ":lemuroid_core_fceumm",
@@ -81,6 +91,9 @@ android {
             // Stripping created some issues with some libretro cores such as ppsspp
             keepDebugSymbols += setOf("*/*/*_libretro_android.so")
             useLegacyPackaging = true
+            // DeSmuME was removed from Arcadune (melonDS runs DS games); its engine is still in the
+            // shared cores folder, so the full APK leaves it out.
+            excludes += setOf("**/libdesmume_libretro_android.so")
         }
         resources {
             excludes += setOf("META-INF/DEPENDENCIES", "META-INF/library_release.kotlin_module")
@@ -106,9 +119,10 @@ android {
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
+            isShrinkResources = true
             // Without keystore.properties, release builds are signed with the debug key.
             signingConfig = signingConfigs[if (hasReleaseKey) "release" else "debug"]
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             resValue("string", "lemuroid_name", "Arcadune")
         }
         getByName("debug") {
@@ -157,6 +171,7 @@ dependencies {
     implementation(deps.libs.material)
     implementation(deps.libs.coil.coil)
     implementation(deps.libs.coil.coilCompose)
+    implementation("dev.chrisbanes.haze:haze:1.6.10")
     implementation(deps.libs.androidx.appcompat.constraintLayout)
     implementation(deps.libs.androidx.activity.activity)
     implementation(deps.libs.androidx.activity.activityKtx)
@@ -207,7 +222,6 @@ dependencies {
     implementation(deps.libs.androidx.compose.accompanist.drawablePainter)
     implementation(deps.libs.androidx.paging.compose)
     implementation(deps.libs.androidx.lifecycle.viewModelCompose)
-    implementation(deps.libs.composeHtmlText)
 
     implementation(deps.libs.composeSettings.uiTiles)
     implementation(deps.libs.composeSettings.uiTilesExtended)

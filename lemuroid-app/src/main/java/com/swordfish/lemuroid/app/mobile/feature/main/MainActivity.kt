@@ -13,7 +13,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -22,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -29,20 +29,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.fredporciuncula.flow.preferences.FlowSharedPreferences
 import com.swordfish.lemuroid.R
-import com.swordfish.lemuroid.app.mobile.feature.favorites.FavoritesScreen
-import com.swordfish.lemuroid.app.mobile.feature.favorites.FavoritesViewModel
-import com.swordfish.lemuroid.app.mobile.feature.games.GamesScreen
-import com.swordfish.lemuroid.app.mobile.feature.games.GamesViewModel
-import com.swordfish.lemuroid.app.mobile.feature.home.HomeScreen
+import com.swordfish.lemuroid.app.mobile.feature.covermanager.CoverManagerScreen
+import com.swordfish.lemuroid.app.mobile.feature.covermanager.CoverManagerViewModel
+import com.swordfish.lemuroid.app.mobile.feature.home.HomeNotices
+import com.swordfish.lemuroid.app.mobile.feature.library.LibraryScreen
+import com.swordfish.lemuroid.app.mobile.feature.library.LibraryViewModel
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeViewModel
-import com.swordfish.lemuroid.app.mobile.feature.search.SearchScreen
-import com.swordfish.lemuroid.app.mobile.feature.search.SearchViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosSettingsViewModel
-import com.swordfish.lemuroid.app.mobile.feature.settings.coreselection.CoresSelectionScreen
-import com.swordfish.lemuroid.app.mobile.feature.settings.coreselection.CoresSelectionViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.inputdevices.InputDevicesSettingsScreen
@@ -50,9 +46,8 @@ import com.swordfish.lemuroid.app.mobile.feature.settings.inputdevices.InputDevi
 import com.swordfish.lemuroid.app.mobile.feature.settings.savesync.SaveSyncSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.savesync.SaveSyncSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
-import com.swordfish.lemuroid.app.mobile.feature.systems.MetaSystemsScreen
-import com.swordfish.lemuroid.app.mobile.feature.systems.MetaSystemsViewModel
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.AppTheme
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.shared.GameInteractor
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.GameLauncher
@@ -67,15 +62,12 @@ import com.swordfish.lemuroid.lib.bios.BiosManager
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.injection.PerActivity
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
-import com.swordfish.lemuroid.lib.library.MetaSystemID
-import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.savesync.SaveSyncManager
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import dagger.Provides
-import de.charlex.compose.material3.HtmlText
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import javax.inject.Inject
@@ -162,125 +154,60 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 gameInteractor.onGamePlay(game)
             }
 
-            val onGameFavoriteToggle = { game: Game, isFavorite: Boolean ->
-                gameInteractor.onFavoriteToggle(game, isFavorite)
-            }
-
             val onHelpPressed = {
                 infoDialogDisplayed.value = true
             }
 
-            val layoutPreferences =
-                remember { SharedPreferencesHelper.getLegacySharedPreferences(applicationContext) }
-            val gamesGridView =
-                remember { mutableStateOf(layoutPreferences.getBoolean(PREF_GAMES_GRID_VIEW, false)) }
-            val onToggleGamesLayout = {
-                gamesGridView.value = !gamesGridView.value
-                layoutPreferences.edit().putBoolean(PREF_GAMES_GRID_VIEW, gamesGridView.value).apply()
-            }
 
             val mainUIState =
                 mainViewModel.state
                     .collectAsState(MainViewModel.UiState())
                     .value
 
+            // The library draws its own bars, like Delta; the other screens keep the usual top bar.
+            val isLibrary = currentRoute == MainRoute.HOME
             Scaffold(
                 topBar = {
-                    MainTopBar(
+                    if (!isLibrary) MainTopBar(
                         currentRoute = currentRoute,
                         navController = navController,
                         onHelpPressed = onHelpPressed,
                         mainUIState = mainUIState,
-                        onUpdateQueryString = { mainViewModel.changeQueryString(it) },
-                        gamesGridView = gamesGridView.value,
-                        onToggleGamesLayout = onToggleGamesLayout,
                     )
                 },
-                bottomBar = { MainNavigationBar(currentRoute, navController) },
             ) { padding ->
                 NavHost(
                     modifier = Modifier.fillMaxSize(),
                     navController = navController,
                     startDestination = MainRoute.HOME.route,
-                    // Short transitions: the default fade lasts 700 ms, which leaves a long window in
-                    // which the screen being left is still on screen.
-                    enterTransition = { fadeIn(tween(150)) },
-                    exitTransition = { fadeOut(tween(100)) },
-                    popEnterTransition = { fadeIn(tween(150)) },
-                    popExitTransition = { fadeOut(tween(100)) },
+                    // iOS-like pushes: the new screen slides in from the right on a spring.
+                    enterTransition = { ArcaduneMotion.pushEnter },
+                    exitTransition = { ArcaduneMotion.pushExit },
+                    popEnterTransition = { ArcaduneMotion.popEnter },
+                    popExitTransition = { ArcaduneMotion.popExit },
                 ) {
                     composable(MainRoute.HOME) {
-                        HomeScreen(
-                            modifier = Modifier.padding(padding),
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        HomeViewModel.Factory(
-                                            applicationContext,
-                                            retrogradeDb,
-                                            coresSelection,
-                                        ),
-                                ),
+                        val homeViewModel: HomeViewModel =
+                            viewModel(factory = HomeViewModel.Factory(applicationContext, retrogradeDb, coresSelection))
+                        LibraryScreen(
+                            viewModel = viewModel(factory = LibraryViewModel.Factory(retrogradeDb, applicationContext)),
+                            indexingInProgress = mainUIState.operationInProgress,
                             onGameClick = onGameClick,
                             onGameLongClick = onGameLongClick,
-                            onOpenCoreSelection = { navController.navigateToRoute(MainRoute.SETTINGS_CORES_SELECTION) },
+                            onOpenSettings = { navController.navigateToRoute(MainRoute.SETTINGS) },
+                            notices = {
+                                HomeNotices(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                    viewModel = homeViewModel,
+                                )
+                            },
                         )
                     }
-                    composable(MainRoute.FAVORITES) {
-                        FavoritesScreen(
+                    composable(MainRoute.COVER_MANAGER) {
+                        CoverManagerScreen(
                             modifier = Modifier.padding(padding),
-                            viewModel =
-                                viewModel(
-                                    factory = FavoritesViewModel.Factory(retrogradeDb),
-                                ),
-                            onGameClick = onGameClick,
-                            onGameLongClick = onGameLongClick,
-                        )
-                    }
-                    composable(MainRoute.SEARCH) {
-                        SearchScreen(
-                            modifier = Modifier.padding(padding),
-                            viewModel =
-                                viewModel(
-                                    factory = SearchViewModel.Factory(retrogradeDb),
-                                ),
-                            searchQuery = mainUIState.searchQuery,
-                            onGameClick = onGameClick,
-                            onGameLongClick = onGameLongClick,
-                            onGameFavoriteToggle = onGameFavoriteToggle,
-                            onResetSearchQuery = { mainViewModel.changeQueryString("") },
-                        )
-                    }
-                    composable(MainRoute.SYSTEMS) {
-                        MetaSystemsScreen(
-                            modifier = Modifier.padding(padding),
-                            navController = navController,
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        MetaSystemsViewModel.Factory(
-                                            retrogradeDb,
-                                            applicationContext,
-                                        ),
-                                ),
-                        )
-                    }
-                    composable(MainRoute.SYSTEM_GAMES) { entry ->
-                        val metaSystemId = entry.arguments?.getString("metaSystemId")
-                        GamesScreen(
-                            modifier = Modifier.padding(padding),
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        GamesViewModel.Factory(
-                                            retrogradeDb,
-                                            MetaSystemID.valueOf(metaSystemId!!),
-                                        ),
-                                ),
-                            isGridView = gamesGridView.value,
-                            onGameClick = onGameClick,
-                            onGameLongClick = onGameLongClick,
-                            onGameFavoriteToggle = onGameFavoriteToggle,
+                            viewModel = viewModel(factory = CoverManagerViewModel.Factory(application, retrogradeDb)),
+                            onGameClick = onGameLongClick,
                         )
                     }
                     composable(MainRoute.SETTINGS) {
@@ -326,19 +253,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 ),
                         )
                     }
-                    composable(MainRoute.SETTINGS_CORES_SELECTION) {
-                        CoresSelectionScreen(
-                            modifier = Modifier.padding(padding),
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        CoresSelectionViewModel.Factory(
-                                            applicationContext,
-                                            coresSelection,
-                                        ),
-                                ),
-                        )
-                    }
                     composable(MainRoute.SETTINGS_INPUT_DEVICES) {
                         InputDevicesSettingsScreen(
                             modifier = Modifier.padding(padding),
@@ -380,25 +294,10 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 onSetCustomName = { game, name -> gameInteractor.onSetCustomName(game, name) },
                 onClearCustomName = { game -> gameInteractor.onClearCustomName(game) },
                 onSetCustomCoverUri = { game, uri -> gameInteractor.onSetCustomCoverUri(game, uri) },
-                onClearCustomCoverUri = { game -> gameInteractor.onClearCustomCoverUri(game) },
-            )
+                onClearCustomCoverUri = { game -> gameInteractor.onClearCustomCoverUri(game) },            )
 
             if (infoDialogDisplayed.value) {
-                val message =
-                    remember {
-                        val systemFolders =
-                            SystemID.values()
-                                .joinToString(", ") { "<i>${it.dbname}</i>" }
-
-                        getString(R.string.lemuroid_help_content)
-                            .replace("\$SYSTEMS", systemFolders)
-                    }
-
-                AlertDialog(
-                    text = { HtmlText(text = message) },
-                    onDismissRequest = { infoDialogDisplayed.value = false },
-                    confirmButton = { },
-                )
+                AboutDialog(onDismiss = { infoDialogDisplayed.value = false })
             }
         }
     }
@@ -453,6 +352,3 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         }
     }
 }
-
-/** Remembers whether the games of a system are shown as a grid (true) or as a list (false). */
-private const val PREF_GAMES_GRID_VIEW = "pref_games_grid_view"

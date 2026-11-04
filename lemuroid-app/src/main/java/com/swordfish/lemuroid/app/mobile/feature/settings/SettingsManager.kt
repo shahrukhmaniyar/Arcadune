@@ -6,6 +6,8 @@ import com.fredporciuncula.flow.preferences.FlowSharedPreferences
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.settings.HDModeQuality
 import com.swordfish.lemuroid.common.math.Fraction
+import com.swordfish.lemuroid.lib.core.CoreVariablesManager
+import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.storage.cache.CacheCleaner
 import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +22,8 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     suspend fun autoSave() = booleanPreference(R.string.pref_key_autosave, true)
 
+    suspend fun rewindEnabled() = booleanPreference(R.string.pref_key_rewind, true)
+
     suspend fun hapticFeedbackMode() = stringPreference(R.string.pref_key_haptic_feedback_mode, "press")
 
     suspend fun lowLatencyAudio() = booleanPreference(R.string.pref_key_low_latency_audio, false)
@@ -30,7 +34,26 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
             context.resources.getStringArray(R.array.pref_key_shader_filter_values).first(),
         )
 
-    suspend fun hdMode() = booleanPreference(R.string.pref_key_hd_mode, false)
+    /** The screen filter of [game]: its own one when it has settings of its own, otherwise the global one. */
+    suspend fun screenFilter(game: Game): String =
+        withContext(Dispatchers.IO) {
+            val hasOwnSettings =
+                sharedPreferences
+                    .getBoolean(CoreVariablesManager.computeGameSettingsEnabledKey(game.systemId, game.fileName), false)
+                    .asFlow()
+                    .first()
+            val own =
+                sharedPreferences
+                    .getString(CoreVariablesManager.computeGameScreenFilterKey(game.systemId, game.fileName), "")
+                    .asFlow()
+                    .first()
+            if (hasOwnSettings && own.isNotEmpty()) own else screenFilter()
+        }
+
+    // HD mode (an upscaling filter that smooths pixel art) and immersive mode were removed from
+    // Settings; they stay off even for players who had switched them on before.
+    @Suppress("RedundantSuspendModifier")
+    suspend fun hdMode() = false
 
     suspend fun viewportAlignment() = stringPreference(R.string.pref_key_viewport_alignment, "center")
 
@@ -48,7 +71,8 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     suspend fun enableDeviceRumble() = booleanPreference(R.string.pref_key_enable_device_rumble, false)
 
-    suspend fun enableImmersiveMode() = booleanPreference(R.string.pref_key_enable_immersive_mode, false)
+    @Suppress("RedundantSuspendModifier")
+    suspend fun enableImmersiveMode() = false
 
     suspend fun cacheSizeBytes() =
         stringPreference(

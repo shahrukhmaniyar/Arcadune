@@ -85,3 +85,11 @@
 
 ## LibretroDroid
 -keep class com.swordfish.libretrodroid.** { *; }
+
+# Arcadune: cheats are cleared through this native method, found by name (GameViewModelCheats).
+-keep class com.swordfish.libretrodroid.LibretroDroid { public static *** resetCheat(); }
+
+# Arcadune: cheat lists are stored as JSON with kotlinx.serialization.
+-keepclassmembers class com.swordfish.lemuroid.lib.cheats.** { *** Companion; }
+-keepclasseswithmembers class com.swordfish.lemuroid.lib.cheats.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class com.swordfish.lemuroid.lib.cheats.**$$serializer { *; }

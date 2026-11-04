@@ -90,6 +90,6 @@ class GameLaunchTaskHandler(
     }
 
     private suspend fun updateGamePlayedTimestamp(game: Game) {
-        retrogradeDb.gameDao().update(game.copy(lastPlayedAt = System.currentTimeMillis()))
+        retrogradeDb.gameDao().markPlayed(game.id, System.currentTimeMillis())
     }
 }

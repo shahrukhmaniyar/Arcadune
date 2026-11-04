@@ -4,11 +4,11 @@ Arcadune is an open-source emulation app for Android based on Libretro. It focus
 
 ## Download
 
-**[Download Arcadune](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 12 MB). It downloads each console's emulator engine the first time you play that console, so it needs internet at first. After that it works offline.
+**[Download Arcadune](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 10 MB). It downloads each console's emulator engine the first time you play that console, so it needs internet at first. After that it works offline.
 
-**[Download the full version](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune-full.apk)** (about 180 MB). Every emulator engine is built in, so it works with no internet at all.
+**[Download the full version](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune-full.apk)** (about 100 MB). Every emulator engine is built in, so it works with no internet at all.
 
-Both are the same app, so you can switch between them without losing your library. All versions are on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). To install, open the APK on your phone and allow installs from your browser or file manager when Android asks. Arcadune needs Android 6.0 or newer.
+Both are the same app, so you can switch between them without losing your library. All versions are on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). To install, open the APK on your phone and allow installs from your browser or file manager when Android asks. Arcadune needs Android 6.0 or newer. From version 1.0.5 on, Arcadune updates itself: it tells you when a new version is out and installs it from Settings > Updates.
 
 Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swordfish90, which itself grew out of [Retrograde](https://github.com/retrograde/retrograde-android) and is built on [LibretroDroid](https://github.com/Swordfish90/LibretroDroid). Many thanks to their authors.
 
@@ -17,7 +17,13 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - **Search artwork online:** pick a cover from Google Images with an editable search box, from a game's long-press menu.
 - **Smarter automatic covers:** covers are fetched from the libretro-thumbnails GitHub mirror first, then retried under other region names and matched against the real list of covers.
 - **Rename a game and its cover follows:** the cover is looked up again under the new name.
-- **Grid view** for the games of a system, remembered between launches.
+- **A new library:** swipe between Favorites, Recently Played and each console, or drag along the page bar at the bottom; search sits right under your thumb.
+- **Own controller skins:** clean black-and-white and classic NES-style skins for the older consoles, with a menu button, rewind and an editor to move and resize the buttons.
+- **Rewind:** hold the rewind button to go back up to 30 seconds on the older consoles.
+- **Per-game settings:** give a game its own screen filter and emulator options.
+- **Cover manager:** find every game without a cover and fix them in one place. Downloaded covers are compressed to save space.
+- **Theme colours:** violet, teal, blue, mint or amber.
+- **Updates inside the app:** check, download and install new versions without visiting GitHub.
 - **Cheats:** find cheats for a game online (matched by its name) or add your own codes, then switch them on and off from the game menu. Not every emulator supports cheats; the Cheats screen tells you when one does not.
 - **Back up and restore your saves:** save everything (game saves and save states) to one file you can keep on Google Drive or move to another phone (Settings > Advanced settings > Backup).
 
@@ -38,7 +44,7 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - PlayStation (PSX) ([PCSX-ReARMed](https://docs.libretro.com/library/pcsx_rearmed/))
 - PlayStation Portable (PSP) ([ppsspp](https://docs.libretro.com/library/ppsspp/))
 - FinalBurn Neo (Arcade) ([fbneo](https://github.com/libretro/FBNeo/))
-- Nintendo DS (NDS) ([desmume](https://docs.libretro.com/library/desmume/)/[MelonDS](https://docs.libretro.com/library/melonds/))
+- Nintendo DS (NDS) ([MelonDS](https://docs.libretro.com/library/melonds/))
 - NEC PC Engine (PCE) ([beetle_pce_fast](https://docs.libretro.com/library/beetle_pce_fast/))
 - Neo Geo Pocket (NGP) ([mednafen_ngp](https://docs.libretro.com/library/beetle_neopop/))
 - Neo Geo Pocket Color (NGC) ([mednafen_ngp](https://docs.libretro.com/library/beetle_neopop/))
@@ -58,7 +64,6 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - Local multiplayer
 - Tilt input
 - Customizable touch controls (size and position)
-- HD mode
 
 ## Build from source
 

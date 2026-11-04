@@ -38,6 +38,13 @@ class GameViewModelCheats(
 
     /** Applies the cheats once the game is running and drawing frames. */
     fun applyWhenReady() {
+        // A game closed by an app update, a swipe from recents or the system freeing memory did not
+        // crash, so its cheats stay on. Only a real crash or freeze switches them off.
+        if (!lastGameExitWasCrash()) {
+            store.finishApplying()
+            store.endSession()
+        }
+
         store.switchOffAfterCrash()?.let {
             Timber.w("Cheats of $it were switched off: the game stopped while they were on")
             Toast.makeText(appContext, R.string.cheats_switched_off_after_crash, Toast.LENGTH_LONG).show()
@@ -52,6 +59,30 @@ class GameViewModelCheats(
     /** Call when the game is closed normally, so its cheats are not switched off at the next start. */
     fun gameClosed() {
         runCatching { store.endSession() }
+    }
+
+    /**
+     * Whether the game process last ended by crashing or freezing. Android 11+ can tell; on older
+     * versions every unexpected end counts as a crash, to stay on the safe side.
+     */
+    private fun lastGameExitWasCrash(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return true
+        return runCatching {
+            val activityManager = appContext.getSystemService(android.app.ActivityManager::class.java)
+            val gameProcess = "${appContext.packageName}:game"
+            // The current game process is already running, so the previous one is the last that ended.
+            val last =
+                activityManager
+                    .getHistoricalProcessExitReasons(appContext.packageName, 0, 10)
+                    .firstOrNull { it.processName == gameProcess }
+                    ?: return@runCatching false
+            last.reason in
+                setOf(
+                    android.app.ApplicationExitInfo.REASON_CRASH,
+                    android.app.ApplicationExitInfo.REASON_CRASH_NATIVE,
+                    android.app.ApplicationExitInfo.REASON_ANR,
+                )
+        }.getOrDefault(true)
     }
 
     /** Applies the cheats in the background. */

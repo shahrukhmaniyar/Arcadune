@@ -73,6 +73,10 @@ class GameViewModelRetroGameView(
 
     private val gameState: MutableStateFlow<GameState> = MutableStateFlow(GameState.Uninitialized)
 
+    // The running game and its screen filter, so options changed in the game menu can be applied.
+    private var currentGame: Game? = null
+    private var currentScreenFilter: String? = null
+
     private val retroGameViewFlow = MutableStateFlow<GLRetroView?>(null)
     var retroGameView: GLRetroView? by MutableStateProperty(retroGameViewFlow)
 
@@ -91,7 +95,9 @@ class GameViewModelRetroGameView(
         if (currentState != GameState.Uninitialized) return
 
         val autoSaveEnabled = settingsManager.autoSave()
-        val filter = settingsManager.screenFilter()
+        val filter = settingsManager.screenFilter(game)
+        currentGame = game
+        currentScreenFilter = filter
         val hdMode = settingsManager.hdMode()
         val hdModeQuality = settingsManager.hdModeQuality()
         val alignment = settingsManager.viewportAlignment()
@@ -308,8 +314,9 @@ class GameViewModelRetroGameView(
     private suspend fun initializeCoreVariablesFlow() {
         try {
             waitRetroGameViewInitialized()
-            val options = coreVariablesManager.getOptionsForCore(system.id, systemCoreConfig)
+            val options = coreVariablesManager.getOptionsForCore(system.id, systemCoreConfig, currentGame)
             updateCoreVariables(options)
+            updateScreenFilter()
         } catch (e: Exception) {
             Timber.e(e)
         }
@@ -325,6 +332,23 @@ class GameViewModelRetroGameView(
         retroGameViewFlow().getGLRetroErrors()
             .catch { Timber.e(it, "Exception in GLRetroErrors. Ironic.") }
             .collect { handleRetroViewError(it) }
+    }
+
+    /** Applies a screen filter chosen in the game menu (for example one for this game only). */
+    private suspend fun updateScreenFilter() {
+        val game = currentGame ?: return
+        val filter = settingsManager.screenFilter(game)
+        if (filter == currentScreenFilter) return
+        currentScreenFilter = filter
+
+        retroGameView?.shader =
+            ShaderChooser.getShaderForSystem(
+                appContext,
+                settingsManager.hdMode(),
+                settingsManager.hdModeQuality(),
+                filter,
+                system,
+            )
     }
 
     // Values of the restart-only options when the game started (they are passed to the core at load).

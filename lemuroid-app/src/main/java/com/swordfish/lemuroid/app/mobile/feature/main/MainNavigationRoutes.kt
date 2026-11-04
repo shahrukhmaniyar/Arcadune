@@ -2,29 +2,19 @@ package com.swordfish.lemuroid.app.mobile.feature.main
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideogameAsset
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.VideogameAsset
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
-import androidx.navigation.NavType
 import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
 import com.swordfish.lemuroid.R
 
 fun NavGraphBuilder.composable(
@@ -32,7 +22,8 @@ fun NavGraphBuilder.composable(
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) {
     this.composable(route = route.route, arguments = route.arguments) { entry ->
-        Box(Modifier.fillMaxSize()) {
+        // A solid background, so the screen sliding away never shows between the cards of this one.
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             content(entry)
 
             // While two screens cross-fade, the one fading out is still underneath and a tap on an
@@ -70,24 +61,6 @@ enum class MainRoute(
         route = "home",
         titleId = R.string.title_home,
     ),
-    FAVORITES(
-        route = "favorites",
-        titleId = R.string.favorites,
-    ),
-    SEARCH(
-        route = "search",
-        titleId = R.string.title_search,
-    ),
-    SYSTEMS(
-        route = "systems/home",
-        titleId = R.string.title_systems,
-    ),
-    SYSTEM_GAMES(
-        route = "systems/{metaSystemId}",
-        titleId = R.string.title_games,
-        parent = SYSTEMS,
-        listOf(navArgument("metaSystemId") { type = NavType.StringType }),
-    ),
     SETTINGS(
         route = "settings/home",
         titleId = R.string.title_settings,
@@ -105,12 +78,6 @@ enum class MainRoute(
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
-    SETTINGS_CORES_SELECTION(
-        route = "settings/cores",
-        titleId = R.string.settings_title_open_cores_selection,
-        parent = SETTINGS,
-        showBottomNavigation = false,
-    ),
     SETTINGS_INPUT_DEVICES(
         route = "settings/inputdevices",
         titleId = R.string.settings_title_gamepad_settings,
@@ -120,6 +87,12 @@ enum class MainRoute(
     SETTINGS_SAVE_SYNC(
         route = "settings/savesync",
         titleId = R.string.settings_title_save_sync,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
+    COVER_MANAGER(
+        route = "covers/manager",
+        titleId = R.string.cover_manager_title,
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
@@ -138,14 +111,3 @@ enum class MainRoute(
     }
 }
 
-enum class MainNavigationRoutes(
-    val route: MainRoute,
-    @StringRes val titleId: Int,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector,
-) {
-    HOME(MainRoute.HOME, R.string.title_home, Icons.Filled.Home, Icons.Outlined.Home),
-    FAVORITES(MainRoute.FAVORITES, R.string.favorites, Icons.Filled.Favorite, Icons.Filled.FavoriteBorder),
-    SYSTEMS(MainRoute.SYSTEMS, R.string.title_systems, Icons.Filled.VideogameAsset, Icons.Outlined.VideogameAsset),
-    SEARCH(MainRoute.SEARCH, R.string.title_search, Icons.Filled.Search, Icons.Outlined.Search),
-}
