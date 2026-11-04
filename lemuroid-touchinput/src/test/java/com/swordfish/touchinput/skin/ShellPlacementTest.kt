@@ -80,6 +80,56 @@ class ShellPlacementTest {
         }
     }
 
+    /**
+     * Sideways, a screen's dark bezel (drawn around its window) never lands on a control, on wide
+     * phones, 16:9 phones and 4:3 tablets, and for every screen layout the DS and 3DS offer. The
+     * controls are placed the way ArcaduneSkinView places them (inside a 4 dp padding).
+     */
+    @Test
+    fun sidewaysTheBezelNeverCoversAControl() {
+        val dsLayouts = listOf("top-bottom", "hybrid-top", "left-right").map { mapOf("melonds_screen_layout1" to it) }
+        val n3dsLayouts =
+            listOf(
+                "Default Top-Bottom Screen",
+                "Large Screen, Small Screen",
+                "Side by Side",
+                "Single Screen Only",
+            ).flatMap { option ->
+                listOf("Top", "Bottom").map { mapOf("citra_layout_option" to option, "citra_swap_screen" to it) }
+            }
+        val sideways = listOf(800f to 360f, 640f to 360f, 915f to 412f, 1280f to 800f, 1024f to 768f)
+        val found = mutableListOf<String>()
+        for ((id, skin) in skins) {
+            val layout = skin.landscape
+            if (layout.screenArea == null) continue
+            val settings =
+                when (id) {
+                    TouchControllerID.MELONDS -> dsLayouts
+                    TouchControllerID.NINTENDO_3DS -> n3dsLayouts
+                    else -> listOf(emptyMap())
+                }
+            for (values in settings) {
+                for ((w, h) in sideways) {
+                    val spec = ScreenSpecs.forController(id, values, true)
+                    val p = placeShell(skin, true, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp)
+                    val geometry = SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
+                    val controls = geometry.frameRects(SkinCustomization(), rewindAvailable = true)
+                    for (window in p.windows) {
+                        val bezel = Rect(window.topLeft / dp, window.bottomRight / dp).inflate(SCREEN_BEZEL_DP)
+                        for ((index, frame) in controls) {
+                            if (frame.translate(4f, 4f).overlaps(bezel)) {
+                                val control = layout.controls[index]::class.simpleName
+                                val screen = "${w.toInt()}x${h.toInt()}"
+                                found += "$id $screen $values: the bezel covers control $index ($control)"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(found.distinct().joinToString("\n"), found.isEmpty())
+    }
+
     @Test
     fun changesSurviveSavingAndLoading() {
         val changed = SkinCustomization(size = 1.2f, offsets = mapOf(0 to Offset(10f, -4f), 3 to Offset(-2.5f, 7f)), opacity = 0.6f)

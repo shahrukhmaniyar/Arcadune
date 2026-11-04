@@ -18,7 +18,9 @@ import gg.padkit.config.HapticFeedbackType
 import gg.padkit.inputevents.InputEvent
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 
 /**
  * The touch handling of Arcadune's skins, for every finger at once.
@@ -27,9 +29,14 @@ import kotlin.math.hypot
  * then drops the finger when it is outside that box's inscribed ellipse, so the corners of wide
  * buttons (L, R, Select, Start) did nothing, and a finger where two boxes met could be thrown away
  * instead of pressing the button under it. Here:
- *  - a finger presses the button it is on; where touch areas meet, the nearest button wins;
+ *  - a finger presses the button it is on; where touch areas meet, the nearest button wins, and
+ *    it keeps its button until it really leaves it, so a thumb resting on the border never chatters;
+ *  - a finger right between two face buttons presses both (B + A with one thumb, as on Delta);
+ *  - a finger that lands on nothing, but just past a face button, the d-pad or a stick, takes
+ *    that control: there are no dead strips between the buttons where a tap is lost;
  *  - a finger can slide from one button to the next (like on Delta), without lifting;
- *  - a finger that starts on the d-pad or a stick keeps steering it wherever it moves;
+ *  - a finger that starts on the d-pad or a stick keeps steering it wherever it moves; the d-pad
+ *    holds its direction until the thumb is clearly in another one (no flicker on the diagonals);
  *  - on consoles with a touch screen, a finger that starts in a screen window touches the game's
  *    screen, even while other fingers hold buttons (the game view alone only follows one finger).
  */
@@ -65,11 +72,15 @@ class SkinInput(
     val directions = mutableStateMapOf<Int, Offset>()
 
     private sealed interface Owner {
-        /** Presses whatever button is under it, again at every move. */
-        data object Buttons : Owner
+        /** Presses whatever button is under it, again at every move; [current] is the one it holds. */
+        class Buttons : Owner {
+            var current: Int? = null
+        }
 
-        /** Steers the d-pad or stick it started on. */
-        data class Steer(val index: Int) : Owner
+        /** Steers the d-pad or stick it started on; [direction] is where it points now. */
+        class Steer(val index: Int) : Owner {
+            var direction: Offset = Offset.Zero
+        }
 
         /** Touches the game's touch screen. */
         data object Screen : Owner
@@ -91,13 +102,13 @@ class SkinInput(
         owners[id] =
             when {
                 target != null && (target.control is SkinControl.Dpad || target.control is SkinControl.Stick) -> Owner.Steer(target.index)
-                target != null -> Owner.Buttons
+                target != null -> Owner.Buttons()
                 screenPointer == null && touchWindows.any { it.contains(position) } -> {
                     screenPointer = id
                     Owner.Screen
                 }
-                // On the body: it presses a button if it slides onto one.
-                else -> Owner.Buttons
+                // On the body, but just past a d-pad or stick: it steers that.
+                else -> steerableNear(position)?.let { Owner.Steer(it.index) } ?: Owner.Buttons()
             }
         update()
     }
@@ -132,6 +143,55 @@ class SkinInput(
             .filter { it.contains(position) }
             .minByOrNull { it.normalizedDistance(position) }
 
+    /**
+     * The buttons a finger at [position] presses, given the one it held so far ([owner].current).
+     * Right between two round face buttons it presses both; otherwise it keeps its button while it
+     * is still inside that button's touch area, and takes the nearest one when it is not.
+     */
+    private fun buttonsAt(
+        owner: Owner.Buttons,
+        position: Offset,
+    ): List<Target> {
+        val under =
+            targets
+                .filter { it.contains(position) && !it.steers() }
+                // On nothing: the face buttons it is just past (the strips between them are not dead).
+                .ifEmpty { targets.filter { it.isFaceButton() && it.normalizedDistance(position) <= GRACE } }
+        if (under.isEmpty()) {
+            owner.current = null
+            return emptyList()
+        }
+        val byDistance = under.sortedBy { it.normalizedDistance(position) }
+        val nearest = byDistance[0]
+        val second = byDistance.getOrNull(1)
+        if (second != null && nearest.isFaceButton() && second.isFaceButton() &&
+            second.normalizedDistance(position) - nearest.normalizedDistance(position) <= BOTH_BUTTONS_BAND
+        ) {
+            owner.current = nearest.index
+            return listOf(nearest, second)
+        }
+        val kept = under.firstOrNull { it.index == owner.current }
+        val chosen = kept ?: nearest
+        owner.current = chosen.index
+        return listOf(chosen)
+    }
+
+    /** A round button with a name (not a picture: MIC, LID, SWAP, HOME are never pressed by accident). */
+    private fun Target.isFaceButton(): Boolean = round && control is SkinControl.Button && control.icon == null
+
+    private fun Target.steers(): Boolean = control is SkinControl.Dpad || control is SkinControl.Stick
+
+    /** The d-pad or stick a finger at [position] is just past, if it is on no control at all. */
+    private fun steerableNear(position: Offset): Target? =
+        targets
+            .filter { it.steers() && it.normalizedDistance(position) <= GRACE }
+            .minByOrNull { it.normalizedDistance(position) }
+            // A face button nearer still keeps the finger (it is between the two).
+            ?.takeIf { pad ->
+                val padDistance = pad.normalizedDistance(position)
+                targets.none { it.isFaceButton() && it.normalizedDistance(position) < padDistance }
+            }
+
     private fun Target.contains(position: Offset): Boolean = if (round) normalizedDistance(position) <= 1f else area.contains(position)
 
     /** Distance from the centre in "radii": 1 on the edge of the (elliptic) touch area. */
@@ -149,16 +209,17 @@ class SkinInput(
         for ((id, owner) in owners) {
             val position = positions[id] ?: continue
             when (owner) {
-                Owner.Buttons -> {
-                    val target = targetAt(position) ?: continue
+                is Owner.Buttons -> {
                     // A finger that wanders onto the d-pad presses nothing there: the d-pad wants its own finger.
-                    if (target.control is SkinControl.Dpad || target.control is SkinControl.Stick) continue
-                    keys += target.control.key()
-                    pressedIndices += target.index
+                    for (target in buttonsAt(owner, position)) {
+                        keys += target.control.key()
+                        pressedIndices += target.index
+                    }
                 }
                 is Owner.Steer -> {
                     val target = targets.firstOrNull { it.index == owner.index } ?: continue
-                    steering[owner.index] = steer(target, position)
+                    owner.direction = steer(target, position, owner.direction)
+                    steering[owner.index] = owner.direction
                 }
                 Owner.Screen -> {
                     val size = gameViewSize
@@ -223,37 +284,40 @@ class SkinInput(
      * Where a finger at [position] points a d-pad (8 ways, or 4 for the N64 C buttons) or a stick
      * (any amount, up to 1), with up as +y like the rest of the input. The middle of a d-pad is a
      * small dead zone, so resting the thumb there presses nothing.
+     *
+     * A d-pad keeps pointing where it did ([before]) until the thumb is clearly past the border of
+     * that direction, by [DPAD_HYSTERESIS_DEGREES] or out of the dead zone's smaller inner ring:
+     * a thumb resting on a border would otherwise flicker between two directions.
      */
     private fun steer(
         target: Target,
         position: Offset,
+        before: Offset,
     ): Offset {
         val radius = minOf(target.area.width, target.area.height) / 2
         val dx = (position.x - target.area.center.x) / radius
         val dy = -(position.y - target.area.center.y) / radius
         val control = target.control
+        val length = hypot(dx, dy)
         if (control is SkinControl.Stick) {
-            val length = hypot(dx, dy)
             return if (length <= 1f) Offset(dx, dy) else Offset(dx / length, dy / length)
         }
-        if (hypot(dx, dy) < DPAD_DEAD_ZONE) return Offset.Zero
+        val deadZone = if (before == Offset.Zero) DPAD_DEAD_ZONE else DPAD_RELEASE_ZONE
+        if (length < deadZone) return Offset.Zero
+
         val fourWays = control is SkinControl.Dpad && control.look == DpadLook.C_BUTTONS
-        if (fourWays) {
-            return if (abs(dx) > abs(dy)) Offset(if (dx > 0) 1f else -1f, 0f) else Offset(0f, if (dy > 0) 1f else -1f)
+        val slices = if (fourWays) 4 else 8
+        val width = 360.0 / slices
+        val angle = (Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())) + 360) % 360
+        if (before != Offset.Zero) {
+            val held = (Math.toDegrees(atan2(before.y.toDouble(), before.x.toDouble())) + 360) % 360
+            val off = abs((angle - held + 540) % 360 - 180)
+            if (off <= width / 2 + DPAD_HYSTERESIS_DEGREES) return before
         }
-        // Eight equal slices, so diagonals are as easy to hit as the four directions.
-        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble()))
-        val slice = ((angle + 360 + 22.5) % 360 / 45).toInt()
-        return when (slice) {
-            0 -> Offset(1f, 0f)
-            1 -> Offset(1f, 1f)
-            2 -> Offset(0f, 1f)
-            3 -> Offset(-1f, 1f)
-            4 -> Offset(-1f, 0f)
-            5 -> Offset(-1f, -1f)
-            6 -> Offset(0f, -1f)
-            else -> Offset(1f, -1f)
-        }
+        // Equal slices, so diagonals are as easy to hit as the four directions.
+        val slice = ((angle + width / 2) % 360 / width).toInt()
+        val direction = Math.toRadians(slice * width)
+        return Offset(Math.round(cos(direction)).toFloat(), Math.round(sin(direction)).toFloat())
     }
 
     private fun SkinControl.key(): Int =
@@ -265,7 +329,26 @@ class SkinInput(
         }
 
     companion object {
+        /** How far from the d-pad's middle (in radii) a thumb must go to press a direction... */
         private const val DPAD_DEAD_ZONE = 0.22f
+
+        /** ...and how close it must come back to let go of it. */
+        private const val DPAD_RELEASE_ZONE = 0.15f
+
+        /** How far past the border of the direction held a thumb must go to change it. */
+        private const val DPAD_HYSTERESIS_DEGREES = 8.0
+
+        /**
+         * Between two face buttons, how much nearer (in radii of their touch areas) one must be for
+         * a finger to press only it: closer to the middle than this, it presses both.
+         */
+        private const val BOTH_BUTTONS_BAND = 0.2f
+
+        /**
+         * A finger on no control at all still takes a face button, d-pad or stick this close (in
+         * radii of its touch area): enough to close the gaps between neighbouring face buttons.
+         */
+        private const val GRACE = 1.3f
 
         /** A short click on the phone's vibrator, the same as the game buttons have always used. */
         fun vibrator(context: Context): () -> Unit {

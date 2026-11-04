@@ -24,3 +24,6 @@ keystore.properties
 
 # JVM crash dumps
 *.hprof
+
+# Kotlin compiler daemon state
+.kotlin/

@@ -1,8 +1,6 @@
 package com.swordfish.touchinput.skin
 
-import android.view.KeyEvent
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -45,18 +43,10 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.swordfish.touchinput.controller.R
-import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
-import gg.padkit.PadKitScope
-import gg.padkit.controls.ControlAnalog
-import gg.padkit.controls.ControlButton
-import gg.padkit.controls.ControlCross
-import gg.padkit.ids.Id
 
 /**
  * The player's changes to a skin: one size for every control, and how far each control was
@@ -334,7 +324,7 @@ private fun StaticControl(
 }
 
 /** Where the controls of [layout] land on a surface of [width] x [height] dp. */
-private class SkinGeometry(
+internal class SkinGeometry(
     private val layout: SkinLayout,
     private val pinToEdges: Boolean,
     private val width: Float,
@@ -369,29 +359,34 @@ private class SkinGeometry(
     fun touchRects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
+    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> = rects(customization, rewindAvailable, withReach = true)
+
+    /** Each control as drawn (without its reach), in dp, by index. */
+    fun frameRects(
+        customization: SkinCustomization,
+        rewindAvailable: Boolean,
+    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> = rects(customization, rewindAvailable, withReach = false)
+
+    private fun rects(
+        customization: SkinCustomization,
+        rewindAvailable: Boolean,
+        withReach: Boolean,
     ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
         layout.controls.mapIndexedNotNull { index, item ->
             if (item is SkinControl.Rewind && !rewindAvailable) return@mapIndexedNotNull null
             val frame = customization.frameOf(index, item.frame)
-            val left = placeX(frame) - item.reach * scale
-            val top = placeY(frame) - item.reach * scale
+            val reach = if (withReach) item.reach else 0f
+            val left = placeX(frame) - reach * scale
+            val top = placeY(frame) - reach * scale
             index to
                 androidx.compose.ui.geometry.Rect(
                     left,
                     top,
-                    left + (frame.width + 2 * item.reach) * scale,
-                    top + (frame.height + 2 * item.reach) * scale,
+                    left + (frame.width + 2 * reach) * scale,
+                    top + (frame.height + 2 * reach) * scale,
                 )
         }
 }
-
-private fun SkinControl.keyCode(): Int =
-    when (this) {
-        is SkinControl.Button -> keyCode
-        is SkinControl.Menu -> KeyEvent.KEYCODE_BUTTON_MODE
-        is SkinControl.Rewind -> ArcaduneSkins.rewindKey
-        is SkinControl.Dpad, is SkinControl.Stick -> 0
-    }
 
 /** Places the background and every control (and the names under them) of [layout]. */
 @Composable

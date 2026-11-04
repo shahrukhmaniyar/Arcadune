@@ -149,7 +149,7 @@ fun ConsoleShell(
     screens: List<Rect>,
 ) {
     Canvas(modifier) {
-        val bezelWidth = 10.dp.toPx()
+        val bezelWidth = SCREEN_BEZEL_DP.dp.toPx()
         val windowCorner = 4.dp.toPx()
         val bezelCorner = 16.dp.toPx()
         val darkBody = palette.body.luminance() < 0.3f
@@ -251,10 +251,12 @@ fun placeShell(
                 val screens = layout.screenArea ?: SkinRect(0f, 0f, layout.width, layout.height)
                 val usable = Rect(safe.left + 4 * dp, 4 * dp, safe.right - 4 * dp, height - 4 * dp)
                 val scale = minOf(usable.height / layout.height, usable.width / layout.width)
+                // The bezel is drawn outside the window: keep it, and a little air, off the wings.
+                val side = (SCREEN_BEZEL_DP + SCREEN_TO_WING) * dp
                 Rect(
-                    usable.left + screens.x * scale,
+                    usable.left + screens.x * scale + side,
                     usable.top + screens.y * scale,
-                    usable.right - (layout.width - screens.x - screens.width) * scale,
+                    usable.right - (layout.width - screens.x - screens.width) * scale - side,
                     usable.bottom - (layout.height - screens.y - screens.height) * scale,
                 )
             }
@@ -270,11 +272,17 @@ fun placeShell(
     return ShellPlacement(windows, picture, panel)
 }
 
+/** How wide the dark bezel around each screen window is, in dp. It is drawn outside the window. */
+internal const val SCREEN_BEZEL_DP = 10f
+
 // The spacing of the upright block, in dp: above the screen, between the screen's window and the
 // controller (the bezel takes 10 of it), and under the controller.
 private const val SCREEN_TOP = 14f
 private const val SCREEN_TO_PANEL = 20f
 private const val PANEL_BOTTOM = 10f
+
+/** Sideways, the space between a screen's bezel and the wings of controls, in dp. */
+private const val SCREEN_TO_WING = 4f
 
 /**
  * A picture of [skin] as it looks in a game, held upright or sideways: the shell, a placeholder in
