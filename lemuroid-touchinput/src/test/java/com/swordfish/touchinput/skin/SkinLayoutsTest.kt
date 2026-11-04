@@ -1,6 +1,8 @@
 package com.swordfish.touchinput.skin
 
+import androidx.compose.ui.geometry.Rect
 import com.swordfish.touchinput.radial.settings.TouchControllerID
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,20 +27,6 @@ class SkinLayoutsTest {
         val h = minOf(y + height, other.y + other.height) - maxOf(y, other.y)
         if (w <= 0 || h <= 0) return false
         return w * h > 0.05f * minOf(width * height, other.width * other.height)
-    }
-
-    /** Where landscape controls land on a screen [width] units wide, as ArcaduneSkinView pins them. */
-    private fun SkinLayout.pinned(
-        frame: SkinRect,
-        width: Float,
-    ): SkinRect {
-        val x =
-            when {
-                frame.centerX < this.width * 0.37f -> frame.x
-                frame.centerX > this.width * 0.63f -> width - (this.width - frame.x)
-                else -> width / 2 + (frame.x - this.width / 2)
-            }
-        return frame.copy(x = x)
     }
 
     private fun problems(
@@ -82,18 +70,69 @@ class SkinLayoutsTest {
         assertTrue(found.joinToString("\n"), found.isEmpty())
     }
 
+    /** Rect version of [overlaps], for controls placed on a screen (in dp). */
+    private fun Rect.coversPartOf(other: Rect): Boolean {
+        val w = minOf(right, other.right) - maxOf(left, other.left)
+        val h = minOf(bottom, other.bottom) - maxOf(top, other.top)
+        if (w <= 0 || h <= 0) return false
+        return w * h > 0.05f * minOf(width * height, other.width * other.height)
+    }
+
+    // Sideways screens in dp: wide, 16:9 and small 4:3 phones, a 16:10 and a 4:3 tablet.
+    private val sideways = listOf(800f to 360f, 640f to 360f, 915f to 412f, 600f to 450f, 1280f to 800f, 1024f to 768f)
+
     @Test
     fun landscapeControlsDoNotOverlapOnPhonesAndTablets() {
-        // A wide phone (19.5:9), and the narrowest a skin is ever laid out: on a screen narrower than
-        // the skin (4:3 tablets) the controls shrink to the width, so the sides never close in further.
+        // Placed as ArcaduneSkinView places them, inside its 4 dp padding.
         val found =
             skins().flatMap { (id, skin) ->
                 val layout = skin.landscape
-                listOf(layout.height * 19.5f / 9f, layout.width).flatMap { width ->
-                    val frames = layout.controls.map { layout.pinned(it.frame, width) }
-                    problems("$id landscape ${"%.0f".format(width)}", layout, frames, width)
+                sideways.flatMap { (w, h) ->
+                    val geometry = SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
+                    val frames = geometry.frameRects(SkinCustomization(), rewindAvailable = true).toMap()
+                    val touches = geometry.touchRects(SkinCustomization(), rewindAvailable = true).toMap()
+                    val name = "$id landscape ${w.toInt()}x${h.toInt()}"
+                    frames.flatMap { (i, frame) ->
+                        val offScreen =
+                            frame.left < -0.5f || frame.top < -0.5f || frame.right > w - 7.5f || frame.bottom > h - 7.5f
+                        val outside =
+                            if (offScreen) {
+                                listOf("$name: ${describe(layout.controls[i])} goes off screen")
+                            } else {
+                                emptyList()
+                            }
+                        outside +
+                            frames.filter { (j, other) -> i != j && touches.getValue(i).coversPartOf(other) }
+                                .map { (j, _) ->
+                                    val pressed = describe(layout.controls[j])
+                                    "$name: touching ${describe(layout.controls[i])} can press $pressed"
+                                }
+                    }
                 }
             }.distinct()
         assertTrue(found.joinToString("\n"), found.isEmpty())
+    }
+
+    /**
+     * Full-screen landscape skins keep thumb-sized controls: on a 16:9 phone the d-pad is as big as
+     * on a tall one (it does not shrink to fit the width), and on a tablet it stops growing.
+     */
+    @Test
+    fun fullScreenControlsKeepTheirSizeOnEveryScreen() {
+        for ((id, skin) in skins()) {
+            val layout = skin.landscape
+            if (layout.screenArea != null) continue
+            val pad = layout.controls.indexOfFirst { it is SkinControl.Dpad }
+            if (pad < 0) continue
+
+            fun padSize(
+                w: Float,
+                h: Float,
+            ) = SkinGeometry(layout, pinToEdges = true, width = w, height = h)
+                .frameRects(SkinCustomization(), rewindAvailable = true).toMap().getValue(pad).width
+            val tall = padSize(792f, 352f)
+            assertEquals("$id: d-pad on a 16:9 phone", tall, padSize(632f, 352f), 0.5f)
+            assertTrue("$id: d-pad on a tablet ${padSize(1272f, 792f)} dp", padSize(1272f, 792f) <= tall * 1.3f)
+        }
     }
 }

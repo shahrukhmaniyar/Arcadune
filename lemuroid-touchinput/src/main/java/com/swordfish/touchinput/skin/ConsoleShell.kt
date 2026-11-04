@@ -317,9 +317,11 @@ fun ArcaduneShellPreview(
             val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
             val placement = placeShell(skin, isLandscape, shell, spec, width, height, Rect(0f, 0f, width, height), density.density)
 
+            // Without a shell (full-screen sideways skins) the game is letterboxed over the whole screen.
+            val games = if (shell) placement.windows else spec?.fitIn(placement.picture) ?: placement.windows
             Canvas(Modifier.fillMaxSize()) {
                 drawRect(Color.Black)
-                for (window in placement.windows) {
+                for (window in games) {
                     drawRect(Brush.linearGradient(listOf(Color(0xFF3A4A70), Color(0xFF1C2338)), window.topLeft, window.bottomRight), window.topLeft, window.size)
                 }
             }

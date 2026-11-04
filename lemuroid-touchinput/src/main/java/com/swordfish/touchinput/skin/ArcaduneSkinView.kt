@@ -323,6 +323,15 @@ private fun StaticControl(
     }
 }
 
+/**
+ * The narrowest a full-screen landscape skin is laid out, in skin units: room for the two corner
+ * clusters and the small buttons between them. Narrower screens shrink the controls to fit.
+ */
+internal const val FULL_SCREEN_MIN_WIDTH = 600f
+
+/** The most dp per skin unit a full-screen landscape skin grows to (on tablets). */
+internal const val FULL_SCREEN_MAX_SCALE = 1.2f
+
 /** Where the controls of [layout] land on a surface of [width] x [height] dp. */
 internal class SkinGeometry(
     private val layout: SkinLayout,
@@ -332,13 +341,26 @@ internal class SkinGeometry(
 ) {
     // Landscape fills the height, unless the screen is narrower than the skin (4:3 tablets): then
     // it fits the width, so the left and right controls never run into each other.
+    // Full screen (no screen area: the controls float in the corners) needs less width, so the
+    // controls keep their size on 16:9 phones; and thumbs do not grow with the screen, so on
+    // tablets they stop at a size a thumb still covers.
     val scale =
-        if (pinToEdges) minOf(height / layout.height, width / layout.width) else width / layout.width
+        when {
+            !pinToEdges -> width / layout.width
+            layout.screenArea == null ->
+                minOf(height / layout.height, width / FULL_SCREEN_MIN_WIDTH, FULL_SCREEN_MAX_SCALE)
+            else -> minOf(height / layout.height, width / layout.width)
+        }
 
     /** Top of [frame]: in landscape the top and bottom controls stay at the screen's top and bottom edges. */
     fun placeY(frame: SkinRect): Float {
         // Upright the panel always has the skin's own proportions: the controls keep their designed spacing.
         if (!pinToEdges) return frame.y * scale
+        // Full screen: the corner clusters (a whole diamond, two rows of buttons) stay in one piece.
+        if (layout.screenArea == null) {
+            val atTop = frame.centerY < layout.height / 2
+            return if (atTop) frame.y * scale else height - (layout.height - frame.y) * scale
+        }
         return when {
             frame.centerY < layout.height * 0.37f -> frame.y * scale
             frame.centerY > layout.height * 0.63f -> height - (layout.height - frame.y) * scale

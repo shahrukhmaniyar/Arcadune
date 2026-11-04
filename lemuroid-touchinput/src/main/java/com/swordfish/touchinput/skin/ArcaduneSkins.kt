@@ -659,17 +659,32 @@ object ArcaduneSkins {
         )
     }
 
+    /**
+     * Sideways, full screen (the way Delta solves it): the game takes the whole height, centred, and
+     * the controls float over the black sides and the game's edges, where the thumbs rest when the
+     * phone is held sideways: a big d-pad low in the left corner, the face buttons low in the right
+     * one, shoulders in the top corners, menu / rewind top centre, select / start bottom centre.
+     */
+    private fun fullScreen(
+        palette: SkinPalette,
+        controls: List<SkinControl>,
+    ) = landscape(controls, palette)
+
+    // About 40% of the height, low in the left corner, where the left thumb rests.
+    private val cornerDpad get() = SkinControl.Dpad(r(28, 200, 150))
+    private val cornerShoulderL get() = shoulder(L, "L", r(16, 14, 110, 40))
+    private val cornerShoulderR get() = shoulder(R, "R", r(686, 14, 110, 40))
+
+    /** Two big face buttons low in the right corner: [first] lower and left (B), [second] higher and right (A). */
+    private fun cornerTwoButtons(
+        first: Pair<Int, String>,
+        second: Pair<Int, String>,
+    ) = listOf(round(first.first, first.second, r(632, 280, 74)), round(second.first, second.second, r(712, 220, 74)))
+
     // Sideways shells: the controls on two 150-unit wings and in the band under the screens, so
     // nothing sits on the game. Shared pieces first, then each console.
     private val wingShoulderL get() = shoulder(L, "L", r(10, 8, 128, 36))
     private val wingShoulderR get() = shoulder(R, "R", r(674, 8, 128, 36))
-    private val wingDpad get() = SkinControl.Dpad(r(14, 96, 124))
-
-    /** Two face buttons on a diagonal on the right wing: [first] low and left (B), [second] high and right (A). */
-    private fun wingTwoButtons(
-        first: Pair<Int, String>,
-        second: Pair<Int, String>,
-    ) = listOf(round(first.first, first.second, r(672, 170, 62)), round(second.first, second.second, r(740, 118, 62)))
 
     private fun shell(
         palette: SkinPalette,
@@ -683,40 +698,76 @@ object ArcaduneSkins {
     ): SkinLayout? =
         when (id) {
             TouchControllerID.NES, TouchControllerID.GB ->
-                shell(palette, listOf(wingDpad) + wingTwoButtons(B to "B", A to "A") + landscapeShellBand())
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "B", A to "A") + landscapeCommon(),
+                )
             TouchControllerID.GBA ->
-                shell(palette, listOf(wingShoulderL, wingShoulderR, wingDpad) + wingTwoButtons(B to "B", A to "A") + landscapeShellBand())
+                fullScreen(
+                    palette,
+                    listOf(cornerShoulderL, cornerShoulderR, cornerDpad) +
+                        cornerTwoButtons(B to "B", A to "A") +
+                        landscapeCommon(),
+                )
             TouchControllerID.SNES ->
-                shell(palette, listOf(wingShoulderL, wingShoulderR, wingDpad) + nintendoFace(735f, 166f, 50f) + landscapeShellBand())
+                fullScreen(
+                    palette,
+                    listOf(cornerShoulderL, cornerShoulderR, cornerDpad) +
+                        nintendoFace(700f, 268f, 54f) +
+                        landscapeCommon(),
+                )
             TouchControllerID.SMS, TouchControllerID.GG ->
-                shell(palette, listOf(wingDpad) + wingTwoButtons(B to "1", A to "2") + landscapeShellBand(select = null))
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "1", A to "2") + landscapeCommon(select = null),
+                )
             TouchControllerID.PCE ->
-                shell(palette, listOf(wingDpad) + wingTwoButtons(B to "I", A to "II") + landscapeShellBand(start = "RUN"))
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "I", A to "II") + landscapeCommon(start = "RUN"),
+                )
             TouchControllerID.NGP ->
-                shell(palette, listOf(wingDpad) + wingTwoButtons(B to "A", A to "B") + landscapeShellBand(select = null, start = "OPTION"))
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) +
+                        cornerTwoButtons(B to "A", A to "B") +
+                        landscapeCommon(select = null, start = "OPTION"),
+                )
             TouchControllerID.WS_LANDSCAPE ->
-                shell(palette, listOf(wingDpad) + wingTwoButtons(B to "B", A to "A") + landscapeShellBand(select = null))
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "B", A to "A") + landscapeCommon(select = null),
+                )
             TouchControllerID.WS_PORTRAIT ->
-                shell(palette, listOf(wingDpad) + diamond(735f, 166f, 50f, Y to "X1", B to "X4", X to "X2", A to "X3") + landscapeShellBand(select = null))
+                fullScreen(
+                    palette,
+                    listOf(cornerDpad) +
+                        diamond(700f, 268f, 54f, Y to "X1", B to "X4", X to "X2", A to "X3") +
+                        landscapeCommon(select = null),
+                )
             // Genesis keys follow the existing mapping: A = Y, B = B, C = A (6-button: X = L1, Y = X, Z = R1).
             TouchControllerID.GENESIS_3 ->
-                shell(
-                    palette,
-                    listOf(wingDpad, round(Y, "A", r(666, 196, 46)), round(B, "B", r(712, 160, 46)), round(A, "C", r(758, 124, 46))) +
-                        landscapeShellBand(select = null),
-                )
-            TouchControllerID.GENESIS_6 ->
-                shell(
+                fullScreen(
                     palette,
                     listOf(
-                        wingDpad,
-                        round(L, "X", r(666, 112, 42), reach = 3f),
-                        round(X, "Y", r(712, 112, 42), reach = 3f),
-                        round(R, "Z", r(758, 112, 42), reach = 3f),
-                        round(Y, "A", r(666, 172, 42), reach = 3f),
-                        round(B, "B", r(712, 172, 42), reach = 3f),
-                        round(A, "C", r(758, 172, 42), reach = 3f),
-                    ) + landscapeShellBand(select = null),
+                        cornerDpad,
+                        round(Y, "A", r(592, 288, 60)),
+                        round(B, "B", r(660, 254, 60)),
+                        round(A, "C", r(728, 220, 60)),
+                    ) + landscapeCommon(select = null),
+                )
+            TouchControllerID.GENESIS_6 ->
+                fullScreen(
+                    palette,
+                    listOf(
+                        cornerDpad,
+                        round(L, "X", r(614, 214, 56), reach = 3f),
+                        round(X, "Y", r(674, 214, 56), reach = 3f),
+                        round(R, "Z", r(734, 214, 56), reach = 3f),
+                        round(Y, "A", r(614, 280, 56), reach = 3f),
+                        round(B, "B", r(674, 280, 56), reach = 3f),
+                        round(A, "C", r(734, 280, 56), reach = 3f),
+                    ) + landscapeCommon(select = null),
                 )
             TouchControllerID.PSX, TouchControllerID.PSX_DUALSHOCK -> {
                 val shoulders =
@@ -770,15 +821,18 @@ object ArcaduneSkins {
                     ) + landscapeShellBand(start = "RESET"),
                 )
             TouchControllerID.ATARI7800 ->
-                shell(palette, listOf(ballTop(r(14, 90, 124))) + wingTwoButtons(B to "1", A to "2") + landscapeShellBand())
+                fullScreen(
+                    palette,
+                    listOf(ballTop(r(28, 200, 150))) + cornerTwoButtons(B to "1", A to "2") + landscapeCommon(),
+                )
             TouchControllerID.LYNX ->
-                shell(
+                fullScreen(
                     palette,
                     listOf(
-                        wingDpad,
-                        pill(L, "OPTION 1", r(20, 252, 52, 24), reach = 3f),
-                        pill(R, "OPTION 2", r(80, 252, 52, 24), reach = 3f),
-                    ) + wingTwoButtons(B to "B", A to "A") + landscapeShellBand(select = null, start = "PAUSE"),
+                        cornerDpad,
+                        pill(L, "OPTION 1", r(28, 18, 66, 24)),
+                        pill(R, "OPTION 2", r(112, 18, 66, 24)),
+                    ) + cornerTwoButtons(B to "B", A to "A") + landscapeCommon(select = null, start = "PAUSE"),
                 )
             TouchControllerID.ARCADE_4 ->
                 shell(
