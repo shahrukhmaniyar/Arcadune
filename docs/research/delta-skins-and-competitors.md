@@ -100,7 +100,7 @@ and Menu / Select / Start in a row at the bottom.
 | Upright layout | Game edge to edge in black, controller at the bottom | Same | Adopted |
 | Sideways, home consoles and GBA | Full screen, see-through controls in the corners | Same, with the console's colours on the controls | Adopted |
 | Sideways, GB / Game Gear / Neo Geo Pocket | Framed like the GBC | Same | Adopted |
-| DS | Standard skin: the body behind everything; both screens in one recessed panel with thin outlines (no hinge); L / R tabs right under the screens; Menu · Start · Select along the bottom; screens across the top sideways | Same, plus Rewind, Mic and Lid (Delta's skin has none of them) | Adopted |
+| DS | Standard skin: the body behind everything; both screens in one recessed panel with thin outlines (no hinge); L / R tabs right under the screens; Menu · Start · Select along the bottom; screens across the top sideways | Same, plus Mic and Lid (Delta's skin has neither). No Rewind: the app cannot rewind the DS | Adopted |
 | Skins per console | Any number, installed by the player | Two built in: Console and Minimal | Two good defaults first; imported skins are an open item |
 | Layout editing | None (install another skin) | Drag any button, one size for all, opacity; in Settings and in game | Goes beyond Delta |
 | Touch areas | Extended edges; nothing dead between buttons | Reach around each control, plus a grace area so no strip between face buttons is dead | Same aim |
@@ -119,3 +119,20 @@ and Menu / Select / Start in a row at the bottom.
 4. **Per-game skin choice**, and a separate skin choice when a gamepad is connected.
 5. **Default opacity of see-through controls**: consider Delta's 70%.
 6. **Importing skins** (`.deltaskin`-like files) beyond the two built-in ones.
+
+## DS: microphone, lid and rewind
+
+Checked against the DS core the app ships (melonDS DS 1.3.1, `src/libretro/input/joypad.cpp`):
+
+- **Rewind:** the DS is not in `GameViewModelRewind.SUPPORTED_SYSTEMS`, so the DS skins have no
+  rewind button.
+- **Microphone:** L3. The core's mic button mode defaults to "hold", so it listens only while the
+  button is down. It is the only way to blow or speak into games that ask for it, so the button stays.
+- **Lid:** Y pressed while L2 is held toggles the lid (on the press). The skin's LID button sends
+  L2 and Y together. Y is not masked from the game while L2 is held, so the game also sees a short
+  Y tap. That is harmless in practice, because a game sleeps once the lid is closed. A few games need the lid (a
+  puzzle in Zelda: Phantom Hourglass, for one), so the button stays.
+- Lemuroid's own DS layout (`radial/layouts/MelonDS.kt`) sent the mic on L2 and the lid on L3,
+  which the current core reads as pointer speedup and the mic. The Arcadune skins had copied that
+  mapping and now send the keys the core reads.
+

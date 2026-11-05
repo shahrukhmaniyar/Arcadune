@@ -1104,16 +1104,19 @@ object ArcaduneSkins {
 
     /**
      * Nintendo DS: the white DS Lite. Upright, the panel is shorter so both screens stay big; the
-     * microphone (L2) and closing the lid (L3) sit between the d-pad and the buttons, with their icons.
-     * Sideways, the screens sit between two wings: d-pad, microphone and lid on the left, the buttons
-     * on the right, Select / Start in the band under the screens.
+     * microphone and the lid sit along the bottom, between menu, start and select. Sideways, the
+     * screens sit across the top, the quick buttons down the left side and the microphone and the
+     * lid down the right one. No rewind: the app cannot rewind the DS.
+     *
+     * Keys as melonDS DS reads them: the microphone is L3 (held: the core listens only while it is
+     * down), and the lid is L2 with Y (L2 held turns Y into "close / open the lid").
      */
     private fun ds() =
         ArcaduneSkin(
             // Upright the way Delta's standard DS skin is laid out: the body behind everything,
             // both screens in one recessed panel with the L / R tabs right under the touch screen,
             // a big d-pad and big X / Y / A / B, and menu, start and select along the bottom (with
-            // rewind, the microphone and the lid between them).
+            // the microphone and the lid between them).
             portrait =
                 console(
                     SkinPalettes.DS,
@@ -1124,10 +1127,9 @@ object ArcaduneSkins {
                     ) + diamondAt(246f, 114f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
                         listOf(
                             SkinControl.Menu(r(8, 192, 40, 17)),
-                            SkinControl.Rewind(r(62, 192, 40, 17)),
-                            round(L2, "MIC", r(112, 188, 24), icon = SkinIcon.MIC, reach = 4f),
-                            pill(START, "START", r(150, 192, 40, 17)),
-                            round(L3, "LID", r(204, 188, 24), icon = SkinIcon.LID, reach = 4f),
+                            dsMic(r(84, 188, 24)),
+                            pill(START, "START", r(140, 192, 40, 17)),
+                            dsLid(r(212, 188, 24)),
                             pill(SELECT, "SELECT", r(272, 192, 40, 17)),
                         ),
                     height = 236f,
@@ -1135,7 +1137,7 @@ object ArcaduneSkins {
             // Sideways, as Delta's standard DS skin: both screens side by side across the top in
             // one panel, L / R tabs right under them near the middle, the d-pad and X / Y / A / B
             // low in the corners, menu, start and select along the bottom. The quick buttons
-            // (fast forward, save, load) go down the left side, rewind, microphone and lid down
+            // (fast forward, save, load) go down the left side, the microphone and the lid down
             // the right one.
             landscape =
                 landscape(
@@ -1143,9 +1145,8 @@ object ArcaduneSkins {
                         round(KEYCODE_FAST_FORWARD, "FAST", r(16, 16, 40), icon = SkinIcon.FAST_FORWARD, reach = 4f),
                         round(KEYCODE_QUICK_SAVE, "SAVE", r(16, 64, 40), icon = SkinIcon.QUICK_SAVE, reach = 4f),
                         round(KEYCODE_QUICK_LOAD, "LOAD", r(16, 112, 40), icon = SkinIcon.QUICK_LOAD, reach = 4f),
-                        SkinControl.Rewind(r(756, 16, 40, 40), reach = 4f),
-                        round(L2, "MIC", r(756, 64, 40), icon = SkinIcon.MIC, reach = 4f),
-                        round(L3, "LID", r(756, 112, 40), icon = SkinIcon.LID, reach = 4f),
+                        dsMic(r(756, 16, 40)),
+                        dsLid(r(756, 64, 40)),
                         SkinControl.Dpad(r(26, 246, 126), reach = 8f),
                         shoulder(L, "L", r(250, 236, 142, 32)),
                         shoulder(R, "R", r(420, 236, 142, 32)),
@@ -1157,6 +1158,12 @@ object ArcaduneSkins {
                     DS_SIDEWAYS_SCREENS,
                 ).copy(screenPanelBelow = 36f),
         )
+
+    /** The DS microphone: melonDS DS listens while L3 is held. */
+    private fun dsMic(frame: SkinRect) = round(L3, "MIC", frame, icon = SkinIcon.MIC, reach = 4f)
+
+    /** Closing / opening the DS lid: melonDS DS toggles it when Y is pressed with L2 held. */
+    private fun dsLid(frame: SkinRect) = round(L2, "LID", frame, icon = SkinIcon.LID, reach = 4f).copy(alsoKey = Y)
 
     /**
      * Nintendo 3DS (New 3DS): the Circle Pad over the d-pad, the coloured buttons, the C-Stick (the

@@ -1,8 +1,10 @@
 package com.swordfish.touchinput.skin
 
+import android.view.KeyEvent
 import androidx.compose.ui.geometry.Rect
 import com.swordfish.touchinput.radial.settings.TouchControllerID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -166,6 +168,25 @@ class SkinLayoutsTest {
             val tall = padSize(792f, 352f)
             assertEquals("$id: d-pad on a 16:9 phone", tall, padSize(632f, 352f), 0.5f)
             assertTrue("$id: d-pad on a tablet ${padSize(1272f, 792f)} dp", padSize(1272f, 792f) <= tall * 1.3f)
+        }
+    }
+
+    /**
+     * The DS sends what melonDS DS reads: the microphone is L3, the lid is L2 with Y. And it has
+     * no rewind, which the app cannot do for the DS.
+     */
+    @Test
+    fun dsControlsMatchTheCore() {
+        val skin = ArcaduneSkins.forController(TouchControllerID.MELONDS)!!
+        for (layout in listOf(skin.portrait, skin.landscape)) {
+            val buttons = layout.controls.filterIsInstance<SkinControl.Button>()
+            assertFalse(layout.controls.any { it is SkinControl.Rewind })
+            val mic = buttons.single { it.label == "MIC" }
+            assertEquals(KeyEvent.KEYCODE_BUTTON_THUMBL, mic.keyCode)
+            assertEquals(null, mic.alsoKey)
+            val lid = buttons.single { it.label == "LID" }
+            assertEquals(KeyEvent.KEYCODE_BUTTON_L2, lid.keyCode)
+            assertEquals(KeyEvent.KEYCODE_BUTTON_Y, lid.alsoKey)
         }
     }
 }
