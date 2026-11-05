@@ -189,4 +189,31 @@ class SkinLayoutsTest {
             assertEquals(KeyEvent.KEYCODE_BUTTON_Y, lid.alsoKey)
         }
     }
+
+    /**
+     * Consoles the app cannot rewind (their save states are too big to take twice a second; see
+     * GameViewModelRewind.SUPPORTED_SYSTEMS) have no rewind button, not even a hidden one.
+     */
+    @Test
+    fun consolesWithoutRewindHaveNoRewindButton() {
+        val noRewind =
+            listOf(
+                TouchControllerID.N64,
+                TouchControllerID.PSX,
+                TouchControllerID.PSX_DUALSHOCK,
+                TouchControllerID.PSP,
+                TouchControllerID.MELONDS,
+                TouchControllerID.NINTENDO_3DS,
+                TouchControllerID.ARCADE_4,
+                TouchControllerID.ARCADE_6,
+            )
+        for (id in noRewind) {
+            for (variant in SkinVariant.entries) {
+                val skin = ArcaduneSkins.forController(id, variant)!!
+                for (layout in listOf(skin.portrait, skin.landscape)) {
+                    assertFalse("$id $variant", layout.controls.any { it is SkinControl.Rewind })
+                }
+            }
+        }
+    }
 }

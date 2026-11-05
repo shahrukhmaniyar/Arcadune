@@ -667,13 +667,23 @@ object ArcaduneSkins {
 
     /**
      * The bottom row of the handheld skins: MENU on the left, SELECT and START in the middle,
-     * REWIND on the right, all the same pill.
+     * REWIND on the right, all the same pill. Consoles the app cannot rewind ([rewind] false) have
+     * no REWIND, and the others are spread evenly across the row.
      */
     private fun portraitBottomRow(
         select: String? = "SELECT",
         start: String? = "START",
         y: Int = 206,
+        rewind: Boolean = true,
     ): List<SkinControl> {
+        if (!rewind) {
+            val keys = listOfNotNull(select?.let { SELECT to it }, start?.let { START to it })
+            val slot = PW / (keys.size + 1)
+
+            fun x(i: Int) = slot * i + (slot - 40f) / 2
+            return listOf(SkinControl.Menu(r(x(0), y, 40, 17))) +
+                keys.mapIndexed { i, (key, label) -> pill(key, label, r(x(i + 1), y, 40, 17)) }
+        }
         return listOfNotNull(
             SkinControl.Menu(r(10, y, 40, 17)),
             select?.let { pill(SELECT, it, r(110, y, 40, 17)) },
@@ -682,15 +692,19 @@ object ArcaduneSkins {
         )
     }
 
-    /** The middle of the landscape skins: select / start at the bottom, rewind / menu at the top. */
+    /**
+     * The middle of the landscape skins: select / start at the bottom, rewind / menu at the top
+     * (the menu alone, centred, on consoles the app cannot rewind).
+     */
     private fun landscapeCommon(
         select: String? = "SELECT",
         start: String? = "START",
+        rewind: Boolean = true,
     ) = listOfNotNull(
         select?.let { pill(SELECT, it, r(330, 318, 66, 24)) },
         start?.let { pill(START, it, if (select == null) r(373, 318, 66, 24) else r(416, 318, 66, 24)) },
-        SkinControl.Rewind(r(330, 18, 66, 24)),
-        SkinControl.Menu(r(416, 18, 66, 24)),
+        if (rewind) SkinControl.Rewind(r(330, 18, 66, 24)) else null,
+        SkinControl.Menu(if (rewind) r(416, 18, 66, 24) else r(373, 18, 66, 24)),
     )
 
     private fun portrait(controls: List<SkinControl>, style: SkinStyle = SkinStyle.MONO) =
@@ -715,13 +729,14 @@ object ArcaduneSkins {
     private fun landscapeShellBand(
         select: String? = "SELECT",
         start: String = "START",
+        rewind: Boolean = true,
     ): List<SkinControl> {
         val y = 334
         return listOfNotNull(
-                SkinControl.Menu(r(14, y, 58, 26), reach = 3f),
-                select?.let { pill(SELECT, it, r(78, y, 58, 26), reach = 3f) },
-                pill(START, start, r(676, y, 58, 26), reach = 3f),
-                SkinControl.Rewind(r(740, y, 58, 26), reach = 3f),
+            SkinControl.Menu(r(14, y, 58, 26), reach = 3f),
+            select?.let { pill(SELECT, it, r(78, y, 58, 26), reach = 3f) },
+            pill(START, start, if (rewind) r(676, y, 58, 26) else r(708, y, 58, 26), reach = 3f),
+            if (rewind) SkinControl.Rewind(r(740, y, 58, 26), reach = 3f) else null,
         )
     }
 
@@ -890,13 +905,13 @@ object ArcaduneSkins {
                     } else {
                         listOf(separateDpad(r(14, 96, 124))) + psSymbols(737f, 166f, 48f)
                     }
-                shell(palette, shoulders + pad + landscapeShellBand())
+                shell(palette, shoulders + pad + landscapeShellBand(rewind = false))
             }
             TouchControllerID.PSP ->
                 shell(
                     palette,
                     listOf(wingShoulderL, wingShoulderR, separateDpad(r(20, 70, 110)), SkinControl.Stick(r(48, 222, 56), LEFT_STICK)) +
-                        psSymbols(737f, 158f, 46f) + landscapeShellBand(),
+                        psSymbols(737f, 158f, 46f) + landscapeShellBand(rewind = false),
                 )
             // N64: the stick is the main control, the small d-pad and Z under it; the C buttons above B and A.
             TouchControllerID.N64 ->
@@ -911,7 +926,7 @@ object ArcaduneSkins {
                         SkinControl.Dpad(r(694, 54, 100), reach = 6f, source = RIGHT_STICK, look = DpadLook.C_BUTTONS),
                         round(Y, "B", r(668, 178, 52)),
                         round(B, "A", r(732, 204, 62)),
-                    ) + landscapeShellBand(select = null),
+                    ) + landscapeShellBand(select = null, rewind = false),
                 )
             TouchControllerID.ATARI2600 ->
                 shell(
@@ -946,7 +961,7 @@ object ArcaduneSkins {
                         round(X, "D", r(742, 96, 54)),
                         round(B, "A", r(676, 170, 54)),
                         round(A, "B", r(742, 162, 54)),
-                    ) + landscapeShellBand(select = "COIN"),
+                    ) + landscapeShellBand(select = "COIN", rewind = false),
                 )
             TouchControllerID.ARCADE_6 ->
                 shell(
@@ -959,7 +974,7 @@ object ArcaduneSkins {
                         round(B, "", r(666, 166, 42), reach = 3f),
                         round(A, "", r(712, 160, 42), reach = 3f),
                         round(R, "", r(758, 160, 42), reach = 3f),
-                    ) + landscapeShellBand(select = "COIN"),
+                    ) + landscapeShellBand(select = "COIN", rewind = false),
                 )
             else -> null
         }
@@ -1015,7 +1030,7 @@ object ArcaduneSkins {
                 emptyList()
             }
         return ArcaduneSkin(
-            portrait = console(SkinPalettes.PLAYSTATION, shoulders + portraitControls + portraitBottomRow()),
+            portrait = console(SkinPalettes.PLAYSTATION, shoulders + portraitControls + portraitBottomRow(rewind = false)),
             landscape =
                 landscape(
                     listOf(
@@ -1028,7 +1043,7 @@ object ArcaduneSkins {
                         shoulder(L2, "L2", r(122, 16, 76, 40)),
                         shoulder(R2, "R2", r(614, 16, 76, 40)),
                         shoulder(R, "R1", r(696, 16, 100, 40)),
-                    ) + landscapeSticks + landscapeCommon(),
+                    ) + landscapeSticks + landscapeCommon(rewind = false),
                     SkinPalettes.PLAYSTATION,
                 ),
         )
@@ -1045,7 +1060,7 @@ object ArcaduneSkins {
                         shoulder(R, "R", r(208, 0, 112, 26)),
                         separateDpad(r(16, 42, 100)),
                         SkinControl.Stick(r(46, 158, 40), LEFT_STICK),
-                    ) + psSymbols(250f, 100f, 46f) + portraitBottomRow(),
+                    ) + psSymbols(250f, 100f, 46f) + portraitBottomRow(rewind = false),
                 ),
             landscape =
                 landscape(
@@ -1058,7 +1073,7 @@ object ArcaduneSkins {
                         round(B, CROSS, r(660, 252, 62)),
                         shoulder(L, "L", r(16, 16, 120, 40)),
                         shoulder(R, "R", r(676, 16, 120, 40)),
-                    ) + landscapeCommon(),
+                    ) + landscapeCommon(rewind = false),
                     SkinPalettes.PSP,
                 ),
         )
@@ -1084,7 +1099,7 @@ object ArcaduneSkins {
                         round(Y, "B", r(180, 96, 44)),
                         round(B, "A", r(222, 142, 54)),
                         SkinControl.Dpad(r(236, 36, 80), reach = 6f, source = RIGHT_STICK, look = DpadLook.C_BUTTONS),
-                    ) + portraitBottomRow(select = null, start = null),
+                    ) + portraitBottomRow(select = null, start = null, rewind = false),
                 ),
             landscape =
                 landscape(
@@ -1097,7 +1112,7 @@ object ArcaduneSkins {
                         SkinControl.Dpad(r(672, 96, 120), source = RIGHT_STICK, look = DpadLook.C_BUTTONS),
                         shoulder(L, "L", r(16, 16, 104, 40)),
                         shoulder(R, "R", r(692, 16, 104, 40)),
-                    ) + landscapeCommon(select = null),
+                    ) + landscapeCommon(select = null, rewind = false),
                     SkinPalettes.N64,
                 ),
         )
@@ -1188,11 +1203,7 @@ object ArcaduneSkins {
                         SkinControl.Dpad(r(36, 124, 64), reach = 6f),
                         SkinControl.Stick(r(190, 32, 30), RIGHT_STICK),
                         round(KEYCODE_SWAP_SCREENS, "SWAP", r(142, 62, 36), icon = SkinIcon.SWAP),
-                        SkinControl.Menu(r(10, y, 40, 17)),
-                        pill(SELECT, "SELECT", r(110, y, 40, 17)),
-                        pill(START, "START", r(170, y, 40, 17)),
-                        SkinControl.Rewind(r(270, y, 40, 17)),
-                    ) + nintendoFace(256f, 96f, 42f),
+                    ) + portraitBottomRow(y = y, rewind = false) + nintendoFace(256f, 96f, 42f),
                     height = 232f,
                 ),
             landscape =
@@ -1206,7 +1217,7 @@ object ArcaduneSkins {
                         SkinControl.Dpad(r(40, 206, 76), reach = 8f),
                         SkinControl.Stick(r(676, 60, 30), RIGHT_STICK),
                         round(KEYCODE_SWAP_SCREENS, "SWAP", r(712, 272, 44), icon = SkinIcon.SWAP),
-                    ) + nintendoFace(736f, 178f, 46f) + landscapeShellBand(),
+                    ) + nintendoFace(736f, 178f, 46f) + landscapeShellBand(rewind = false),
                     SkinPalettes.N3DS,
                     SHELL_SCREENS,
                 ),
@@ -1380,10 +1391,10 @@ object ArcaduneSkins {
                 )
             }
         return ArcaduneSkin(
-            portrait = console(palette, listOf(ballTop(r(14, 46, 132), stick)) + portraitButtons + portraitBottomRow(select = "COIN")),
+            portrait = console(palette, listOf(ballTop(r(14, 46, 132), stick)) + portraitButtons + portraitBottomRow(select = "COIN", rewind = false)),
             landscape =
                 landscape(
-                    listOf(ballTop(r(30, 160, 180), stick)) + landscapeButtons + landscapeCommon(select = "COIN"),
+                    listOf(ballTop(r(30, 160, 180), stick)) + landscapeButtons + landscapeCommon(select = "COIN", rewind = false),
                     palette,
                 ),
         )
