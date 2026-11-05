@@ -283,9 +283,18 @@ fun placeShell(
     val panel = Rect((width - panelWidth) / 2, panelTop, (width + panelWidth) / 2, panelTop + naturalHeight)
     val bodyTop = panelTop - BODY_ABOVE_PANEL * dp
 
+    // The DS upright: the body behind everything, the screens in it, in from the sides.
+    val side = skin.portrait.uprightScreenSide
     val area =
         when {
             !shell -> safe
+            !isLandscape && side != null ->
+                Rect(
+                    safe.left + side * width,
+                    safe.top + SCREEN_TOP_IN_BODY * dp,
+                    safe.right - side * width,
+                    bodyTop - SCREEN_TO_BODY * dp,
+                )
             !isLandscape -> Rect(safe.left, safe.top, safe.right, bodyTop - SCREEN_TO_BODY * dp)
             else -> {
                 val screens = layout.screenArea ?: SkinRect(0f, 0f, layout.width, layout.height)
@@ -303,7 +312,7 @@ fun placeShell(
         }
     val windows = (if (shell) spec?.fitIn(area) else null) ?: listOf(area)
     val picture = windows.reduce { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
-    return ShellPlacement(windows, picture, panel, bodyTop.takeIf { shell && !isLandscape })
+    return ShellPlacement(windows, picture, panel, bodyTop.takeIf { shell && !isLandscape && side == null })
 }
 
 /** How wide the dark bezel around each screen window is, in dp. It is drawn outside the window. */
@@ -315,6 +324,9 @@ private const val MAX_PANEL_WIDTH = 520f
 private const val PANEL_BOTTOM = 4f
 private const val BODY_ABOVE_PANEL = 8f
 internal const val SCREEN_TO_BODY = 18f
+
+/** Upright, when the body covers the whole screen (the DS): the body showing above the screens. */
+private const val SCREEN_TOP_IN_BODY = 22f
 
 /** Sideways, the space between a screen's bezel and the wings of controls, in dp. */
 private const val SCREEN_TO_WING = 4f

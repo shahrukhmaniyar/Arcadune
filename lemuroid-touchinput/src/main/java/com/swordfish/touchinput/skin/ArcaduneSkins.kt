@@ -129,6 +129,12 @@ data class SkinLayout(
      * The shell's body fills the rest of the screen. Null for skins whose controls sit over the game.
      */
     val screenArea: SkinRect? = null,
+    /**
+     * Upright: set, the console's body covers the whole screen and the screens sit in it, this
+     * share of the width in from each side (the DS, the way Delta lays it out). Not set, the body
+     * is only behind the controller and the screen sits in black above it.
+     */
+    val uprightScreenSide: Float? = null,
 )
 
 data class ArcaduneSkin(val portrait: SkinLayout, val landscape: SkinLayout) {
@@ -594,6 +600,26 @@ object ArcaduneSkins {
         bottom: Pair<Int, String>,
     ): List<SkinControl> {
         val away = size * 0.8f + 8f
+        val half = size / 2
+        return listOf(
+            round(top.first, top.second, r(cx - half, cy - away - half, size)),
+            round(left.first, left.second, r(cx - away - half, cy - half, size)),
+            round(right.first, right.second, r(cx + away - half, cy - half, size)),
+            round(bottom.first, bottom.second, r(cx - half, cy + away - half, size)),
+        )
+    }
+
+    /** Four round buttons in a diamond around ([cx], [cy]), [away] from it: [top], [left], [right], [bottom]. */
+    private fun diamondAt(
+        cx: Float,
+        cy: Float,
+        size: Float,
+        away: Float,
+        top: Pair<Int, String>,
+        left: Pair<Int, String>,
+        right: Pair<Int, String>,
+        bottom: Pair<Int, String>,
+    ): List<SkinControl> {
         val half = size / 2
         return listOf(
             round(top.first, top.second, r(cx - half, cy - away - half, size)),
@@ -1072,34 +1098,44 @@ object ArcaduneSkins {
      */
     private fun ds() =
         ArcaduneSkin(
+            // Upright the way Delta lays out the DS: the body behind everything, both screens in
+            // it, then L / R under the touch screen, a big d-pad and big X / Y / A / B, and the
+            // small buttons in one row at the bottom.
             portrait =
                 console(
                     SkinPalettes.DS,
                     listOf(
-                        shoulder(L, "L", r(0, 0, 96, 24)),
-                        shoulder(R, "R", r(224, 0, 96, 24)),
-                        SkinControl.Dpad(r(14, 40, 104)),
-                        round(L2, "MIC", r(146, 44, 28), icon = SkinIcon.MIC),
-                        round(L3, "LID", r(146, 100, 28), icon = SkinIcon.LID),
-                    ) + nintendoFace(255f, 92f, 42f) + portraitBottomRow(y = 166),
-                    height = 206f,
-                ),
+                        shoulder(L, "L", r(0, 0, 100, 26)),
+                        shoulder(R, "R", r(220, 0, 100, 26)),
+                        SkinControl.Dpad(r(8, 42, 130)),
+                    ) + diamondAt(246f, 110f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
+                        listOf(
+                            SkinControl.Menu(r(8, 196, 40, 17)),
+                            pill(SELECT, "SELECT", r(70, 196, 40, 17)),
+                            round(L2, "MIC", r(130, 191, 26), icon = SkinIcon.MIC, reach = 4f),
+                            round(L3, "LID", r(164, 191, 26), icon = SkinIcon.LID, reach = 4f),
+                            pill(START, "START", r(210, 196, 40, 17)),
+                            SkinControl.Rewind(r(272, 196, 40, 17)),
+                        ),
+                    height = 236f,
+                ).copy(uprightScreenSide = 0.075f),
             // Sideways the way Delta does it: both screens side by side across the top, the
             // controls in the band under them (d-pad and buttons in the corners, L / R under the
             // screens, the small buttons between them).
             landscape =
                 landscape(
                     listOf(
-                        SkinControl.Dpad(r(22, 254, 116), reach = 10f),
-                        shoulder(L, "L", r(196, 258, 150, 40)),
-                        shoulder(R, "R", r(466, 258, 150, 40)),
-                        SkinControl.Menu(r(196, 322, 56, 24), reach = 6f),
-                        pill(SELECT, "SELECT", r(268, 322, 56, 24), reach = 6f),
-                        round(L2, "MIC", r(352, 316, 34), icon = SkinIcon.MIC, reach = 4f),
-                        round(L3, "LID", r(426, 316, 34), icon = SkinIcon.LID, reach = 4f),
-                        pill(START, "START", r(488, 322, 56, 24), reach = 6f),
-                        SkinControl.Rewind(r(560, 322, 56, 24), reach = 6f),
-                    ) + nintendoFace(732f, 314f, 38f),
+                        SkinControl.Dpad(r(26, 246, 126), reach = 8f),
+                        // L, the menu (Delta's Home), rewind and R right under the screens.
+                        shoulder(L, "L", r(176, 250, 144, 40)),
+                        SkinControl.Menu(r(336, 256, 60, 28), reach = 6f),
+                        SkinControl.Rewind(r(416, 256, 60, 28), reach = 6f),
+                        shoulder(R, "R", r(492, 250, 144, 40)),
+                        pill(SELECT, "SELECT", r(250, 318, 64, 24), reach = 6f),
+                        round(L2, "MIC", r(336, 314, 32), icon = SkinIcon.MIC, reach = 4f),
+                        round(L3, "LID", r(444, 314, 32), icon = SkinIcon.LID, reach = 4f),
+                        pill(START, "START", r(498, 318, 64, 24), reach = 6f),
+                    ) + diamondAt(728f, 310f, 44f, 42f, X to "X", Y to "Y", A to "A", B to "B"),
                     SkinPalettes.DS,
                     DS_SIDEWAYS_SCREENS,
                 ),

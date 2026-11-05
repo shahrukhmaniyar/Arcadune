@@ -59,6 +59,7 @@ class ShellPlacementTest {
     @Test
     fun uprightTheGameIsCentredInTheBlackAboveTheBodyAndNeverTouchesIt() {
         for ((id, skin) in skins) {
+            if (skin.portrait.uprightScreenSide != null) continue
             for ((w, h) in uprightScreens) {
                 val p = place(id, skin, w, h, landscape = false)
                 val bodyTop = p.bodyTop!!
@@ -144,6 +145,19 @@ class ShellPlacementTest {
             }
         }
         assertTrue(found.distinct().joinToString("\n"), found.isEmpty())
+    }
+
+    /** The DS upright, as Delta lays it out: the body behind everything, the screens in it, clear of the controller. */
+    @Test
+    fun uprightTheDsScreensSitInTheBodyAboveTheController() {
+        val ds = ArcaduneSkins.forController(TouchControllerID.MELONDS)!!
+        for ((w, h) in uprightScreens) {
+            val p = place(TouchControllerID.MELONDS, ds, w, h, landscape = false)
+            assertEquals("${w}x$h: the body covers the whole screen", null, p.bodyTop)
+            val margin = (p.picture.left / dp) / w
+            assertTrue("${w}x$h: screens $margin of the width in from the side", margin >= 0.074f)
+            assertTrue("${w}x$h: screens reach the controller", p.picture.bottom + SCREEN_BEZEL_DP * dp <= p.panel.top)
+        }
     }
 
     /** Both skins of every console put the same controls in the same places: moved buttons apply to either. */
