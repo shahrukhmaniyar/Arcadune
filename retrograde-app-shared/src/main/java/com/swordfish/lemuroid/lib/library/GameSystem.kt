@@ -947,20 +947,6 @@ data class GameSystem(
                                             ),
                                         ),
                                     ),
-                                    ExposedSetting(
-                                        "melonds_mic_input",
-                                        R.string.setting_melonds_mic_input,
-                                        arrayListOf(
-                                            ExposedSetting.Value(
-                                                "microphone",
-                                                R.string.value_melonds_mic_input_microphone,
-                                            ),
-                                            ExposedSetting.Value(
-                                                "blow",
-                                                R.string.value_melonds_mic_input_blow,
-                                            ),
-                                        ),
-                                    ),
                                 ),
                             exposedAdvancedSettings =
                                 listOf(
@@ -983,6 +969,10 @@ data class GameSystem(
                                     // The big screen three times the small one: the main screen as big as the wings allow.
                                     CoreVariable("melonds_hybrid_ratio", "3"),
                                     CoreVariable("melonds_touch_mode", "Touch"),
+                                    // The microphone as Delta does it: no button, the phone's microphone simply
+                                    // listens while the game runs (silence without the permission).
+                                    CoreVariable("melonds_mic_input", "microphone"),
+                                    CoreVariable("melonds_mic_input_active", "always"),
                                     CoreVariable("melonds_threaded_renderer", "enabled"),
                                 ),
                             controllerConfigs =

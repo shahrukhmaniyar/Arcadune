@@ -311,7 +311,8 @@ fun renderBody(layout: SkinLayout, grille: Boolean): Image {
             // A name goes up to 16 units under small buttons and buttons named underneath.
             val captioned = control is SkinControl.Menu || control is SkinControl.Rewind || (control as? SkinControl.Button)?.labelBelow == true
             val bottom = f.y + f.height + if (captioned) 16f else 0f
-            f.x < mark.right && f.x + f.width > mark.left && f.y < mark.bottom && bottom > mark.top
+            // And some room beside it, so it never squeezes between two names.
+            f.x < mark.right + 8f && f.x + f.width > mark.left - 8f && f.y < mark.bottom && bottom > mark.top
         }
     if (clear) {
         canvas.drawTextLine(line, x, y + 0.5f * K, paint(alpha(0xFFFFFF, if (dark) 0.06f else 0.35f)))

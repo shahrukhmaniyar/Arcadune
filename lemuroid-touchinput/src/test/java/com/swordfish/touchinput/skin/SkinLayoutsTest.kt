@@ -172,8 +172,8 @@ class SkinLayoutsTest {
     }
 
     /**
-     * The DS sends what melonDS DS reads: the microphone is L3, the lid is L2 with Y. And it has
-     * no rewind, which the app cannot do for the DS.
+     * The DS sends what melonDS DS reads: the lid is L2 with Y. No microphone button (the core
+     * listens all the time, as Delta does) and no rewind, which the app cannot do for the DS.
      */
     @Test
     fun dsControlsMatchTheCore() {
@@ -181,9 +181,7 @@ class SkinLayoutsTest {
         for (layout in listOf(skin.portrait, skin.landscape)) {
             val buttons = layout.controls.filterIsInstance<SkinControl.Button>()
             assertFalse(layout.controls.any { it is SkinControl.Rewind })
-            val mic = buttons.single { it.label == "MIC" }
-            assertEquals(KeyEvent.KEYCODE_BUTTON_THUMBL, mic.keyCode)
-            assertEquals(null, mic.alsoKey)
+            assertFalse(buttons.any { it.label == "MIC" || it.keyCode == KeyEvent.KEYCODE_BUTTON_THUMBL })
             val lid = buttons.single { it.label == "LID" }
             assertEquals(KeyEvent.KEYCODE_BUTTON_L2, lid.keyCode)
             assertEquals(KeyEvent.KEYCODE_BUTTON_Y, lid.alsoKey)

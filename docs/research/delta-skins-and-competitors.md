@@ -100,7 +100,7 @@ and Menu / Select / Start in a row at the bottom.
 | Upright layout | Game edge to edge in black, controller at the bottom | Same | Adopted |
 | Sideways, home consoles and GBA | Full screen, see-through controls in the corners | Same, with the console's colours on the controls | Adopted |
 | Sideways, GB / Game Gear / Neo Geo Pocket | Framed like the GBC | Same | Adopted |
-| DS | Standard skin: the body behind everything; both screens in one recessed panel with thin outlines (no hinge); L / R tabs right under the screens; Menu · Start · Select along the bottom; screens across the top sideways | Same, plus Mic and Lid (Delta's skin has neither). No Rewind: the app cannot rewind the DS | Adopted |
+| DS | Standard skin: the body behind everything; both screens in one recessed panel with thin outlines (no hinge); L / R tabs right under the screens; Menu · Start · Select along the bottom; screens across the top sideways | Same, plus Lid (Delta's skin has none). No Mic button: the mic always listens, as in Delta. No Rewind: the app cannot rewind the DS | Adopted |
 | Skins per console | Any number, installed by the player | Two built in: Console and Minimal | Two good defaults first; imported skins are an open item |
 | Layout editing | None (install another skin) | Drag any button, one size for all, opacity; in Settings and in game | Goes beyond Delta |
 | Touch areas | Extended edges; nothing dead between buttons | Reach around each control, plus a grace area so no strip between face buttons is dead | Same aim |
@@ -126,13 +126,26 @@ Checked against the DS core the app ships (melonDS DS 1.3.1, `src/libretro/input
 
 - **Rewind:** the DS is not in `GameViewModelRewind.SUPPORTED_SYSTEMS`, so the DS skins have no
   rewind button.
-- **Microphone:** L3. The core's mic button mode defaults to "hold", so it listens only while the
-  button is down. It is the only way to blow or speak into games that ask for it, so the button stays.
+- **Microphone:** Delta has no mic button. MelonDSDeltaCore starts the phone's microphone when
+  melonDS first asks for it (`Mic_Prepare`) and feeds it to the game from then on. Arcadune does the
+  same with the core's own options: `melonds_mic_input = microphone` and
+  `melonds_mic_input_active = always` (no button needed). The "Blow" choice is gone from the DS
+  settings, since a fake blow that never stops would break games. LibretroDroid (0.14) implements
+  the libretro microphone interface and starts the stream as soon as the core opens it. So the
+  phone's microphone is in use while a DS game runs, as it already was with the hold button.
 - **Lid:** Y pressed while L2 is held toggles the lid (on the press). The skin's LID button sends
   L2 and Y together. Y is not masked from the game while L2 is held, so the game also sees a short
   Y tap. That is harmless in practice, because a game sleeps once the lid is closed. A few games need the lid (a
   puzzle in Zelda: Phantom Hourglass, for one), so the button stays.
 - Lemuroid's own DS layout (`radial/layouts/MelonDS.kt`) sent the mic on L2 and the lid on L3,
   which the current core reads as pointer speedup and the mic. The Arcadune skins had copied that
-  mapping and now send the keys the core reads.
+  mapping; the lid now sends the keys the core reads.
+
+## Rewind on every console
+
+Rewind keeps a save state every half second in memory (up to 60, or 48 MB), so it is offered only
+where states are small: NES, SNES, GB / GBC, GBA, Genesis, Master System, Game Gear, PC Engine,
+Atari 2600 / 7800, Lynx, Neo Geo Pocket (Color), WonderSwan (Color). The skins of consoles that never
+rewind (N64, PlayStation, PSP, DS, 3DS, arcade) have no rewind button. The Genesis skin is shared with
+the Sega CD, which cannot rewind, so there the game screen hides the button at run time.
 
