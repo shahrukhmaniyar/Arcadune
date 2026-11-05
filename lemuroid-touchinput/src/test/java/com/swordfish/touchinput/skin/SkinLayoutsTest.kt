@@ -188,9 +188,7 @@ class SkinLayoutsTest {
             val buttons = layout.controls.filterIsInstance<SkinControl.Button>()
             assertFalse(layout.controls.any { it is SkinControl.Rewind })
             assertFalse(buttons.any { it.label == "MIC" || it.keyCode == KeyEvent.KEYCODE_BUTTON_THUMBL })
-            val lid = buttons.single { it.label == "LID" }
-            assertEquals(KeyEvent.KEYCODE_BUTTON_L2, lid.keyCode)
-            assertEquals(KeyEvent.KEYCODE_BUTTON_Y, lid.alsoKey)
+            assertFalse(buttons.any { it.label == "LID" })
         }
     }
 

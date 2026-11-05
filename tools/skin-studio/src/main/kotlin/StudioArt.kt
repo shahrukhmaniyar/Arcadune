@@ -256,7 +256,9 @@ fun renderPart(layout: SkinLayout, control: SkinControl, pressed: Boolean): Imag
                         ButtonShape.SHOULDER -> c(palette.shoulderLabel)
                         else -> c(palette.labelOf(control.keyCode))
                     }
-                val size = if (shape == ButtonShape.ROUND) face.height * 0.44f else face.height * 0.52f
+                // From the smaller side, so a tall thin tab (the DS L / R) gets a small letter, not a huge one.
+                val side = minOf(face.width, face.height)
+                val size = if (shape == ButtonShape.ROUND) side * 0.44f else side * 0.52f
                 val font = Font(inter(if (shape == ButtonShape.ROUND) 600 else 700), size)
                 canvas.moulded(control.label, font, face.left + face.width / 2, face.top + face.height / 2, label, fill, extent, pressed)
             }

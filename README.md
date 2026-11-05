@@ -2,11 +2,20 @@
 
 Arcadune is an open-source emulation app for Android based on Libretro. It focuses on ease of use, good Android integration and a clean experience.
 
+<p align="center">
+  <img src="docs/screenshots/library.jpg" alt="The library: swipe between Favorites, Recently Played and each console" width="23%">
+  <img src="docs/screenshots/snes.jpg" alt="Super Nintendo with its own controller" width="23%">
+  <img src="docs/screenshots/n64.jpg" alt="Nintendo 64 with its own controller" width="23%">
+  <img src="docs/screenshots/nintendo-ds.jpg" alt="Nintendo DS with both screens and its own controller" width="23%">
+</p>
+
+<p align="center"><sub>The library, then Super Nintendo, Nintendo 64 and Nintendo DS, each with a controller made for that console.</sub></p>
+
 ## Download
 
-**[Download Arcadune](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 10 MB). It downloads each console's emulator engine the first time you play that console, so it needs internet at first. After that it works offline.
+**[Download Arcadune](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune.apk)** (about 13 MB). It downloads each console's emulator engine the first time you play that console, so it needs internet at first. After that it works offline.
 
-**[Download the full version](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune-full.apk)** (about 100 MB). Every emulator engine is built in, so it works with no internet at all.
+**[Download the full version](https://github.com/shahrukhmaniyar/Arcadune/releases/latest/download/Arcadune-full.apk)** (about 105 MB). Every emulator engine is built in, so it works with no internet at all.
 
 Both are the same app, so you can switch between them without losing your library. All versions are on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). To install, open the APK on your phone and allow installs from your browser or file manager when Android asks. Arcadune needs Android 6.0 or newer. From version 1.0.5 on, Arcadune updates itself: it tells you when a new version is out and installs it from Settings > Updates.
 
@@ -18,7 +27,9 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - **Smarter automatic covers:** covers are fetched from the libretro-thumbnails GitHub mirror first, then retried under other region names and matched against the real list of covers.
 - **Rename a game and its cover follows:** the cover is looked up again under the new name.
 - **A new library:** swipe between Favorites, Recently Played and each console, or drag along the page bar at the bottom; search sits right under your thumb.
-- **Own controller skins:** clean black-and-white and classic NES-style skins for the older consoles, with a menu button, rewind and an editor to move and resize the buttons.
+- **A controller made for every console:** each console has its own controller in its own colours (PlayStation, N64, DS, 3DS, SNES, Game Boy, Sega and the rest), or a plainer Minimal one if you prefer. The game shows through rounded screen windows in the console's body, and sideways the controls fit around or over the game.
+- **Edit your controller:** move and resize every button, set the opacity and reset to default, for each console and for upright and sideways separately (from a game's menu, or in Settings > Controllers).
+- **Nintendo DS and 3DS:** a big main screen with the other one small beside it when you turn the phone, a Swap button to trade them, the DS touch screen works while buttons are held, and the 3DS has settings for its screen layout, stick, resolution and more.
 - **Rewind:** hold the rewind button to go back up to 30 seconds on the older consoles.
 - **Per-game settings:** give a game its own screen filter and emulator options.
 - **Cover manager:** find every game without a cover and fix them in one place. Downloaded covers are compressed to save space.
@@ -50,7 +61,9 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - Neo Geo Pocket Color (NGC) ([mednafen_ngp](https://docs.libretro.com/library/beetle_neopop/))
 - WonderSwan (WS) ([beetle_cygne](https://docs.libretro.com/library/beetle_cygne/))
 - WonderSwan Color (WSC) ([beetle_cygne](https://docs.libretro.com/library/beetle_cygne/))
-- Nintendo 3DS (3DS) ([citra](https://docs.libretro.com/library/citra/))
+- Nintendo 3DS (3DS) ([citra](https://docs.libretro.com/library/citra/)), on 64-bit phones only
+- MAME 2003-Plus (Arcade) ([mame2003_plus](https://docs.libretro.com/library/mame_2003_plus/))
+- DOS (DOS) ([dosbox_pure](https://docs.libretro.com/library/dosbox_pure/))
 
 ### Features
 - Android TV support
@@ -63,7 +76,7 @@ Arcadune is a fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) by Swo
 - Gamepad support
 - Local multiplayer
 - Tilt input
-- Customizable touch controls (size and position)
+- Customizable touch controls (size, position and opacity)
 
 ## Build from source
 
@@ -76,6 +89,8 @@ cd Arcadune
 ```
 
 On Windows, run `powershell -ExecutionPolicy Bypass -File scripts\fix-bundled-cores.ps1` once after cloning and before building. Without it the emulator cores are broken and every game fails to start.
+
+The controller artwork is drawn by code, not copied from anywhere. After changing a controller layout, redraw it with `./gradlew -p tools/skin-studio art` (see [tools/skin-studio](tools/skin-studio/README.md)); the skin tests fail if a layout and its artwork do not match.
 
 ## License
 

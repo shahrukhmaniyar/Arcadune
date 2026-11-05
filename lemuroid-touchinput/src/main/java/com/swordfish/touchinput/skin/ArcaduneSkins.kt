@@ -18,7 +18,7 @@ data class SkinRect(val x: Float, val y: Float, val width: Float, val height: Fl
 enum class ButtonShape { ROUND, PILL, SHOULDER }
 
 /**
- * Small pictures drawn on buttons whose name says less than a picture: the DS microphone and lid,
+ * Small pictures drawn on buttons whose name says less than a picture: the DS microphone,
  * the 3DS swap, and the quick buttons (fast forward, quick save, quick load).
  */
 enum class SkinIcon { MIC, LID, SWAP, FAST_FORWARD, QUICK_SAVE, QUICK_LOAD }
@@ -777,7 +777,7 @@ object ArcaduneSkins {
         )
 
     /** How far in from each side the DS screens sit upright: room for the L and R tabs beside them. */
-    private const val DS_UPRIGHT_SIDE = 0.11f
+    private const val DS_UPRIGHT_SIDE = 0.08f
 
     // The whole height: nothing goes under the screen, so it is as big as the phone allows.
     private val FRAMED_SCREEN = SkinRect(200f, 4f, 412f, 367f)
@@ -1146,19 +1146,17 @@ object ArcaduneSkins {
         )
 
     /**
-     * Nintendo DS: the white DS Lite. Upright, the panel is shorter so both screens stay big; the
-     * lid sits along the bottom, between menu, start and select. Sideways, the screens sit across
-     * the top, the quick buttons down the left side and the lid on the right one. No rewind: the app
+     * Nintendo DS: the white DS Lite. Upright, the panel is shorter so both screens stay big; menu, start
+     * and select sit along the bottom. Sideways, the screens sit across
+     * the top, the quick buttons down the left side and Swap on the right. No rewind: the app
      * cannot rewind the DS. No microphone button either: as in Delta, the phone's microphone simply
      * listens while the game runs (the DS core is set to "always" in GameSystem).
-     *
-     * The lid is L2 with Y, as melonDS DS reads it (L2 held turns Y into "close / open the lid").
      */
     private fun ds() =
         ArcaduneSkin(
             // Upright the way Delta's standard DS skin is laid out: the body behind everything,
             // both screens in one recessed panel with L and R as tabs either side of the touch screen,
-            // a big d-pad and big X / Y / A / B, the lid in the middle right under the touch screen,
+            // a big d-pad and big X / Y / A / B,
             // and menu, start and select along the bottom, start in the middle.
             portrait =
                 console(
@@ -1167,21 +1165,20 @@ object ArcaduneSkins {
                         // L and R as upright tabs either side of the touch screen, like Delta's DS:
                         // above the controller (negative y), in the margins the screens leave, low
                         // enough to sit beside the touch screen on every phone shape.
-                        shoulder(L, "L", r(5, -84, 22, 74)),
-                        shoulder(R, "R", r(293, -84, 22, 74)),
+                        shoulder(L, "L", r(3, -74, 19, 62)).copy(reach = 2f),
+                        shoulder(R, "R", r(298, -74, 19, 62)).copy(reach = 2f),
                         SkinControl.Dpad(r(8, 20, 130), reach = 10f),
                     ) + diamondAt(246f, 88f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
                         listOf(
                             SkinControl.Menu(r(8, 166, 40, 17)),
                             pill(START, "START", r(140, 166, 40, 17)),
-                            dsLid(r(148, 0, 24)),
                             pill(SELECT, "SELECT", r(272, 166, 40, 17)),
                         ),
                     height = 210f,
                 ).copy(uprightScreenSide = DS_UPRIGHT_SIDE, screenPanelBelow = 6f),
             // Sideways like the 3DS: slim wings, a big main screen with the other one small at its
             // lower right (Swap trades them), the quick buttons and L on the left wing, R, Swap,
-            // the lid and X / Y / A / B on the right one.
+            // and X / Y / A / B on the right one.
             landscape =
                 landscape(
                     listOf(
@@ -1191,15 +1188,12 @@ object ArcaduneSkins {
                         round(KEYCODE_QUICK_LOAD, "LOAD", r(58, 54, 34), icon = SkinIcon.QUICK_LOAD, reach = 2f),
                         SkinControl.Dpad(r(5, 160, 96), reach = 6f),
                         round(KEYCODE_SWAP_SCREENS, "SWAP", r(714, 54, 36), icon = SkinIcon.SWAP, reach = 2f),
-                        dsLid(r(764, 54, 36)),
                     ) + diamondAt(760f, 214f, 32f, 33f, X to "X", Y to "Y", A to "A", B to "B") + slimWingBand(),
                     SkinPalettes.DS,
                     SLIM_WING_SCREENS,
                 ),
         )
 
-    /** Closing / opening the DS lid: melonDS DS toggles it when Y is pressed with L2 held. */
-    private fun dsLid(frame: SkinRect) = round(L2, "LID", frame, icon = SkinIcon.LID, reach = 4f).copy(alsoKey = Y)
 
     /**
      * Nintendo 3DS (New 3DS): the Circle Pad over the d-pad, the coloured buttons, the C-Stick (the
@@ -1625,3 +1619,9 @@ fun SkinLayout.signature(): String {
         }
     return Integer.toHexString(text.hashCode())
 }
+
+/**
+ * How far (in skin units) the controls of this layout reach above its top edge: the DS's L and R
+ * tabs sit beside the screens, above the controller panel. 0 for every other layout.
+ */
+fun SkinLayout.unitsAbove(): Float = -(controls.minOf { it.frame.y - it.reach }.coerceAtMost(0f))

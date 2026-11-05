@@ -472,8 +472,20 @@ fun ArcaduneShellPreview(
                     }
                 }
             if (onMove != null) {
+                // The controls above the panel (the DS L / R tabs) need touch area up there too.
+                val above = if (isLandscape) 0f else layout.unitsAbove() * placement.panel.width / layout.width
+                val editorArea =
+                    if (isLandscape || above <= 0f) {
+                        controls
+                    } else {
+                        with(density) {
+                            Modifier
+                                .absoluteOffset { androidx.compose.ui.unit.IntOffset(placement.panel.left.toInt(), (placement.panel.top - above).toInt()) }
+                                .size(placement.panel.width.toDp(), (placement.panel.height + above).toDp())
+                        }
+                    }
                 ArcaduneSkinEditor(
-                    controls,
+                    editorArea,
                     layout,
                     pinToEdges = isLandscape,
                     rewindAvailable = true,
@@ -481,6 +493,7 @@ fun ArcaduneShellPreview(
                     onMove = onMove,
                     shell = shell,
                     art = art,
+                    topExtra = with(density) { above.toDp() },
                 )
             } else {
                 ArcaduneSkinPreview(controls, layout, isLandscape, shell, customization, art)

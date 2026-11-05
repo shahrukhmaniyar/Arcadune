@@ -6,6 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,6 +47,7 @@ import com.swordfish.touchinput.skin.ArcaduneSkinEditor
 import com.swordfish.touchinput.skin.SkinCustomization
 import com.swordfish.touchinput.skin.SkinVariant
 import com.swordfish.touchinput.skin.signature
+import com.swordfish.touchinput.skin.unitsAbove
 
 /** Saves the player's skin changes, one set per controller and orientation. */
 class SkinCustomizationStore(context: Context) {
@@ -127,7 +133,7 @@ fun SkinEditorOverlay(
         customizationState.value = latest.copy(offsets = latest.offsets + (index to current + delta))
     }
 
-    Box(
+    BoxWithConstraints(
         modifier =
             Modifier
                 .fillMaxSize()
@@ -135,6 +141,9 @@ fun SkinEditorOverlay(
                 // Takes every touch, so nothing reaches the game while editing.
                 .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
     ) {
+        // The settings panel never grows past the screen: on a short one (a phone held sideways)
+        // its settings scroll, while Reset and Done stay at its bottom, always in reach.
+        val panelMaxHeight = maxHeight - 16.dp
         if (isLandscape) {
             ArcaduneSkinEditor(
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).padding(4.dp),
@@ -147,12 +156,15 @@ fun SkinEditorOverlay(
             )
         } else {
             // Exactly over the controller of the game (the editor is drawn on top of it).
+            // The controls above the panel (the DS L / R tabs) get touch area up there too.
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val above = if (panel != null) layout.unitsAbove() * panel.width / layout.width else 0f
             val editorModifier =
                 if (panel != null) {
-                    with(androidx.compose.ui.platform.LocalDensity.current) {
+                    with(density) {
                         Modifier
-                            .absoluteOffset { androidx.compose.ui.unit.IntOffset(panel.left.toInt(), panel.top.toInt()) }
-                            .size(panel.width.toDp(), panel.height.toDp())
+                            .absoluteOffset { androidx.compose.ui.unit.IntOffset(panel.left.toInt(), (panel.top - above).toInt()) }
+                            .size(panel.width.toDp(), (panel.height + above).toDp())
                     }
                 } else {
                     Modifier.align(Alignment.BottomCenter).widthIn(max = 520.dp).fillMaxWidth().aspectRatio(layout.width / layout.height)
@@ -165,6 +177,7 @@ fun SkinEditorOverlay(
                 customization = customization,
                 onMove = ::move,
                 art = art,
+                topExtra = with(density) { above.toDp() },
             )
         }
 
@@ -173,12 +186,17 @@ fun SkinEditorOverlay(
                 Modifier
                     .align(if (isLandscape) Alignment.Center else Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(16.dp)
+                    .navigationBarsPadding()
+                    .padding(8.dp)
                     .widthIn(max = 360.dp)
+                    .heightIn(max = panelMaxHeight)
                     .background(Color(0xF01C1A27), RoundedCornerShape(20.dp))
-                    .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
         ) {
+          Column(
+            modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
             Text(
                 stringResource(R.string.skin_editor_title),
                 color = Color.White,
@@ -243,6 +261,7 @@ fun SkinEditorOverlay(
                     }
                 }
             }
+          }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onReset) { Text(stringResource(R.string.skin_editor_reset)) }
                 TextButton(onClick = onDone) { Text(stringResource(R.string.skin_editor_done)) }

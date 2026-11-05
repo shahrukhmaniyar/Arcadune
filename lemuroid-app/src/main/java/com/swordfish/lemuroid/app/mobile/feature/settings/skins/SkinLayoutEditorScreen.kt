@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.mobile.feature.settings.skins
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -80,71 +81,120 @@ fun SkinLayoutEditorScreen(
     val long = maxOf(configuration.screenWidthDp, configuration.screenHeightDp).dp
     val name = Controllers.firstOrNull { it.first == id }?.second ?: id.name
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            VariantSwitch(
-                variant = variant,
-                onChange = {
-                    variant = it
-                    store.setVariant(id.name, it)
-                },
-            )
+    // A wide, short screen (a phone held sideways, a tablet) has no height to spare: there the
+    // preview takes all the room, with its buttons all in view to drag, and the settings and the
+    // Reset and Done buttons form one compact row under it. A tall screen keeps them stacked.
+    BoxWithConstraints(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        val compact = maxWidth > maxHeight
+        val sizeSlider: @Composable (Modifier) -> Unit = { slider ->
+            Column(slider) {
+                Text(
+                    text = stringResource(R.string.skin_editor_size, (customization.value.size * 100).toInt()),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Slider(
+                    value = customization.value.size,
+                    valueRange = SkinCustomization.MIN_SIZE..SkinCustomization.MAX_SIZE,
+                    onValueChange = { customization.value = customization.value.copy(size = it) },
+                )
+            }
         }
-        PillSwitch(
-            options = listOf(false to R.string.skin_layout_upright, true to R.string.skin_layout_sideways),
-            selected = landscape,
-            onChange = { landscape = it },
-        )
-        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-            ArcaduneShellPreview(
-                modifier = Modifier.fillMaxSize(),
-                id = id,
-                skin = skin,
-                isLandscape = landscape,
-                phoneWidth = if (landscape) long else short,
-                phoneHeight = if (landscape) short else long,
-                customization = customization.value,
-                onMove = ::move,
-                art = art,
-            )
+        val opacitySlider: @Composable (Modifier) -> Unit = { slider ->
+            Column(slider) {
+                Text(
+                    text = stringResource(R.string.skin_editor_opacity, (customization.value.opacity * 100).toInt()),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Slider(
+                    value = customization.value.opacity,
+                    valueRange = SkinCustomization.MIN_OPACITY..1f,
+                    onValueChange = { customization.value = customization.value.copy(opacity = it) },
+                )
+            }
         }
-        Text(
-            text = stringResource(R.string.skin_editor_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = ArcaduneColors.OnSurfaceDim,
-        )
-        Text(
-            text = stringResource(R.string.skin_editor_size, (customization.value.size * 100).toInt()),
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Slider(
-            value = customization.value.size,
-            valueRange = SkinCustomization.MIN_SIZE..SkinCustomization.MAX_SIZE,
-            onValueChange = { customization.value = customization.value.copy(size = it) },
-        )
-        Text(
-            text = stringResource(R.string.skin_editor_opacity, (customization.value.opacity * 100).toInt()),
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Slider(
-            value = customization.value.opacity,
-            valueRange = SkinCustomization.MIN_OPACITY..1f,
-            onValueChange = { customization.value = customization.value.copy(opacity = it) },
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        val buttons: @Composable () -> Unit = {
             TextButton(onClick = { customization.value = SkinCustomization() }) {
                 Text(stringResource(R.string.skin_editor_reset))
             }
             Button(onClick = onDone) { Text(stringResource(R.string.skin_editor_done)) }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp)) {
+            if (compact) {
+                // The name, the layout and the skin on one line.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PillSwitch(
+                        options = listOf(false to R.string.skin_layout_upright, true to R.string.skin_layout_sideways),
+                        selected = landscape,
+                        onChange = { landscape = it },
+                    )
+                    VariantSwitch(
+                        variant = variant,
+                        onChange = {
+                            variant = it
+                            store.setVariant(id.name, it)
+                        },
+                    )
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    VariantSwitch(
+                        variant = variant,
+                        onChange = {
+                            variant = it
+                            store.setVariant(id.name, it)
+                        },
+                    )
+                }
+                PillSwitch(
+                    options = listOf(false to R.string.skin_layout_upright, true to R.string.skin_layout_sideways),
+                    selected = landscape,
+                    onChange = { landscape = it },
+                )
+            }
+
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                ArcaduneShellPreview(
+                    modifier = Modifier.fillMaxSize(),
+                    id = id,
+                    skin = skin,
+                    isLandscape = landscape,
+                    phoneWidth = if (landscape) long else short,
+                    phoneHeight = if (landscape) short else long,
+                    customization = customization.value,
+                    onMove = ::move,
+                    art = art,
+                )
+            }
+
+            if (compact) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    sizeSlider(Modifier.weight(1f))
+                    opacitySlider(Modifier.weight(1f))
+                    buttons()
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.skin_editor_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ArcaduneColors.OnSurfaceDim,
+                )
+                sizeSlider(Modifier)
+                opacitySlider(Modifier)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { buttons() }
+            }
         }
     }
 }

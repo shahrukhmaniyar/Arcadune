@@ -230,13 +230,19 @@ fun ArcaduneSkinEditor(
     /** True when a [ConsoleShell] is drawn behind: the panel then has no background of its own. */
     shell: Boolean = false,
     art: SkinArt? = null,
+    /**
+     * Room above the controls, inside this editor's own area, for the controls that sit above the
+     * panel (the DS L and R tabs): a touch outside an element's bounds never reaches it, so without
+     * this they could not be dragged. The caller makes the area this much taller and higher.
+     */
+    topExtra: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val currentOnMove by rememberUpdatedState(onMove)
     val notPressed = remember { mutableStateOf(false) }
     val dragging = remember { mutableStateOf<Int?>(null) }
 
     BoxWithConstraints(modifier = modifier) {
-        val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+        val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, (maxHeight - topExtra).value)
         val rects by rememberUpdatedState(geometry.touchRects(customization, rewindAvailable))
         val scale by rememberUpdatedState(geometry.scale)
 
@@ -249,7 +255,7 @@ fun ArcaduneSkinEditor(
                         // part of the game screen can take the touch first.
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                            val start = Offset(down.position.x / density, down.position.y / density)
+                            val start = Offset(down.position.x / density, down.position.y / density - topExtra.value)
                             // The smallest control under the finger wins (a button inside the d-pad's reach).
                             val index =
                                 rects
@@ -274,7 +280,7 @@ fun ArcaduneSkinEditor(
                     },
         ) {
             SkinFrame(
-                Modifier.fillMaxSize().graphicsLayer { alpha = customization.opacity },
+                Modifier.fillMaxSize().padding(top = topExtra).graphicsLayer { alpha = customization.opacity },
                 layout,
                 pinToEdges,
                 rewindAvailable,
