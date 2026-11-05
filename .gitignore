@@ -27,3 +27,8 @@ keystore.properties
 
 # Kotlin compiler daemon state
 .kotlin/
+
+# Skin studio build output
+tools/skin-studio/build/
+tools/skin-studio/.gradle/
+tools/skin-studio/.kotlin/

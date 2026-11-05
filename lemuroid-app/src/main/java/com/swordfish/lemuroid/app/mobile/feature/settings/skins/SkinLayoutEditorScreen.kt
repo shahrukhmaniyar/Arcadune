@@ -59,6 +59,7 @@ fun SkinLayoutEditorScreen(
     val layout = if (landscape) skin.landscape else skin.portrait
     val key = SkinCustomizationStore.keyOf(id.name, landscape, layout)
     val customization = remember(key) { mutableStateOf(store.load(key)) }
+    val art = rememberSkinArt(id, variant, landscape)
     // Kept in memory while dragging (saving every move makes dragging stutter), saved when the
     // other layout is picked or the screen is left.
     DisposableEffect(key) { onDispose { store.save(key, customization.value) } }
@@ -113,6 +114,7 @@ fun SkinLayoutEditorScreen(
                 phoneHeight = if (landscape) short else long,
                 customization = customization.value,
                 onMove = ::move,
+                art = art,
             )
         }
         Text(

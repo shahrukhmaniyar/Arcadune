@@ -35,6 +35,11 @@ import com.swordfish.touchinput.skin.ArcaduneShellPreview
 import androidx.compose.foundation.layout.size
 import com.swordfish.touchinput.skin.ArcaduneSkins
 import com.swordfish.touchinput.skin.SkinVariant
+import com.swordfish.touchinput.skin.SkinArt
+import com.swordfish.touchinput.skin.SkinArtLoader
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.navigation.NavController
 import androidx.compose.material3.OutlinedButton
 
@@ -103,6 +108,8 @@ private fun SkinCard(
     // The player's own layout (moved buttons, size, opacity), as the game shows it.
     val upright = store.load(SkinCustomizationStore.keyOf(id.name, false, skin.portrait))
     val sideways = store.load(SkinCustomizationStore.keyOf(id.name, true, skin.landscape))
+    val uprightArt = rememberSkinArt(id, variant, landscape = false)
+    val sidewaysArt = rememberSkinArt(id, variant, landscape = true)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -126,12 +133,37 @@ private fun SkinCard(
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 val uprightSize = Modifier.size(height * 360f / 780f, height)
                 val sidewaysSize = Modifier.size(height * 780f / 360f, height)
-                ArcaduneShellPreview(uprightSize, id, skin, isLandscape = false, customization = upright)
-                ArcaduneShellPreview(sidewaysSize, id, skin, isLandscape = true, customization = sideways)
+                ArcaduneShellPreview(uprightSize, id, skin, false, customization = upright, art = uprightArt)
+                ArcaduneShellPreview(sidewaysSize, id, skin, true, customization = sideways, art = sidewaysArt)
             }
         }
         OutlinedButton(onClick = onEdit) { Text(stringResource(R.string.skin_layout_edit)) }
     }
+}
+
+/** The Console skin's designed pictures of [id] for one orientation (none for Minimal), read off the main thread. */
+@Composable
+internal fun rememberSkinArt(
+    id: TouchControllerID,
+    variant: SkinVariant,
+    landscape: Boolean,
+): SkinArt? {
+    val context = LocalContext.current
+    val art by
+        produceState(
+            initialValue = SkinArtLoader.cached(id.name, landscape).takeIf { variant == SkinVariant.CONSOLE },
+            id,
+            variant,
+            landscape,
+        ) {
+            value =
+                if (variant == SkinVariant.CONSOLE) {
+                    withContext(Dispatchers.IO) { SkinArtLoader.load(context, id.name, landscape) }
+                } else {
+                    null
+                }
+        }
+    return art
 }
 
 /** Two halves of one small pill: the Console skin, or the Minimal one. */

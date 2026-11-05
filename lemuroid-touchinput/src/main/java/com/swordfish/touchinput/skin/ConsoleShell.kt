@@ -421,6 +421,8 @@ fun ArcaduneShellPreview(
     customization: SkinCustomization = SkinCustomization(),
     /** Given, the controls can be dragged (see [ArcaduneSkinEditor]): the layout editor in Settings. */
     onMove: ((Int, Offset) -> Unit)? = null,
+    /** The skin's designed pictures for this orientation, when it has them (see [SkinArt]). */
+    art: SkinArt? = null,
 ) {
     val corners = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.clip(corners)) {
@@ -478,9 +480,10 @@ fun ArcaduneShellPreview(
                     customization = customization,
                     onMove = onMove,
                     shell = shell,
+                    art = art,
                 )
             } else {
-                ArcaduneSkinPreview(controls, layout, isLandscape, shell, customization)
+                ArcaduneSkinPreview(controls, layout, isLandscape, shell, customization, art)
             }
         }
     }

@@ -122,6 +122,8 @@ fun ArcaduneSkinView(
     input: SkinInput,
     /** True when a [ConsoleShell] is drawn behind: the panel then has no background of its own. */
     shell: Boolean = false,
+    /** The skin's designed pictures, when it has them (see [SkinArt]). */
+    art: SkinArt? = null,
 ) {
     val origin = remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(modifier.onGloballyPositioned { origin.value = it.boundsInRoot().topLeft }) {
@@ -161,14 +163,23 @@ fun ArcaduneSkinView(
             rewindAvailable,
             customization,
             drawBody = !shell,
+            art = art,
         ) { index, control, frame, placement, scale ->
             val inset = (control.reach * scale).dp
             Box(modifier = placement) {
                 when (control) {
-                    is SkinControl.Dpad ->
+                    is SkinControl.Dpad -> {
+                        val art = LocalSkinArt.current?.part(control, pressed = false)
+                        val pad = ((control.reach + ART_BLEED) * scale).dp
                         Canvas(Modifier.fillMaxSize().padding(inset)) {
-                            drawAnyDpad(layout, control.look, input.directions[index] ?: Offset.Zero)
+                            val direction = input.directions[index] ?: Offset.Zero
+                            if (art != null) {
+                                drawArtDpad(art, pad.toPx(), direction)
+                            } else {
+                                drawAnyDpad(layout, control.look, direction)
+                            }
                         }
+                    }
 
                     is SkinControl.Stick ->
                         Canvas(Modifier.fillMaxSize().padding(inset)) {
@@ -218,6 +229,7 @@ fun ArcaduneSkinEditor(
     onMove: (Int, Offset) -> Unit,
     /** True when a [ConsoleShell] is drawn behind: the panel then has no background of its own. */
     shell: Boolean = false,
+    art: SkinArt? = null,
 ) {
     val currentOnMove by rememberUpdatedState(onMove)
     val notPressed = remember { mutableStateOf(false) }
@@ -268,6 +280,7 @@ fun ArcaduneSkinEditor(
                 rewindAvailable,
                 customization,
                 drawBody = !shell,
+                art = art,
             ) { index, control, frame, placement, scale ->
                 val inset = (control.reach * scale).dp
                 val active = dragging.value == index
@@ -297,6 +310,7 @@ fun ArcaduneSkinPreview(
     pinToEdges: Boolean = false,
     shell: Boolean = false,
     customization: SkinCustomization = SkinCustomization(),
+    art: SkinArt? = null,
 ) {
     val notPressed = remember { mutableStateOf(false) }
     val frameModifier = modifier.graphicsLayer { alpha = customization.opacity }
@@ -307,6 +321,7 @@ fun ArcaduneSkinPreview(
         rewindAvailable = true,
         customization = customization,
         drawBody = !shell,
+        art = art,
     ) { _, control, frame, placement, scale ->
         Box(modifier = placement.padding((control.reach * scale).dp)) {
             StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
@@ -325,7 +340,13 @@ private fun StaticControl(
     pinned: Boolean,
 ) {
     when (control) {
-        is SkinControl.Dpad -> Canvas(Modifier.fillMaxSize()) { drawAnyDpad(layout, control.look, Offset.Zero) }
+        is SkinControl.Dpad -> {
+            val art = LocalSkinArt.current?.part(control, pressed = false)
+            val pad = ((control.reach + ART_BLEED) * scale).dp
+            Canvas(Modifier.fillMaxSize()) {
+                if (art != null) drawArtPart(art, pad.toPx()) else drawAnyDpad(layout, control.look, Offset.Zero)
+            }
+        }
         is SkinControl.Stick ->
             Canvas(Modifier.fillMaxSize()) {
                 drawStickBase(layout)
@@ -434,38 +455,99 @@ private fun SkinFrame(
     rewindAvailable: Boolean,
     customization: SkinCustomization,
     drawBody: Boolean = true,
+    art: SkinArt? = null,
     control: @Composable BoxWithConstraintsScope.(index: Int, control: SkinControl, frame: SkinRect, placement: Modifier, scale: Float) -> Unit,
 ) {
-    BoxWithConstraints(modifier = modifier) {
-        val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
-        val scale = geometry.scale
+    androidx.compose.runtime.CompositionLocalProvider(LocalSkinArt provides art) {
+        BoxWithConstraints(modifier = modifier) {
+            val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+            val scale = geometry.scale
 
-        fun placeX(frame: SkinRect): Float = geometry.placeX(frame)
+            fun placeX(frame: SkinRect): Float = geometry.placeX(frame)
 
-        // The NES pad keeps its own black face even inside a shell.
-        if (!pinToEdges && (drawBody || layout.style == SkinStyle.NES_CLASSIC)) {
-            Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
-        }
+            // The NES pad keeps its own black face even inside a shell.
+            if (!pinToEdges && (drawBody || layout.style == SkinStyle.NES_CLASSIC)) {
+                Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
+            }
+            // The body's designed overlay over the panel: the plastic's grain, then sheen, wordmark, grille.
+            val bodyArt = art?.body
+            if (bodyArt != null && !pinToEdges) {
+                val grain = art.grain
+                Canvas(Modifier.fillMaxSize()) {
+                    if (grain != null) {
+                        val tile =
+                            androidx.compose.ui.graphics.ShaderBrush(
+                                androidx.compose.ui.graphics.ImageShader(
+                                    grain,
+                                    androidx.compose.ui.graphics.TileMode.Repeated,
+                                    androidx.compose.ui.graphics.TileMode.Repeated,
+                                ),
+                            )
+                        drawRect(tile, alpha = 0.06f, blendMode = androidx.compose.ui.graphics.BlendMode.Overlay)
+                    }
+                    drawArtPart(bodyArt, 0f)
+                }
+            }
 
-        layout.controls.forEachIndexed { index, item ->
-            if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
-            // Each control keeps its identity by index, so a control that comes or goes (rewind)
-            // never makes the ones after it start over.
-            androidx.compose.runtime.key(index) {
-            val frame = customization.frameOf(index, item.frame)
-            val reach = item.reach
-            val x = placeX(frame) - reach * scale
-            val y = geometry.placeY(frame) - reach * scale
-            val placement =
-                Modifier
-                    .absoluteOffset { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) }
-                    .size(((frame.width + 2 * reach) * scale).dp, ((frame.height + 2 * reach) * scale).dp)
-            control(index, item, frame, placement, scale)
-            // Sideways there is no room under the controls: names go on them instead.
-            if (!pinToEdges) Caption(layout, item, frame, placeX(frame), geometry.placeY(frame), scale)
+            layout.controls.forEachIndexed { index, item ->
+                if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
+                // Each control keeps its identity by index, so a control that comes or goes (rewind)
+                // never makes the ones after it start over.
+                androidx.compose.runtime.key(index) {
+                    val frame = customization.frameOf(index, item.frame)
+                    val reach = item.reach
+                    val x = placeX(frame) - reach * scale
+                    val y = geometry.placeY(frame) - reach * scale
+                    val placement =
+                        Modifier
+                            .absoluteOffset { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) }
+                            .size(((frame.width + 2 * reach) * scale).dp, ((frame.height + 2 * reach) * scale).dp)
+                    control(index, item, frame, placement, scale)
+                    // Sideways there is no room under the controls: names go on them instead.
+                    if (!pinToEdges) Caption(layout, item, frame, placeX(frame), geometry.placeY(frame), scale)
+                }
             }
         }
     }
+}
+
+/** The artwork of the skin being drawn, for the controls inside [SkinFrame]. */
+private val LocalSkinArt = androidx.compose.runtime.staticCompositionLocalOf<SkinArt?> { null }
+
+/**
+ * Draws a designed picture over this canvas grown by [pad] pixels on every side (the control's
+ * reach and the picture's bleed, where its shadow goes).
+ */
+private fun DrawScope.drawArtPart(
+    image: androidx.compose.ui.graphics.ImageBitmap,
+    pad: Float,
+) {
+    drawImage(
+        image,
+        dstOffset = IntOffset(-pad.toInt(), -pad.toInt()),
+        dstSize = androidx.compose.ui.unit.IntSize((size.width + 2 * pad).toInt(), (size.height + 2 * pad).toInt()),
+        filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium,
+    )
+}
+
+/** A designed d-pad: its picture, tipped a little towards [direction], the pressed arm darker. */
+private fun DrawScope.drawArtDpad(
+    image: androidx.compose.ui.graphics.ImageBitmap,
+    pad: Float,
+    padDirection: Offset,
+) {
+    // Up is +y for the input; the screen counts y downwards.
+    val direction = Offset(padDirection.x, -padDirection.y)
+    val arm = size.minDimension / 3f
+    translate(direction.x * arm * 0.04f, direction.y * arm * 0.04f) { drawArtPart(image, pad) }
+    val left = (size.width - 3 * arm) / 2
+    val top = (size.height - 3 * arm) / 2
+    val dim = Color.Black.copy(alpha = 0.2f)
+    val corner = CornerRadius(arm * 0.16f)
+    if (direction.y < -0.3f) drawRoundRect(dim, Offset(left + arm, top), Size(arm, arm), corner)
+    if (direction.y > 0.3f) drawRoundRect(dim, Offset(left + arm, top + 2 * arm), Size(arm, arm), corner)
+    if (direction.x < -0.3f) drawRoundRect(dim, Offset(left, top + arm), Size(arm, arm), corner)
+    if (direction.x > 0.3f) drawRoundRect(dim, Offset(left + 2 * arm, top + arm), Size(arm, arm), corner)
 }
 
 private object Mono {
@@ -1152,17 +1234,24 @@ private fun ControlGlyph(
                 else -> readableOn(fill, consolePalette.buttonLabel)
             }
 
-        Canvas(Modifier.fillMaxSize()) {
-            when {
-                style == SkinStyle.OVERLAY -> drawOverlayButton(shape, isPressed, overlayTint)
-                style == SkinStyle.OUTLINE -> drawOutlineButton(shape, isPressed)
-                style == SkinStyle.CONSOLE ->
-                    drawConsoleButton(shape, fill.standingOutFrom(consolePalette.body), isPressed)
-                style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
-                    drawNesFaceButton(isPressed)
-                style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) ->
-                    drawNesSmallButton(isPressed)
-                else -> drawMonoButton(shape, isPressed)
+        // The designed picture of the control, when the skin has one (see SkinArt).
+        val art = LocalSkinArt.current?.part(control, isPressed)
+        if (art != null) {
+            val reachPad = (control.reach + ART_BLEED) * scale
+            Canvas(Modifier.fillMaxSize()) { drawArtPart(art, reachPad.dp.toPx()) }
+        } else {
+            Canvas(Modifier.fillMaxSize()) {
+                when {
+                    style == SkinStyle.OVERLAY -> drawOverlayButton(shape, isPressed, overlayTint)
+                    style == SkinStyle.OUTLINE -> drawOutlineButton(shape, isPressed)
+                    style == SkinStyle.CONSOLE ->
+                        drawConsoleButton(shape, fill.standingOutFrom(consolePalette.body), isPressed)
+                    style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
+                        drawNesFaceButton(isPressed)
+                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) ->
+                        drawNesSmallButton(isPressed)
+                    else -> drawMonoButton(shape, isPressed)
+                }
             }
         }
 
@@ -1190,7 +1279,7 @@ private fun ControlGlyph(
             val overlaySymbol = key?.let { palette?.labelOf(it) } ?: Overlay.Glyph
             val symbolColor = if (style == SkinStyle.OVERLAY) overlaySymbol else labelColor
             Canvas(Modifier.fillMaxSize(0.46f)) { drawPlayStationSymbol(onButton, symbolColor) }
-        } else if (onButton != null) {
+        } else if (onButton != null && !(art != null && artCarriesLabel(control))) {
             val unitDp = scale
             val fontSize = with(LocalDensity.current) { (minOf(frame.width, frame.height) * unitDp * if (control is SkinControl.Button && control.shape == ButtonShape.PILL) 0.42f else 0.46f).dp.toSp() }
             // Medium weight with a faint emboss, like lettering moulded into the plastic.

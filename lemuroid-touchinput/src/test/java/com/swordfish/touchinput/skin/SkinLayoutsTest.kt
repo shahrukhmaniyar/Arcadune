@@ -114,6 +114,39 @@ class SkinLayoutsTest {
     }
 
     /**
+     * Every Console skin's artwork (made by tools/skin-studio) matches its layouts: a picture for
+     * every control the studio draws, so a changed layout cannot ship without its pictures. Run
+     * `gradle art` in tools/skin-studio after changing a layout.
+     */
+    @Test
+    fun everyConsoleSkinHasItsArtwork() {
+        val assets =
+            generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+                .map { it.resolve("lemuroid-touchinput/src/main/assets") }
+                .firstOrNull { it.isDirectory }
+                ?: java.io.File("src/main/assets")
+        val missing =
+            skins().flatMap { (id, skin) ->
+                listOf(false to skin.portrait, true to skin.landscape).flatMap { (landscape, layout) ->
+                    if (layout.style != SkinStyle.CONSOLE || layout.palette == null) return@flatMap emptyList()
+                    val folder = assets.resolve(SkinArt.folder(id.name, landscape))
+                    val drawn =
+                        layout.controls.filter { control ->
+                            when (control) {
+                                is SkinControl.Stick -> false
+                                is SkinControl.Dpad -> control.look == DpadLook.CROSS
+                                else -> true
+                            }
+                        }
+                    val names = drawn.map { artKey(it) } + listOfNotNull(SkinArt.BODY.takeIf { !landscape })
+                    names.distinct().filterNot { folder.resolve("$it.webp").isFile }.map { "$folder/$it.webp" }
+                }
+            }
+        val message = "Missing artwork (run gradle art in tools/skin-studio):\n" + missing.joinToString("\n")
+        assertTrue(message, missing.isEmpty())
+    }
+
+    /**
      * Full-screen landscape skins keep thumb-sized controls: on a 16:9 phone the d-pad is as big as
      * on a tall one (it does not shrink to fit the width), and on a tablet it stops growing.
      */

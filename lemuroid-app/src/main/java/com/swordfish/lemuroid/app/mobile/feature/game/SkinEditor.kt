@@ -108,6 +108,8 @@ fun SkinEditorOverlay(
     onVariantChange: (SkinVariant) -> Unit,
     onReset: () -> Unit,
     onDone: () -> Unit,
+    /** The skin's designed pictures, when it has them, so the editor shows the controls as the game does. */
+    art: com.swordfish.touchinput.skin.SkinArt? = null,
 ) {
     // Back keeps the changes, like Done (it used to leave the editor and lose them).
     androidx.activity.compose.BackHandler(onBack = onDone)
@@ -141,6 +143,7 @@ fun SkinEditorOverlay(
                 rewindAvailable = rewindAvailable,
                 customization = customization,
                 onMove = ::move,
+                art = art,
             )
         } else {
             // Exactly over the controller of the game (the editor is drawn on top of it).
@@ -161,6 +164,7 @@ fun SkinEditorOverlay(
                 rewindAvailable = rewindAvailable,
                 customization = customization,
                 onMove = ::move,
+                art = art,
             )
         }
 

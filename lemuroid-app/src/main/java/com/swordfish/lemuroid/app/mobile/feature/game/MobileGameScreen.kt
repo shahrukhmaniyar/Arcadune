@@ -86,6 +86,11 @@ import com.swordfish.touchinput.skin.ArcaduneSkin
 import com.swordfish.touchinput.skin.ArcaduneSkinView
 import com.swordfish.touchinput.skin.ArcaduneSkins
 import com.swordfish.touchinput.skin.SkinVariant
+import com.swordfish.touchinput.skin.SkinArt
+import com.swordfish.touchinput.skin.SkinArtLoader
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.swordfish.touchinput.skin.SkinCustomization
 import gg.padkit.PadKit
 import gg.padkit.PadKitScope
@@ -177,6 +182,24 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             }
                 ?: "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_none"
         val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey)) }
+        // The Console skin's designed pictures for this orientation (see SkinArt), read off the main thread.
+        val skinArt by
+            produceState(
+                initialValue =
+                    controllerName
+                        ?.takeIf { skinVariant.value == SkinVariant.CONSOLE }
+                        ?.let { SkinArtLoader.cached(it, isLandscape) },
+                controllerName,
+                skinVariant.value,
+                isLandscape,
+            ) {
+                value =
+                    if (controllerName != null && skinVariant.value == SkinVariant.CONSOLE) {
+                        withContext(Dispatchers.IO) { SkinArtLoader.load(screenContext, controllerName, isLandscape) }
+                    } else {
+                        null
+                    }
+            }
         val screenValues = viewModel.getScreenLayout().collectAsState(emptyMap())
         val rewindAvailable = viewModel.isRewindAvailable().collectAsState(false)
         val editingControls = viewModel.isEditControlShown().collectAsState(false)
@@ -241,6 +264,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                     input = skinInput,
                     gameView = fullPos,
                     takesScreenTouches = skinTakesScreenTouches,
+                    art = skinArt,
                 )
             } else ConstraintLayout(
                 modifier = Modifier.fillMaxSize(),
@@ -313,6 +337,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 // Kept in memory while dragging (saving on every move made dragging stutter), saved on Done.
                 customizationState = skinCustomization,
                 panel = skinPanel.value,
+                art = skinArt,
                 variant = skinVariant.value,
                 onVariantChange = { variant ->
                     skinVariant.value = variant
@@ -369,6 +394,7 @@ private fun PadKitScope.SkinnedGameLayout(
     input: SkinInput,
     gameView: Rect?,
     takesScreenTouches: Boolean,
+    art: SkinArt?,
 ) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -424,6 +450,7 @@ private fun PadKitScope.SkinnedGameLayout(
                 rewindAvailable = rewindAvailable,
                 input = input,
                 shell = shell,
+                art = art,
             )
         } else if (controlsVisible) {
             with(density) {
@@ -438,6 +465,7 @@ private fun PadKitScope.SkinnedGameLayout(
                     rewindAvailable = rewindAvailable,
                     input = input,
                     shell = true,
+                    art = art,
                 )
             }
         }
