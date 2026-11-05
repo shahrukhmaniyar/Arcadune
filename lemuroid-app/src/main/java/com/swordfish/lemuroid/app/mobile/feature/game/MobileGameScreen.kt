@@ -407,6 +407,7 @@ private fun PadKitScope.SkinnedGameLayout(
                 palette = layout.palette ?: SkinPalettes.MONO,
                 screens = windows,
                 bodyTop = placement.bodyTop,
+                screenPanel = placement.screenPanel,
             )
         }
 

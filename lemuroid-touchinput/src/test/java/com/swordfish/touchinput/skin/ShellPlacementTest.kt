@@ -132,7 +132,8 @@ class ShellPlacementTest {
                     val geometry = SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
                     val controls = geometry.frameRects(SkinCustomization(), rewindAvailable = true)
                     for (window in p.windows) {
-                        val bezel = Rect(window.topLeft / dp, window.bottomRight / dp).inflate(SCREEN_BEZEL_DP)
+                        val frame = if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP
+                        val bezel = Rect(window.topLeft / dp, window.bottomRight / dp).inflate(frame)
                         for ((index, frame) in controls) {
                             if (frame.translate(4f, 4f).overlaps(bezel)) {
                                 val control = layout.controls[index]::class.simpleName
@@ -156,7 +157,11 @@ class ShellPlacementTest {
             assertEquals("${w}x$h: the body covers the whole screen", null, p.bodyTop)
             val margin = (p.picture.left / dp) / w
             assertTrue("${w}x$h: screens $margin of the width in from the side", margin >= 0.074f)
-            assertTrue("${w}x$h: screens reach the controller", p.picture.bottom + SCREEN_BEZEL_DP * dp <= p.panel.top)
+            // The screens sit right on the L / R tabs at the top of the controller, in one panel around both.
+            assertEquals("${w}x$h: screens on the tabs", p.panel.top, p.picture.bottom + SCREEN_OUTLINE_DP * dp, 0.5f)
+            val screenPanel = p.screenPanel!!
+            val holds = screenPanel.contains(p.picture.topLeft) && screenPanel.bottom > p.panel.top
+            assertTrue("${w}x$h: the panel holds the screens", holds)
         }
     }
 

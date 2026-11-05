@@ -18,8 +18,8 @@ something new is learned.
     [`MelonDSDeltaCore`](https://github.com/rileytestut/MelonDSDeltaCore).
   All numbers below come from these files (the iPhone "edgeToEdge" layouts: 320 wide upright,
   812 x 375 sideways, 414 x 896 / 896 x 414 for the DS).
-- **Screenshots of Delta in use** supplied by the product owner (default skins, a GBA skin with
-  a Pokémon theme, and the third-party "PIXEL" DS skin).
+- **Screenshots of Delta in use** supplied by the product owner (default skins, Delta's
+  standard DS skin, a GBA skin with a Pokémon theme, and the third-party "PIXEL" DS skin).
 - **Skin format docs**: the [DeltaCore skins wiki](https://github.com/rileytestut/DeltaCore/wiki/Skins),
   [Delta docs](https://noah978.gitbook.io/delta-docs/skins).
 - **Market**: [Pocket Gamer.biz](https://www.pocketgamer.biz/news/83845/delta-game-emulator-hits-no-1-on-the-app-store-download-charts-in-35-countries/),
@@ -100,7 +100,7 @@ and Menu / Select / Start in a row at the bottom.
 | Upright layout | Game edge to edge in black, controller at the bottom | Same | Adopted |
 | Sideways, home consoles and GBA | Full screen, see-through controls in the corners | Same, with the console's colours on the controls | Adopted |
 | Sideways, GB / Game Gear / Neo Geo Pocket | Framed like the GBC | Same | Adopted |
-| DS | Body behind the screens upright; screens across the top sideways | Same | Adopted |
+| DS | Standard skin: the body behind everything; both screens in one recessed panel with thin outlines (no hinge); L / R tabs right under the screens; Menu · Start · Select along the bottom; screens across the top sideways | Same, plus Rewind, Mic and Lid (Delta's skin has none of them) | Adopted |
 | Skins per console | Any number, installed by the player | Two built in: Console and Minimal | Two good defaults first; imported skins are an open item |
 | Layout editing | None (install another skin) | Drag any button, one size for all, opacity; in Settings and in game | Goes beyond Delta |
 | Touch areas | Extended edges; nothing dead between buttons | Reach around each control, plus a grace area so no strip between face buttons is dead | Same aim |

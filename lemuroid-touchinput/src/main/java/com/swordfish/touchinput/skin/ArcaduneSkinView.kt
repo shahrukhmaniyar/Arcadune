@@ -1027,7 +1027,8 @@ private fun ControlGlyph(
                 shape == ButtonShape.SHOULDER -> readableOn(fill, consolePalette.shoulderLabel)
                 shape == ButtonShape.PILL -> readableOn(fill, consolePalette.buttonLabel)
                 key != null -> consolePalette.labelOf(key)
-                else -> consolePalette.buttonLabel
+                // Menu and rewind drawn round: their picture must read on them too.
+                else -> readableOn(fill, consolePalette.buttonLabel)
             }
 
         Canvas(Modifier.fillMaxSize()) {

@@ -141,6 +141,12 @@ data class SkinLayout(
      * is only behind the controller and the screen sits in black above it.
      */
     val uprightScreenSide: Float? = null,
+    /**
+     * Set, the screens sit in one recessed panel with thin outlines (no thick bezel, no hinge),
+     * the way Delta frames its DS; the panel reaches this far (in layout units) below the screens,
+     * around the L / R tabs that sit right under them.
+     */
+    val screenPanelBelow: Float? = null,
 )
 
 data class ArcaduneSkin(val portrait: SkinLayout, val landscape: SkinLayout) {
@@ -1104,51 +1110,52 @@ object ArcaduneSkins {
      */
     private fun ds() =
         ArcaduneSkin(
-            // Upright the way Delta lays out the DS: the body behind everything, both screens in
-            // it, then L / R under the touch screen, a big d-pad and big X / Y / A / B, and the
-            // small buttons in one row at the bottom.
+            // Upright the way Delta's standard DS skin is laid out: the body behind everything,
+            // both screens in one recessed panel with the L / R tabs right under the touch screen,
+            // a big d-pad and big X / Y / A / B, and menu, start and select along the bottom (with
+            // rewind, the microphone and the lid between them).
             portrait =
                 console(
                     SkinPalettes.DS,
                     listOf(
-                        shoulder(L, "L", r(0, 0, 100, 26)),
-                        shoulder(R, "R", r(220, 0, 100, 26)),
-                        SkinControl.Dpad(r(8, 42, 130)),
-                    ) + diamondAt(246f, 110f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
+                        shoulder(L, "L", r(22, 0, 102, 24)),
+                        shoulder(R, "R", r(196, 0, 102, 24)),
+                        SkinControl.Dpad(r(8, 46, 130)),
+                    ) + diamondAt(246f, 114f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
                         listOf(
-                            SkinControl.Menu(r(8, 196, 40, 17)),
-                            pill(SELECT, "SELECT", r(70, 196, 40, 17)),
-                            round(L2, "MIC", r(130, 191, 26), icon = SkinIcon.MIC, reach = 4f),
-                            round(L3, "LID", r(164, 191, 26), icon = SkinIcon.LID, reach = 4f),
-                            pill(START, "START", r(210, 196, 40, 17)),
-                            SkinControl.Rewind(r(272, 196, 40, 17)),
+                            SkinControl.Menu(r(8, 198, 40, 17)),
+                            SkinControl.Rewind(r(62, 198, 40, 17)),
+                            round(L2, "MIC", r(112, 193, 24), icon = SkinIcon.MIC, reach = 4f),
+                            pill(START, "START", r(150, 198, 40, 17)),
+                            round(L3, "LID", r(204, 193, 24), icon = SkinIcon.LID, reach = 4f),
+                            pill(SELECT, "SELECT", r(272, 198, 40, 17)),
                         ),
                     height = 236f,
-                ).copy(uprightScreenSide = 0.075f),
-            // Sideways the way Delta does it: both screens side by side across the top, the
-            // controls in the band under them (d-pad and buttons in the corners, L / R under the
-            // screens, the small buttons between them).
+                ).copy(uprightScreenSide = 0.075f, screenPanelBelow = 24f),
+            // Sideways, as Delta's standard DS skin: both screens side by side across the top in
+            // one panel, L / R tabs right under them near the middle, the d-pad and X / Y / A / B
+            // low in the corners, menu, start and select along the bottom. The quick buttons
+            // (fast forward, save, load) go down the left side, rewind, microphone and lid down
+            // the right one.
             landscape =
                 landscape(
                     listOf(
-                        // Fast forward, quick save and quick load down the left side, above the d-pad.
                         round(KEYCODE_FAST_FORWARD, "FAST", r(16, 16, 40), icon = SkinIcon.FAST_FORWARD, reach = 4f),
                         round(KEYCODE_QUICK_SAVE, "SAVE", r(16, 64, 40), icon = SkinIcon.QUICK_SAVE, reach = 4f),
                         round(KEYCODE_QUICK_LOAD, "LOAD", r(16, 112, 40), icon = SkinIcon.QUICK_LOAD, reach = 4f),
+                        SkinControl.Rewind(r(756, 16, 40, 40), reach = 4f),
+                        round(L2, "MIC", r(756, 64, 40), icon = SkinIcon.MIC, reach = 4f),
+                        round(L3, "LID", r(756, 112, 40), icon = SkinIcon.LID, reach = 4f),
                         SkinControl.Dpad(r(26, 246, 126), reach = 8f),
-                        // L, the menu (Delta's Home), rewind and R right under the screens.
-                        shoulder(L, "L", r(176, 250, 144, 40)),
-                        SkinControl.Menu(r(336, 256, 60, 28), reach = 6f),
-                        SkinControl.Rewind(r(416, 256, 60, 28), reach = 6f),
-                        shoulder(R, "R", r(492, 250, 144, 40)),
-                        pill(SELECT, "SELECT", r(250, 318, 64, 24), reach = 6f),
-                        round(L2, "MIC", r(336, 314, 32), icon = SkinIcon.MIC, reach = 4f),
-                        round(L3, "LID", r(444, 314, 32), icon = SkinIcon.LID, reach = 4f),
-                        pill(START, "START", r(498, 318, 64, 24), reach = 6f),
+                        shoulder(L, "L", r(250, 236, 142, 32)),
+                        shoulder(R, "R", r(420, 236, 142, 32)),
+                        SkinControl.Menu(r(254, 328, 56, 22), reach = 6f),
+                        pill(START, "START", r(378, 328, 56, 22), reach = 6f),
+                        pill(SELECT, "SELECT", r(502, 328, 56, 22), reach = 6f),
                     ) + diamondAt(728f, 310f, 44f, 42f, X to "X", Y to "Y", A to "A", B to "B"),
                     SkinPalettes.DS,
                     DS_SIDEWAYS_SCREENS,
-                ),
+                ).copy(screenPanelBelow = 36f),
         )
 
     /**

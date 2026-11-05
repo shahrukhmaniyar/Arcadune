@@ -146,9 +146,15 @@ fun ConsoleShell(
     screens: List<Rect>,
     /** Upright: where the body starts; the screens sit in black above it (see [ShellPlacement.bodyTop]). */
     bodyTop: Float? = null,
+    /** The recessed panel the screens sit in (the DS, see [ShellPlacement.screenPanel]). */
+    screenPanel: Rect? = null,
 ) {
     if (bodyTop != null) {
         UprightBody(modifier, palette, bodyTop)
+        return
+    }
+    if (screenPanel != null) {
+        PanelBody(modifier, palette, screens, screenPanel)
         return
     }
     Canvas(modifier) {
@@ -228,6 +234,49 @@ private fun UprightBody(
     }
 }
 
+/**
+ * The body with its screens in one recessed panel, the way Delta frames its DS: the body all
+ * over, a slightly sunken rounded panel around the screens (and the L / R tabs under them), and
+ * a thin dark outline round each screen. The game shows through the screens.
+ */
+@Composable
+private fun PanelBody(
+    modifier: Modifier,
+    palette: SkinPalette,
+    screens: List<Rect>,
+    panel: Rect,
+) {
+    Canvas(modifier) {
+        val outline = SCREEN_OUTLINE_DP.dp.toPx()
+        val windows =
+            screens.fold(Path()) { path, screen ->
+                Path.combine(PathOperation.Union, path, Path().apply { addRect(screen) })
+            }
+        val everything = Path().apply { addRect(Rect(Offset.Zero, size)) }
+        drawPath(
+            Path.combine(PathOperation.Difference, everything, windows),
+            Brush.verticalGradient(listOf(palette.body.shade(0.06f), palette.bodyShade)),
+        )
+        // The sunken panel: a little darker, shaded on its upper edge, lit on its lower one.
+        val corner = CornerRadius(18.dp.toPx())
+        val sunken = Path().apply { addRoundRect(RoundRect(panel, corner)) }
+        drawPath(Path.combine(PathOperation.Difference, sunken, windows), palette.body.shade(-0.04f))
+        val edge = Stroke(1.5f.dp.toPx())
+        drawRoundRect(Color.Black.copy(alpha = 0.16f), panel.topLeft, panel.size, corner, style = edge)
+        drawRoundRect(
+            Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.06f else 0.35f),
+            panel.topLeft + Offset(0f, 1.5f.dp.toPx()),
+            panel.size,
+            corner,
+            style = Stroke(1.dp.toPx()),
+        )
+        for (screen in screens) {
+            val ring = screen.inflate(outline / 2)
+            drawRect(palette.body.shade(-0.7f), ring.topLeft, ring.size, style = Stroke(outline))
+        }
+    }
+}
+
 /** How round the bottom corners of the black above the upright body are, in dp. */
 private const val UPRIGHT_BODY_CORNER = 26f
 
@@ -254,6 +303,8 @@ data class ShellPlacement(
     val picture: Rect,
     val panel: Rect,
     val bodyTop: Float? = null,
+    /** The recessed panel the screens sit in, for layouts that have one (see [SkinLayout.screenPanelBelow]). */
+    val screenPanel: Rect? = null,
 )
 
 /**
@@ -283,8 +334,13 @@ fun placeShell(
     val panel = Rect((width - panelWidth) / 2, panelTop, (width + panelWidth) / 2, panelTop + naturalHeight)
     val bodyTop = panelTop - BODY_ABOVE_PANEL * dp
 
-    // The DS upright: the body behind everything, the screens in it, in from the sides.
+    // The DS upright: the body behind everything, the screens in it, in from the sides, sitting
+    // right on the L / R tabs at the top of the controller.
     val side = skin.portrait.uprightScreenSide
+    // Screens in a panel have a thin outline instead of the thick bezel.
+    val frame = if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP
+    val sidewaysScale =
+        minOf((height - 8 * dp) / skin.landscape.height, (safe.right - safe.left - 8 * dp) / skin.landscape.width)
     val area =
         when {
             !shell -> safe
@@ -293,7 +349,7 @@ fun placeShell(
                     safe.left + side * width,
                     safe.top + SCREEN_TOP_IN_BODY * dp,
                     safe.right - side * width,
-                    bodyTop - SCREEN_TO_BODY * dp,
+                    panelTop - frame * dp,
                 )
             !isLandscape -> Rect(safe.left, safe.top, safe.right, bodyTop - SCREEN_TO_BODY * dp)
             else -> {
@@ -301,7 +357,7 @@ fun placeShell(
                 val usable = Rect(safe.left + 4 * dp, 4 * dp, safe.right - 4 * dp, height - 4 * dp)
                 val scale = minOf(usable.height / layout.height, usable.width / layout.width)
                 // The bezel is drawn outside the window: keep it, and a little air, off the wings.
-                val side = (SCREEN_BEZEL_DP + SCREEN_TO_WING) * dp
+                val side = (frame + SCREEN_TO_WING) * dp
                 Rect(
                     usable.left + screens.x * scale + side,
                     usable.top + screens.y * scale,
@@ -310,13 +366,29 @@ fun placeShell(
                 )
             }
         }
-    val windows = (if (shell) spec?.fitIn(area) else null) ?: listOf(area)
+    val fitted = (if (shell) spec?.fitIn(area) else null) ?: listOf(area)
+    // The DS upright sits its screens on the L / R tabs (the space left over goes above them).
+    val drop = if (shell && !isLandscape && side != null) area.bottom - fitted.maxOf { it.bottom } else 0f
+    val windows = fitted.map { it.translate(0f, drop) }
     val picture = windows.reduce { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
-    return ShellPlacement(windows, picture, panel, bodyTop.takeIf { shell && !isLandscape && side == null })
+    val screenPanel =
+        layout.screenPanelBelow?.takeIf { shell }?.let { below ->
+            val unit = if (isLandscape) sidewaysScale else panelWidth / skin.portrait.width
+            val pad = SCREEN_PANEL_PAD * dp
+            Rect(picture.left - pad, picture.top - pad, picture.right + pad, picture.bottom + below * unit + pad)
+        }
+    val uprightBodyTop = bodyTop.takeIf { shell && !isLandscape && side == null }
+    return ShellPlacement(windows, picture, panel, uprightBodyTop, screenPanel)
 }
 
 /** How wide the dark bezel around each screen window is, in dp. It is drawn outside the window. */
 internal const val SCREEN_BEZEL_DP = 10f
+
+/** The thin outline of a screen that sits in a panel (the DS), in dp, outside the window. */
+internal const val SCREEN_OUTLINE_DP = 2f
+
+/** How far the DS screen panel reaches around its screens, in dp. */
+private const val SCREEN_PANEL_PAD = 12f
 
 // Upright, in dp: the widest the controller gets (tablets), the space under it, the body showing
 // above its first row of controls, and the least black between the screen and the body.
@@ -379,7 +451,13 @@ fun ArcaduneShellPreview(
                 }
             }
             if (shell) {
-                ConsoleShell(Modifier.fillMaxSize(), layout.palette ?: SkinPalettes.MONO, placement.windows, placement.bodyTop)
+                ConsoleShell(
+                    Modifier.fillMaxSize(),
+                    layout.palette ?: SkinPalettes.MONO,
+                    placement.windows,
+                    placement.bodyTop,
+                    placement.screenPanel,
+                )
             }
             val controls =
                 if (isLandscape) {
