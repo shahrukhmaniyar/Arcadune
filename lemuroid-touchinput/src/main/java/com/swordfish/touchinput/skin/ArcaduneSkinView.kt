@@ -463,6 +463,7 @@ private object Mono {
     val Emboss = Color(0xFF4A4A4F)
     val Caption = Color(0xFF151517)
     val Shadow = Color(0x33000000)
+    val Glyph = Color(0xFFD8D8DC)
 }
 
 private object Nes {
@@ -476,11 +477,22 @@ private object Nes {
     val Label = Color(0xFFC3161C)
 }
 
+/**
+ * The full-screen sideways controls: solid enough to find at a glance over any game (like Delta's
+ * default skins), dark grey or in the console's colours, with a light rim.
+ */
 private object Overlay {
-    val Fill = Color(0x26FFFFFF)
-    val FillPressed = Color(0x66FFFFFF)
-    val Edge = Color(0x80FFFFFF)
-    val Glyph = Color(0xE6FFFFFF)
+    val Fill = Color(0xE02C2C30)
+    val FillPressed = Color(0xF0505056)
+    val Edge = Color(0x8CFFFFFF)
+    val Glyph = Color(0xF2FFFFFF)
+    val PressedArm = Color(0x38FFFFFF)
+
+    /** A console colour as the solid fill of a sideways control. */
+    fun tinted(
+        color: Color,
+        pressed: Boolean,
+    ) = if (pressed) lerp(color, Color.Black, 0.25f).copy(alpha = 0.96f) else color.copy(alpha = 0.9f)
 }
 
 /** The console body behind the controls (portrait only). [unit] is pixels per skin unit. */
@@ -549,7 +561,8 @@ private fun DrawScope.drawAnyDpad(
     val direction = Offset(padDirection.x, -padDirection.y)
     when {
         look == DpadLook.BALL_TOP -> drawBallTop(layout, direction)
-        layout.style == SkinStyle.OVERLAY && look == DpadLook.CROSS -> drawDpad(SkinStyle.OVERLAY, direction)
+        layout.style == SkinStyle.OVERLAY && look == DpadLook.CROSS ->
+            drawDpad(SkinStyle.OVERLAY, direction, layout.palette?.dpad)
         layout.style == SkinStyle.OVERLAY -> drawFourPads(look, direction, overlayTint = layout.palette)
         look == DpadLook.CROSS && layout.style == SkinStyle.CONSOLE -> drawConsoleCross(layout.paletteOrMono(), direction)
         look == DpadLook.CROSS -> drawDpad(layout.style, direction)
@@ -568,8 +581,8 @@ private fun DrawScope.drawBallTop(
     if (layout.style == SkinStyle.OVERLAY) {
         drawCircle(Overlay.Fill, r, c)
         drawCircle(Overlay.Edge, r, c, style = Stroke(1.5.dp.toPx()))
-        val tint = layout.palette?.stickKnob ?: Overlay.Glyph
-        drawCircle(tint.copy(alpha = if (direction != Offset.Zero) 0.75f else 0.5f), r * 0.36f, lean)
+        val knob = layout.palette?.stickKnob ?: Color(0xFF8A8A90)
+        drawCircle(Overlay.tinted(knob, direction != Offset.Zero), r * 0.36f, lean)
         drawCircle(Overlay.Edge, r * 0.36f, lean, style = Stroke(1.5.dp.toPx()))
         return
     }
@@ -649,8 +662,8 @@ private fun DrawScope.drawFourPads(
         if (look == DpadLook.C_BUTTONS) {
             val r = full * 0.165f
             if (overlay) {
-                val tint = cColor?.first ?: Overlay.Glyph
-                drawCircle(tint.copy(alpha = if (isPressed) 0.6f else 0.28f), r, centre)
+                val fill = cColor?.first?.let { Overlay.tinted(it, isPressed) } ?: if (isPressed) Overlay.FillPressed else Overlay.Fill
+                drawCircle(fill, r, centre)
                 drawCircle(Overlay.Edge, r, centre, style = Stroke(1.5.dp.toPx()))
                 mark = Overlay.Glyph
             } else {
@@ -741,7 +754,7 @@ private fun DrawScope.drawStickKnob(
     val r = knob / 2
     val c = Offset(knob / 2, knob / 2)
     if (layout.style == SkinStyle.OVERLAY) {
-        drawCircle(if (pressed) Overlay.FillPressed else Overlay.Glyph.copy(alpha = 0.35f), r * 0.86f, c)
+        drawCircle(Overlay.tinted(layout.palette?.stickKnob ?: Color(0xFF6A6A70), pressed), r * 0.86f, c)
         drawCircle(Overlay.Edge, r * 0.86f, c, style = Stroke(1.5.dp.toPx()))
         return
     }
@@ -757,6 +770,8 @@ private fun DrawScope.drawStickKnob(
 private fun DrawScope.drawDpad(
     style: SkinStyle,
     direction: Offset,
+    /** Sideways: the console's d-pad colour, if it has one. */
+    tint: Color? = null,
 ) {
     val full = size.minDimension
     val left = (size.width - full) / 2
@@ -772,9 +787,17 @@ private fun DrawScope.drawDpad(
 
     when (style) {
         SkinStyle.OVERLAY -> {
-            drawPath(cross(0f), if (direction != Offset.Zero) Overlay.FillPressed else Overlay.Fill)
+            drawPath(cross(0f), tint?.let { lerp(it, Color.White, 0.14f).copy(alpha = 0.9f) } ?: Overlay.Fill)
+            // Only the pressed arm (or two, on a diagonal) lights up.
+            val lit = Overlay.PressedArm
+            if (direction.y < -0.3f) drawRect(lit, Offset(left + arm, top), Size(arm, arm))
+            if (direction.y > 0.3f) drawRect(lit, Offset(left + arm, top + 2 * arm), Size(arm, arm))
+            if (direction.x < -0.3f) drawRect(lit, Offset(left, top + arm), Size(arm, arm))
+            if (direction.x > 0.3f) drawRect(lit, Offset(left + 2 * arm, top + arm), Size(arm, arm))
             drawPath(cross(0f), Overlay.Edge, style = Stroke(1.5.dp.toPx()))
-            drawArrows(left, top, arm, Overlay.Glyph, direction)
+            val middle = Offset(left + 1.5f * arm, top + 1.5f * arm)
+            drawChevrons(middle, arm, Overlay.Glyph)
+            drawCircle(Overlay.Edge, arm * 0.3f, middle, style = Stroke(1.5.dp.toPx()))
             return
         }
 
@@ -824,6 +847,31 @@ private fun DrawScope.drawArrows(
     triangle(direction.x > 0.3f, Offset(c.x + far, c.y), Offset(c.x + near, c.y - half), Offset(c.x + near, c.y + half))
 }
 
+/** Four open arrowheads around [centre], one in each arm of a cross whose arms are [arm] wide. */
+private fun DrawScope.drawChevrons(
+    centre: Offset,
+    arm: Float,
+    color: Color,
+) {
+    val reach = arm * 1.02f
+    val half = arm * 0.24f
+    val depth = arm * 0.2f
+    val width = arm * 0.075f
+    for (dir in listOf(Offset(0f, -1f), Offset(0f, 1f), Offset(-1f, 0f), Offset(1f, 0f))) {
+        val side = Offset(-dir.y, dir.x)
+        val tip = centre + dir * reach
+        val back = centre + dir * (reach - depth)
+        val path =
+            Path().apply {
+                moveTo((back + side * half).x, (back + side * half).y)
+                lineTo(tip.x, tip.y)
+                lineTo((back - side * half).x, (back - side * half).y)
+            }
+        val stroke = Stroke(width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        drawPath(path, color, style = stroke)
+    }
+}
+
 /** The arrow of a pressed d-pad arm. */
 private val PressedMark = Color(0xF2FFFFFF)
 
@@ -870,18 +918,29 @@ private fun ControlGlyph(
                 key != null && shape == ButtonShape.ROUND -> consolePalette.fillOf(key)
                 else -> consolePalette.small
             }
+        // Sideways every control is solid: in the console's colour for that control, if it has colours.
+        val overlayTint =
+            palette?.let { p ->
+                when {
+                    shape == ButtonShape.SHOULDER -> p.shoulder
+                    key != null && shape == ButtonShape.ROUND -> p.fillOf(key)
+                    else -> p.small
+                }
+            }
         val labelColor =
             when {
+                // Dark text on a light button (GBA's grey A / B), white on anything darker.
+                style == SkinStyle.OVERLAY && overlayTint != null && overlayTint.luminance() > 0.45f ->
+                    when {
+                        shape == ButtonShape.SHOULDER -> consolePalette.shoulderLabel
+                        key != null -> consolePalette.labelOf(key)
+                        else -> consolePalette.buttonLabel
+                    }
                 style == SkinStyle.OVERLAY -> Overlay.Glyph
                 style != SkinStyle.CONSOLE -> Mono.Emboss
                 shape == ButtonShape.SHOULDER -> consolePalette.shoulderLabel
                 key != null -> consolePalette.labelOf(key)
                 else -> consolePalette.buttonLabel
-            }
-        // In landscape a coloured button keeps a tint of its colour (the symbol's, on dark PlayStation buttons).
-        val overlayTint =
-            key?.let { k ->
-                palette?.buttons?.get(k)?.let { (buttonFill, label) -> if (buttonFill.luminance() < 0.15f) label else buttonFill }
             }
 
         Canvas(Modifier.fillMaxSize()) {
@@ -912,11 +971,12 @@ private fun ControlGlyph(
                 else -> null
             }
         if (glyph != null && style != SkinStyle.NES_CLASSIC) {
-            val glyphColor = if (style == SkinStyle.CONSOLE) labelColor else if (style == SkinStyle.OVERLAY) Overlay.Glyph else Color(0xFFD8D8DC)
+            val glyphColor = if (style == SkinStyle.CONSOLE || style == SkinStyle.OVERLAY) labelColor else Mono.Glyph
             Canvas(Modifier.fillMaxSize(if (shape == ButtonShape.PILL) 0.7f else 0.56f)) { drawGlyph(glyph, glyphColor) }
         }
         if (onButton != null && onButton in PlayStationSymbols) {
-            val symbolColor = if (style == SkinStyle.OVERLAY) overlayTint ?: Overlay.Glyph else labelColor
+            val overlaySymbol = key?.let { palette?.labelOf(it) } ?: Overlay.Glyph
+            val symbolColor = if (style == SkinStyle.OVERLAY) overlaySymbol else labelColor
             Canvas(Modifier.fillMaxSize(0.46f)) { drawPlayStationSymbol(onButton, symbolColor) }
         } else if (onButton != null) {
             val unitDp = scale
@@ -1093,12 +1153,12 @@ private fun DrawScope.drawOverlayButton(
         }
     val fill =
         when {
-            tint != null -> tint.copy(alpha = if (pressed) 0.62f else 0.3f)
+            tint != null -> Overlay.tinted(tint, pressed)
             pressed -> Overlay.FillPressed
             else -> Overlay.Fill
         }
     drawRoundRect(fill, cornerRadius = radius)
-    drawRoundRect(tint?.copy(alpha = 0.85f) ?: Overlay.Edge, cornerRadius = radius, style = Stroke(1.5.dp.toPx()))
+    drawRoundRect(Overlay.Edge, cornerRadius = radius, style = Stroke(1.5.dp.toPx()))
 }
 
 /** The name written under a control, like MENU / SELECT / START under the pills. */

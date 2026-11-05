@@ -32,25 +32,41 @@ class ShellPlacementTest {
     }
 
     @Test
-    fun uprightTheScreenSitsRightAboveTheControllerWithTheSameSmallGap() {
+    fun uprightTheControllerSitsOnTheBottomEdge() {
         for ((id, skin) in skins) {
             for ((w, h) in uprightScreens) {
                 val p = place(id, skin, w, h, landscape = false)
-                val gap = (p.panel.top - p.picture.bottom) / dp
-                assertTrue("$id ${w}x$h: gap $gap dp", gap >= 19.9f && gap <= 20.1f)
+                val below = (h * dp - p.panel.bottom) / dp
+                assertEquals("$id ${w}x$h: space under the controller", 4f, below, 0.1f)
+                // As wide as the phone; on tablets it stops at 520 dp and is centred.
+                assertEquals("$id ${w}x$h: controller width", minOf(w, 520f), p.panel.width / dp, 0.1f)
+                assertEquals("$id ${w}x$h: controller centred", w * dp / 2, p.panel.center.x, 0.5f)
             }
         }
     }
 
     @Test
-    fun uprightTheBlockIsCentredNotStuckToTheTop() {
+    fun uprightTheGameIsEdgeToEdgeOnTallPhones() {
+        val single = skins.filter { (id, _) -> ScreenSpecs.forController(id, emptyMap(), false)?.screens?.size == 1 }
+        for ((id, skin) in single) {
+            for ((w, h) in listOf(393f to 873f, 412f to 915f)) {
+                val p = place(id, skin, w, h, landscape = false)
+                assertEquals("$id ${w}x$h: game width", w, p.picture.width / dp, 0.5f)
+            }
+        }
+    }
+
+    @Test
+    fun uprightTheGameIsCentredInTheBlackAboveTheBodyAndNeverTouchesIt() {
         for ((id, skin) in skins) {
             for ((w, h) in uprightScreens) {
                 val p = place(id, skin, w, h, landscape = false)
+                val bodyTop = p.bodyTop!!
                 val above = p.picture.top / dp
-                val below = (h * dp - p.panel.bottom) / dp
-                // The space above the screen and under the controller differ only by the fixed margins.
-                assertTrue("$id ${w}x$h: above $above, below $below", kotlin.math.abs((above - 14f) - (below - 10f)) < 1f)
+                val below = (bodyTop - p.picture.bottom) / dp
+                assertTrue("$id ${w}x$h: the game reaches into the body ($below dp)", below >= SCREEN_TO_BODY - 0.1f)
+                assertEquals("$id ${w}x$h: above $above, below $below", above, below - SCREEN_TO_BODY, 0.5f)
+                assertTrue("$id ${w}x$h: body top $bodyTop above the controller", bodyTop < p.panel.top)
             }
         }
     }

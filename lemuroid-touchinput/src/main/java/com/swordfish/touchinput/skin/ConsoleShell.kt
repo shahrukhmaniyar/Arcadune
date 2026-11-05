@@ -34,14 +34,11 @@ data class ScreenSpec(
     val height: Float,
     val screens: List<SkinRect>,
 ) {
-    /** The screens placed as big as they fit in [area]: centred, or at its top with [atTop]. */
-    fun fitIn(
-        area: Rect,
-        atTop: Boolean = false,
-    ): List<Rect> {
+    /** The screens placed as big as they fit in [area], centred. */
+    fun fitIn(area: Rect): List<Rect> {
         val scale = minOf(area.width / width, area.height / height)
         val left = area.left + (area.width - width * scale) / 2
-        val top = if (atTop) area.top else area.top + (area.height - height * scale) / 2
+        val top = area.top + (area.height - height * scale) / 2
         return screens.map { Rect(left + it.x * scale, top + it.y * scale, left + (it.x + it.width) * scale, top + (it.y + it.height) * scale) }
     }
 
@@ -147,7 +144,13 @@ fun ConsoleShell(
     modifier: Modifier = Modifier,
     palette: SkinPalette,
     screens: List<Rect>,
+    /** Upright: where the body starts; the screens sit in black above it (see [ShellPlacement.bodyTop]). */
+    bodyTop: Float? = null,
 ) {
+    if (bodyTop != null) {
+        UprightBody(modifier, palette, bodyTop)
+        return
+    }
     Canvas(modifier) {
         val bezelWidth = SCREEN_BEZEL_DP.dp.toPx()
         val windowCorner = 4.dp.toPx()
@@ -194,6 +197,40 @@ fun ConsoleShell(
     }
 }
 
+/**
+ * The upright body, as Delta draws it: the console's plastic from [bodyTop] down, its top corners
+ * curving up into the sides like the bottom of a handheld's screen bezel. Nothing is drawn above
+ * it: the game view, black around its picture, shows there.
+ */
+@Composable
+private fun UprightBody(
+    modifier: Modifier,
+    palette: SkinPalette,
+    bodyTop: Float,
+) {
+    Canvas(modifier) {
+        val corner = UPRIGHT_BODY_CORNER.dp.toPx()
+        val below = Path().apply { addRect(Rect(0f, bodyTop - corner, size.width, size.height)) }
+
+        // The black above, with rounded bottom corners, cut out of the body ([lift] lower edge).
+        fun above(lift: Float): Path {
+            val black = RoundRect(Rect(0f, -corner, size.width, bodyTop + lift), CornerRadius(corner))
+            return Path().apply { addRoundRect(black) }
+        }
+
+        drawPath(
+            Path.combine(PathOperation.Difference, below, above(0f)),
+            Brush.verticalGradient(listOf(palette.body, palette.bodyShade), bodyTop - corner, size.height),
+        )
+        // A soft light along the body's top edge.
+        val edge = Path.combine(PathOperation.Difference, above(1.5f.dp.toPx()), above(0f))
+        drawPath(edge, Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.1f else 0.45f))
+    }
+}
+
+/** How round the bottom corners of the black above the upright body are, in dp. */
+private const val UPRIGHT_BODY_CORNER = 26f
+
 /** Middle and height of the gap between two screens stacked one above the other, if there are such screens. */
 private fun hingeBetween(screens: List<Rect>): Pair<Float, Float>? {
     if (screens.size != 2) return null
@@ -207,23 +244,27 @@ private fun Color.shade(amount: Float): Color = if (amount >= 0) lerp(this, Colo
 /** Two-screen consoles always open their windows, whatever the colour choice. */
 fun TouchControllerID.hasTwoScreens() = this == TouchControllerID.MELONDS || this == TouchControllerID.NINTENDO_3DS
 
-/** Where a shell's windows, the whole picture and the upright controller panel go, in pixels. */
+/**
+ * Where a shell's windows, the whole picture and the upright controller panel go, in pixels.
+ * [bodyTop] is where the console's body starts, upright (it only covers the controller there, like
+ * Delta: the screen sits in black above it); null sideways, where the body surrounds the screens.
+ */
 data class ShellPlacement(
     val windows: List<Rect>,
     val picture: Rect,
     val panel: Rect,
+    val bodyTop: Float? = null,
 )
 
 /**
  * Lays out [skin] on a surface of [width] x [height] pixels ([dp] pixels per dp; [safe] is the part
  * clear of the camera cutout).
  *
- * Upright the screen and the controller are one block, like the face of a handheld: the controller
- * at its own proportions (never stretched, so its buttons keep their designed spacing), the screen
- * as big as fits above it, a fixed small gap between them, and the whole block centred in the
- * height, so the game is neither stuck to the top nor cut off from its controls. Each console
- * gets its own block from its screen shape and its controller's proportions. Sideways the screens go in the skin's screen area,
- * between the wings. With no [shell] (controls hidden) the picture simply fills the safe area.
+ * Upright, the way Delta does it: the controller as wide as the phone (up to a tablet's limit), at
+ * its own proportions, sitting on the bottom edge where the thumbs are; the console's body only
+ * behind it; and the game in the black above, as big as fits (edge to edge on a phone) and centred
+ * there, with a black band between it and the body. Sideways the screens go in the skin's screen
+ * area, between the wings. With no [shell] (controls hidden) the picture simply fills the safe area.
  */
 fun placeShell(
     skin: ArcaduneSkin,
@@ -236,17 +277,16 @@ fun placeShell(
     dp: Float,
 ): ShellPlacement {
     val layout = if (isLandscape) skin.landscape else skin.portrait
-    val panelWidth = minOf(width - 16 * dp, 520 * dp)
+    val panelWidth = minOf(width, MAX_PANEL_WIDTH * dp)
     val naturalHeight = panelWidth * skin.portrait.height / skin.portrait.width
-    val lowestPanelTop = height - naturalHeight - PANEL_BOTTOM * dp
-    // Room for the screen's bezel (drawn outside the window) and a little space under it.
-    val gap = SCREEN_TO_PANEL * dp
-    val top = safe.top + SCREEN_TOP * dp
+    val panelTop = safe.bottom - naturalHeight - PANEL_BOTTOM * dp
+    val panel = Rect((width - panelWidth) / 2, panelTop, (width + panelWidth) / 2, panelTop + naturalHeight)
+    val bodyTop = panelTop - BODY_ABOVE_PANEL * dp
 
     val area =
         when {
             !shell -> safe
-            !isLandscape -> Rect(safe.left + 12 * dp, top, safe.right - 12 * dp, lowestPanelTop - gap)
+            !isLandscape -> Rect(safe.left, safe.top, safe.right, bodyTop - SCREEN_TO_BODY * dp)
             else -> {
                 val screens = layout.screenArea ?: SkinRect(0f, 0f, layout.width, layout.height)
                 val usable = Rect(safe.left + 4 * dp, 4 * dp, safe.right - 4 * dp, height - 4 * dp)
@@ -261,25 +301,20 @@ fun placeShell(
                 )
             }
         }
-    val fitted = (if (shell) spec?.fitIn(area, atTop = !isLandscape) else null) ?: listOf(area)
-    // Upright: centre the block (screen, gap, controller) in the height left by the safe area.
-    val spare = if (shell && !isLandscape) area.bottom - fitted.maxOf { it.bottom } else 0f
-    val drop = spare / 2
-    val windows = fitted.map { it.translate(0f, drop) }
+    val windows = (if (shell) spec?.fitIn(area) else null) ?: listOf(area)
     val picture = windows.reduce { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
-    val panelTop = if (!shell) lowestPanelTop else minOf(picture.bottom + gap, lowestPanelTop)
-    val panel = Rect((width - panelWidth) / 2, panelTop, (width + panelWidth) / 2, panelTop + naturalHeight)
-    return ShellPlacement(windows, picture, panel)
+    return ShellPlacement(windows, picture, panel, bodyTop.takeIf { shell && !isLandscape })
 }
 
 /** How wide the dark bezel around each screen window is, in dp. It is drawn outside the window. */
 internal const val SCREEN_BEZEL_DP = 10f
 
-// The spacing of the upright block, in dp: above the screen, between the screen's window and the
-// controller (the bezel takes 10 of it), and under the controller.
-private const val SCREEN_TOP = 14f
-private const val SCREEN_TO_PANEL = 20f
-private const val PANEL_BOTTOM = 10f
+// Upright, in dp: the widest the controller gets (tablets), the space under it, the body showing
+// above its first row of controls, and the least black between the screen and the body.
+private const val MAX_PANEL_WIDTH = 520f
+private const val PANEL_BOTTOM = 4f
+private const val BODY_ABOVE_PANEL = 8f
+internal const val SCREEN_TO_BODY = 18f
 
 /** Sideways, the space between a screen's bezel and the wings of controls, in dp. */
 private const val SCREEN_TO_WING = 4f
@@ -325,7 +360,9 @@ fun ArcaduneShellPreview(
                     drawRect(Brush.linearGradient(listOf(Color(0xFF3A4A70), Color(0xFF1C2338)), window.topLeft, window.bottomRight), window.topLeft, window.size)
                 }
             }
-            if (shell) ConsoleShell(Modifier.fillMaxSize(), layout.palette ?: SkinPalettes.MONO, placement.windows)
+            if (shell) {
+                ConsoleShell(Modifier.fillMaxSize(), layout.palette ?: SkinPalettes.MONO, placement.windows, placement.bodyTop)
+            }
             if (isLandscape) {
                 ArcaduneSkinPreview(Modifier.fillMaxSize().padding(4.dp), layout, pinToEdges = true, shell = shell)
             } else {
