@@ -5,6 +5,9 @@ import androidx.compose.ui.graphics.Color
 import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_REWIND
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_SWAP_SCREENS
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_FAST_FORWARD
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_LOAD
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_SAVE
 import com.swordfish.touchinput.radial.settings.TouchControllerID
 
 /** A rectangle in the skin's own units (see [SkinLayout]). */
@@ -15,8 +18,11 @@ data class SkinRect(val x: Float, val y: Float, val width: Float, val height: Fl
 
 enum class ButtonShape { ROUND, PILL, SHOULDER }
 
-/** Small pictures drawn on buttons whose name says less than a picture: the DS microphone and lid, the 3DS swap. */
-enum class SkinIcon { MIC, LID, SWAP }
+/**
+ * Small pictures drawn on buttons whose name says less than a picture: the DS microphone and lid,
+ * the 3DS swap, and the quick buttons (fast forward, quick save, quick load).
+ */
+enum class SkinIcon { MIC, LID, SWAP, FAST_FORWARD, QUICK_SAVE, QUICK_LOAD }
 
 /** How a skin is painted. Both are Arcadune's own artwork. */
 enum class SkinStyle {
@@ -1125,6 +1131,10 @@ object ArcaduneSkins {
             landscape =
                 landscape(
                     listOf(
+                        // Fast forward, quick save and quick load down the left side, above the d-pad.
+                        round(KEYCODE_FAST_FORWARD, "FAST", r(16, 16, 40), icon = SkinIcon.FAST_FORWARD, reach = 4f),
+                        round(KEYCODE_QUICK_SAVE, "SAVE", r(16, 64, 40), icon = SkinIcon.QUICK_SAVE, reach = 4f),
+                        round(KEYCODE_QUICK_LOAD, "LOAD", r(16, 112, 40), icon = SkinIcon.QUICK_LOAD, reach = 4f),
                         SkinControl.Dpad(r(26, 246, 126), reach = 8f),
                         // L, the menu (Delta's Home), rewind and R right under the screens.
                         shoulder(L, "L", r(176, 250, 144, 40)),

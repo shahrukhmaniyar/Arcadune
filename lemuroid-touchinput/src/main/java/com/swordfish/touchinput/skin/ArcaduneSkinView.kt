@@ -1093,7 +1093,7 @@ private fun readableOn(
     }
 
 /** The pictures drawn on buttons. */
-private enum class Glyph { MENU, REWIND, MIC, LID, SWAP }
+private enum class Glyph { MENU, REWIND, MIC, LID, SWAP, FAST_FORWARD, QUICK_SAVE, QUICK_LOAD }
 
 /** Draws [glyph] centred in this canvas, in strokes like the rest of Arcadune's icons. */
 private fun DrawScope.drawGlyph(
@@ -1126,6 +1126,37 @@ private fun DrawScope.drawGlyph(
             drawLine(color, p(-0.4f, 0.3f), p(0.4f, 0.3f), w, androidx.compose.ui.graphics.StrokeCap.Round)
             drawPath(Path().apply { moveTo(p(-0.36f, 0.3f).x, p(0f, 0.3f).y); lineTo(p(-0.24f, -0.3f).x, p(0f, -0.3f).y); lineTo(p(0.24f, -0.3f).x, p(0f, -0.3f).y); lineTo(p(0.36f, 0.3f).x, p(0f, 0.3f).y) }, color, style = stroke)
             drawLine(color, p(-0.1f, 0f), p(0.1f, 0f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+        Glyph.FAST_FORWARD -> {
+            // Two triangles pointing right.
+            for (dx in listOf(-0.3f, 0.02f)) {
+                val tip = p(dx + 0.28f, 0f)
+                val path =
+                    Path().apply {
+                        moveTo(p(dx, -0.24f).x, p(0f, -0.24f).y)
+                        lineTo(tip.x, tip.y)
+                        lineTo(p(dx, 0.24f).x, p(0f, 0.24f).y)
+                        close()
+                    }
+                drawPath(path, color)
+            }
+        }
+        Glyph.QUICK_SAVE, Glyph.QUICK_LOAD -> {
+            // A tray, and an arrow going down into it (save) or up out of it (load).
+            drawLine(color, p(-0.34f, 0.18f), p(-0.34f, 0.36f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(color, p(-0.34f, 0.36f), p(0.34f, 0.36f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(color, p(0.34f, 0.36f), p(0.34f, 0.18f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(color, p(0f, -0.38f), p(0f, 0.16f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            val (tipY, backY) = if (glyph == Glyph.QUICK_SAVE) 0.16f to -0.04f else -0.38f to -0.18f
+            drawPath(
+                Path().apply {
+                    moveTo(p(-0.18f, backY).x, p(0f, backY).y)
+                    lineTo(p(0f, tipY).x, p(0f, tipY).y)
+                    lineTo(p(0.18f, backY).x, p(0f, backY).y)
+                },
+                color,
+                style = stroke,
+            )
         }
         Glyph.SWAP -> {
             // Two screens trading places, with curved arrows between them.

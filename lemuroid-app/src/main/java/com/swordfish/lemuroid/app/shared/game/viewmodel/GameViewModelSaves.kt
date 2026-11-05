@@ -158,13 +158,29 @@ class GameViewModelSaves(
         return retroGameView.unserializeState(saveState.state)
     }
 
-    fun saveQuickSave() {
-        currentQuickSave = getCurrentSaveState()
+    /** Saves the quick save on disk too (like Delta's), so it is still there the next time the game starts. */
+    suspend fun saveQuickSave() {
+        val state = getCurrentSaveState() ?: return
+        currentQuickSave = state
         sideEffects.showToast(appContext.getString(R.string.game_toast_quick_save_saved))
+        runCatching { statesManager.setQuickSave(game, systemCoreConfig.coreID, state) }
+            .onFailure { Timber.e(it, "Error while writing the quick save") }
     }
 
-    fun loadQuickSave() {
-        loadSaveState(currentQuickSave ?: return)
-        sideEffects.showToast(appContext.getString(R.string.game_toast_quick_save_loaded))
+    /** Loads the quick save (from disk when this session has none), the way a slot is loaded. */
+    suspend fun loadQuickSave() {
+        try {
+            val state = currentQuickSave ?: statesManager.getQuickSave(game, systemCoreConfig.coreID) ?: return
+            val loaded = withContext(Dispatchers.IO) { loadSaveState(state) }
+            val message = if (loaded) R.string.game_toast_quick_save_loaded else R.string.game_toast_load_state_failed
+            sideEffects.showToast(appContext.getString(message))
+        } catch (e: Throwable) {
+            val errorMessageId =
+                when (e) {
+                    is IncompatibleStateException -> R.string.error_message_incompatible_state
+                    else -> R.string.game_toast_load_state_failed
+                }
+            sideEffects.showToast(appContext.getString(errorMessageId))
+        }
     }
 }

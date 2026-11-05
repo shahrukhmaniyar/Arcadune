@@ -38,6 +38,9 @@ import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_FAST_FORWARD
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_LOAD
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_SAVE
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_REWIND
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_SWAP_SCREENS
 import gg.padkit.inputevents.InputEvent
@@ -98,6 +101,10 @@ class BaseGameScreenViewModel(
     }
 
     private val sideEffects = GameViewModelSideEffects(viewModelScope)
+
+    // What the quick buttons may do for this game: fast forward, and quick save / load.
+    private val fastForwardSupported = system.fastForwardSupport
+    private val statesSupported = systemCoreConfig.statesSupported
     val retroGameView =
         GameViewModelRetroGameView(
             appContext,
@@ -265,22 +272,26 @@ class BaseGameScreenViewModel(
 
     fun saveQuickSave() {
         Timber.d("Saving quick save")
-        if (loadingState.value) return
-        withLoading {
-            saves.saveQuickSave()
+        if (loadingState.value || !statesSupported) return
+        viewModelScope.launch {
+            withLoading {
+                saves.saveQuickSave()
+            }
         }
     }
 
     fun loadQuickSave() {
         Timber.d("Loading quick save")
-        if (loadingState.value) return
-        withLoading {
-            saves.loadQuickSave()
+        if (loadingState.value || !statesSupported) return
+        viewModelScope.launch {
+            withLoading {
+                saves.loadQuickSave()
+            }
         }
     }
 
     fun toggleFastForward() {
-        Timber.d("Loading quick save")
+        Timber.d("Toggling fast forward")
         retroGameView.retroGameView?.apply {
             frameSpeed = if (frameSpeed == 1) 2 else 1
         }
@@ -316,14 +327,17 @@ class BaseGameScreenViewModel(
     }
 
     fun handleVirtualInputEvent(events: List<InputEvent>) {
-        // The rewind and swap-screens buttons are handled here and never reach the emulator.
-        val (appEvents, gameEvents) =
-            events.partition { it is InputEvent.Button && (it.id == KEYCODE_REWIND || it.id == KEYCODE_SWAP_SCREENS) }
+        // The rewind, swap-screens and quick buttons are handled here and never reach the emulator.
+        val (appEvents, gameEvents) = events.partition { it is InputEvent.Button && it.id in APP_KEYS }
         appEvents.lastOrNull { (it as InputEvent.Button).id == KEYCODE_REWIND }
             ?.let { rewind.onRewindPressed((it as InputEvent.Button).pressed) }
-        if (appEvents.any { it is InputEvent.Button && it.id == KEYCODE_SWAP_SCREENS && it.pressed }) {
-            retroGameView.swapScreens()
-        }
+
+        fun pressed(key: Int) = appEvents.any { it is InputEvent.Button && it.id == key && it.pressed }
+        if (pressed(KEYCODE_SWAP_SCREENS)) retroGameView.swapScreens()
+        // The quick buttons act when pressed, like Delta's.
+        if (pressed(KEYCODE_FAST_FORWARD) && fastForwardSupported) toggleFastForward()
+        if (pressed(KEYCODE_QUICK_SAVE)) saveQuickSave()
+        if (pressed(KEYCODE_QUICK_LOAD)) loadQuickSave()
         if (gameEvents.isNotEmpty()) touchControls.handleVirtualInputEvent(gameEvents)
     }
 
@@ -356,3 +370,7 @@ class BaseGameScreenViewModel(
         return inputs.sendMotionEvent(event)
     }
 }
+
+/** Keys of skin buttons the app handles itself (rewind, swap screens, the quick buttons); they never reach the emulator. */
+private val APP_KEYS =
+    setOf(KEYCODE_REWIND, KEYCODE_SWAP_SCREENS, KEYCODE_FAST_FORWARD, KEYCODE_QUICK_SAVE, KEYCODE_QUICK_LOAD)
