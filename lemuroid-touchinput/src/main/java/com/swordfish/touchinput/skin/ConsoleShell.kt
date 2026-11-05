@@ -81,7 +81,7 @@ object ScreenSpecs {
     ): ScreenSpec? =
         when (id) {
             TouchControllerID.MELONDS ->
-                when (values["melonds_screen_layout1"] ?: if (landscape) "hybrid-top" else "top-bottom") {
+                when (values["melonds_screen_layout1"] ?: if (landscape) "left-right" else "top-bottom") {
                     "top-bottom" -> DS_STACKED
                     "hybrid-top" -> DS_HYBRID
                     "left-right" -> DS_SIDE_BY_SIDE
@@ -330,10 +330,16 @@ fun ArcaduneShellPreview(
     id: TouchControllerID,
     skin: ArcaduneSkin,
     isLandscape: Boolean,
+    /** The phone it is laid out on (held as [isLandscape] says), before it is scaled down to fit. */
+    phoneWidth: androidx.compose.ui.unit.Dp = if (isLandscape) 780.dp else 360.dp,
+    phoneHeight: androidx.compose.ui.unit.Dp = if (isLandscape) 360.dp else 780.dp,
+    /** The player's moved buttons, size and opacity. */
+    customization: SkinCustomization = SkinCustomization(),
+    /** Given, the controls can be dragged (see [ArcaduneSkinEditor]): the layout editor in Settings. */
+    onMove: ((Int, Offset) -> Unit)? = null,
 ) {
-    val phoneWidth = if (isLandscape) 780.dp else 360.dp
-    val phoneHeight = if (isLandscape) 360.dp else 780.dp
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))) {
+    val corners = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.clip(corners)) {
         val fit = minOf(maxWidth / phoneWidth, maxHeight / phoneHeight)
         androidx.compose.foundation.layout.Box(
             modifier =
@@ -363,18 +369,28 @@ fun ArcaduneShellPreview(
             if (shell) {
                 ConsoleShell(Modifier.fillMaxSize(), layout.palette ?: SkinPalettes.MONO, placement.windows, placement.bodyTop)
             }
-            if (isLandscape) {
-                ArcaduneSkinPreview(Modifier.fillMaxSize().padding(4.dp), layout, pinToEdges = true, shell = shell)
-            } else {
-                with(density) {
-                    ArcaduneSkinPreview(
+            val controls =
+                if (isLandscape) {
+                    Modifier.fillMaxSize().padding(4.dp)
+                } else {
+                    with(density) {
                         Modifier
                             .absoluteOffset { androidx.compose.ui.unit.IntOffset(placement.panel.left.toInt(), placement.panel.top.toInt()) }
-                            .size(placement.panel.width.toDp(), placement.panel.height.toDp()),
-                        layout,
-                        shell = true,
-                    )
+                            .size(placement.panel.width.toDp(), placement.panel.height.toDp())
+                    }
                 }
+            if (onMove != null) {
+                ArcaduneSkinEditor(
+                    controls,
+                    layout,
+                    pinToEdges = isLandscape,
+                    rewindAvailable = true,
+                    customization = customization,
+                    onMove = onMove,
+                    shell = shell,
+                )
+            } else {
+                ArcaduneSkinPreview(controls, layout, isLandscape, shell, customization)
             }
         }
     }

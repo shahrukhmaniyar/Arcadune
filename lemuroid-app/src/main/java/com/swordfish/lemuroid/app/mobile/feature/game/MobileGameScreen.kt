@@ -39,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.runtime.SideEffect
 import com.swordfish.touchinput.skin.hasTwoScreens
 import com.swordfish.touchinput.skin.trackFingers
-import com.swordfish.touchinput.skin.signature
 import com.swordfish.touchinput.skin.SkinInput
 import com.swordfish.libretrodroid.LibretroDroid
 import android.view.View
@@ -86,7 +85,7 @@ import com.swordfish.touchinput.radial.ui.LemuroidButtonPressFeedback
 import com.swordfish.touchinput.skin.ArcaduneSkin
 import com.swordfish.touchinput.skin.ArcaduneSkinView
 import com.swordfish.touchinput.skin.ArcaduneSkins
-import com.swordfish.touchinput.skin.SkinStyle
+import com.swordfish.touchinput.skin.SkinVariant
 import com.swordfish.touchinput.skin.SkinCustomization
 import gg.padkit.PadKit
 import gg.padkit.PadKitScope
@@ -148,16 +147,15 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
         val screenContext = LocalContext.current
         val skinStore = remember { SkinCustomizationStore(screenContext) }
         val controllerName = currentControllerConfig?.touchControllerID?.name
-        val skinMonochrome = remember(controllerName) { mutableStateOf(controllerName?.let { skinStore.isMonochrome(it) } ?: false) }
+        // Which of its two skins (Console or Minimal) this controller uses, as chosen in Settings or here.
+        val skinVariant =
+            remember(controllerName) { mutableStateOf(controllerName?.let(skinStore::variant) ?: SkinVariant.CONSOLE) }
         val controllerId = currentControllerConfig?.touchControllerID
-        // Built once per controller and colour choice, not at every redraw, so the controls keep the
-        // same layout objects for the whole game.
-        val skin = remember(controllerId, skinMonochrome.value) { controllerId?.let { ArcaduneSkins.forController(it, skinMonochrome.value) } }
-        // Whether this controller has colours of its own that can be switched to black and white.
-        val skinHasColours =
-            remember(controllerId) {
-                controllerId?.let { ArcaduneSkins.forController(it)?.portrait?.style }
-                    .let { it == SkinStyle.CONSOLE || it == SkinStyle.NES_CLASSIC }
+        // Built once per controller and skin, not at every redraw, so the controls keep the same
+        // layout objects for the whole game.
+        val skin =
+            remember(controllerId, skinVariant.value) {
+                controllerId?.let { ArcaduneSkins.forController(it, skinVariant.value) }
             }
         // Every finger on a skin goes through this tracker (buttons, d-pad, sticks, and the DS / 3DS
         // touch screen), see SkinInput.
@@ -171,9 +169,13 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             }
         skinInput.hapticFeedback = padHapticFeedback
         val skinTakesScreenTouches = skin != null && controllerId?.hasTwoScreens() == true
-        // One saved set of changes per controller, orientation and layout version (see signature()).
-        val skinLayoutSignature = skin?.let { (if (isLandscape) it.landscape else it.portrait).signature() }
-        val skinKey = "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_$skinLayoutSignature"
+        // One saved set of changes per controller, orientation and layout version, shared with Settings.
+        val skinKey =
+            skin?.let {
+                val layout = if (isLandscape) it.landscape else it.portrait
+                SkinCustomizationStore.keyOf(controllerId!!.name, isLandscape, layout)
+            }
+                ?: "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_none"
         val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey)) }
         val screenValues = viewModel.getScreenLayout().collectAsState(emptyMap())
         val rewindAvailable = viewModel.isRewindAvailable().collectAsState(false)
@@ -311,19 +313,17 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 // Kept in memory while dragging (saving on every move made dragging stutter), saved on Done.
                 customizationState = skinCustomization,
                 panel = skinPanel.value,
-                monochrome = skinMonochrome.value.takeIf { skinHasColours },
-                onMonochromeChange = { mono ->
-                    skinMonochrome.value = mono
-                    controllerName?.let { skinStore.setMonochrome(it, mono) }
+                variant = skinVariant.value,
+                onVariantChange = { variant ->
+                    skinVariant.value = variant
+                    controllerName?.let { skinStore.setVariant(it, variant) }
                 },
-                // Back to the console's own layout, size, opacity and colours, saved at once.
+                // Back to the console's own layout, size, opacity and skin, saved at once.
                 onReset = {
                     skinCustomization.value = SkinCustomization()
                     skinStore.save(skinKey, SkinCustomization())
-                    if (skinHasColours) {
-                        skinMonochrome.value = false
-                        controllerName?.let { skinStore.setMonochrome(it, false) }
-                    }
+                    skinVariant.value = SkinVariant.CONSOLE
+                    controllerName?.let { skinStore.setVariant(it, SkinVariant.CONSOLE) }
                 },
                 onDone = {
                     skinStore.save(skinKey, skinCustomization.value)

@@ -247,6 +247,14 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     composable(MainRoute.SETTINGS_SKINS) {
                         com.swordfish.lemuroid.app.mobile.feature.settings.skins.SkinGalleryScreen(
                             modifier = Modifier.padding(padding),
+                            navController = navController,
+                        )
+                    }
+                    composable(MainRoute.SETTINGS_SKIN_LAYOUT) { entry ->
+                        com.swordfish.lemuroid.app.mobile.feature.settings.skins.SkinLayoutEditorScreen(
+                            modifier = Modifier.padding(padding),
+                            controller = entry.arguments?.getString("controller") ?: "",
+                            onDone = { navController.popBackStack() },
                         )
                     }
                     composable(MainRoute.SETTINGS_BIOS) {

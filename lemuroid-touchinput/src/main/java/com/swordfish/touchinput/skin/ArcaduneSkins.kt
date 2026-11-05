@@ -31,7 +31,17 @@ enum class SkinStyle {
 
     /** Painted in the colours of the console's own controller (see [SkinPalette]). */
     CONSOLE,
+
+    /** White outlines: on a dark grey body upright, over the game sideways (the Minimal skin). */
+    OUTLINE,
 }
+
+/**
+ * The two skins every console offers, like Delta's: [CONSOLE] in the console's own colours and
+ * shape, [MINIMAL] in plain outlines. Both put every control in the same place, so the player's
+ * moved buttons and sizes apply to either.
+ */
+enum class SkinVariant { CONSOLE, MINIMAL }
 
 /**
  * The colours of a console's controller. [buttons] gives some buttons their own colour (fill, then
@@ -92,6 +102,8 @@ sealed interface SkinControl {
         val labelBelow: Boolean = false,
         /** Drawn on the button instead of its name (which then goes under it). */
         val icon: SkinIcon? = null,
+        /** A second key pressed with [keyCode] (the AB button). */
+        val alsoKey: Int? = null,
     ) : SkinControl
 
     data class Menu(override val frame: SkinRect, override val reach: Float = 10f) : SkinControl
@@ -120,16 +132,11 @@ data class SkinLayout(
 )
 
 data class ArcaduneSkin(val portrait: SkinLayout, val landscape: SkinLayout) {
-    /** The same controller in black and white, for players who prefer it to the console's colours. */
-    fun monochrome(): ArcaduneSkin =
+    /** The same controller in plain outlines (the Minimal skin), for players who prefer it to the console's look. */
+    fun minimal(): ArcaduneSkin =
         ArcaduneSkin(
-            portrait =
-                when (portrait.style) {
-                    SkinStyle.CONSOLE, SkinStyle.NES_CLASSIC -> portrait.copy(style = SkinStyle.MONO, palette = null)
-                    else -> portrait
-                },
-            landscape =
-                if (landscape.screenArea != null) landscape.copy(style = SkinStyle.MONO, palette = null) else landscape.copy(palette = null),
+            portrait = portrait.copy(style = SkinStyle.OUTLINE, palette = SkinPalettes.OUTLINE),
+            landscape = landscape.copy(style = SkinStyle.OUTLINE, palette = SkinPalettes.OUTLINE),
         )
 
     /** The same layout painted in [palette]: the portrait panel in its colours, tinted buttons in landscape. */
@@ -144,6 +151,21 @@ data class ArcaduneSkin(val portrait: SkinLayout, val landscape: SkinLayout) {
 /** Each console's colours. All Arcadune's own picks, after the look of the real controllers. */
 object SkinPalettes {
     private val White = Color(0xFFFFFFFF)
+
+    /** The Minimal skin: white outlines on dark grey. */
+    val OUTLINE =
+        SkinPalette(
+            body = Color(0xFF2C2C30),
+            bodyShade = Color(0xFF232326),
+            dpad = Color(0xFF2C2C30),
+            dpadMark = Color(0xFFF2F2F4),
+            button = Color(0xFF2C2C30),
+            buttonLabel = Color(0xFFF2F2F4),
+            shoulder = Color(0xFF2C2C30),
+            shoulderLabel = Color(0xFFF2F2F4),
+            small = Color(0xFF2C2C30),
+            caption = Color(0xFFD6D6DA),
+        )
 
     /** The black-and-white look of [SkinStyle.MONO], for the controls only the coloured skins have. */
     val MONO =
@@ -484,14 +506,17 @@ object SkinPalettes {
  * under them. The artwork is Arcadune's own (no Delta graphics or branding).
  */
 object ArcaduneSkins {
-    /** The skin of [id], in the console's colours or (with [monochrome]) in black and white. */
+    /** The skin of [id]: the Console skin, in its colours and shape, or the Minimal one in outlines. */
     fun forController(
         id: TouchControllerID,
-        monochrome: Boolean = false,
+        variant: SkinVariant = SkinVariant.CONSOLE,
     ): ArcaduneSkin? =
         skinOf(id)
-            ?.let { skin -> shellLandscape(id, skin.landscape.palette ?: skin.portrait.palette ?: SkinPalettes.NES)?.let { skin.copy(landscape = it) } ?: skin }
-            ?.let { if (monochrome) it.monochrome() else it }
+            ?.let { skin ->
+                val palette = skin.landscape.palette ?: skin.portrait.palette ?: SkinPalettes.NES
+                shellLandscape(id, palette)?.let { skin.copy(landscape = it) } ?: skin
+            }
+            ?.let { if (variant == SkinVariant.MINIMAL) it.minimal() else it }
 
     private fun skinOf(id: TouchControllerID): ArcaduneSkin? =
         when (id) {
@@ -639,6 +664,9 @@ object ArcaduneSkins {
         screenArea: SkinRect? = null,
     ) = SkinLayout(LW, LH, if (screenArea != null) SkinStyle.CONSOLE else SkinStyle.OVERLAY, controls, palette, screenArea)
 
+    /** The DS sideways: both screens side by side across the top, the controls under them. */
+    private val DS_SIDEWAYS_SCREENS = SkinRect(70f, 0f, 672f, 232f)
+
     /** Where the screens go in a landscape shell: the full height between the two 150-unit wings. */
     private val SHELL_SCREENS = SkinRect(150f, 6f, 512f, 363f)
 
@@ -670,6 +698,30 @@ object ArcaduneSkins {
         controls: List<SkinControl>,
     ) = landscape(controls, palette)
 
+    /**
+     * Sideways, for the small, nearly square handheld screens (Game Boy, Game Gear, Neo Geo Pocket),
+     * the way Delta frames its Game Boy Color: the console's body from top to bottom, the screen in
+     * the top middle (as big as the corners allow), the d-pad and buttons low in the corners and
+     * select / start under the screen.
+     */
+    private fun framedHandheld(
+        palette: SkinPalette,
+        controls: List<SkinControl>,
+    ) = landscape(controls, palette, FRAMED_SCREEN)
+
+    private val FRAMED_SCREEN = SkinRect(226f, 0f, 360f, 302f)
+
+    /** Menu and rewind top left, select and start under the screen. */
+    private fun framedHandheldBand(
+        select: String? = "SELECT",
+        start: String = "START",
+    ) = listOfNotNull(
+        SkinControl.Menu(r(28, 18, 66, 24)),
+        SkinControl.Rewind(r(112, 18, 66, 24)),
+        select?.let { pill(SELECT, it, r(330, 320, 66, 24)) },
+        pill(START, start, if (select == null) r(373, 320, 66, 24) else r(416, 320, 66, 24)),
+    )
+
     // About 40% of the height, low in the left corner, where the left thumb rests.
     private val cornerDpad get() = SkinControl.Dpad(r(28, 200, 150))
     private val cornerShoulderL get() = shoulder(L, "L", r(16, 14, 110, 40))
@@ -697,16 +749,36 @@ object ArcaduneSkins {
         palette: SkinPalette,
     ): SkinLayout? =
         when (id) {
-            TouchControllerID.NES, TouchControllerID.GB ->
+            TouchControllerID.NES ->
                 fullScreen(
                     palette,
                     listOf(cornerDpad) + cornerTwoButtons(B to "B", A to "A") + landscapeCommon(),
+                )
+            // The small, nearly square handheld screens: framed in the console's body (Delta's GBC way).
+            TouchControllerID.GB ->
+                framedHandheld(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "B", A to "A") + framedHandheldBand(),
+                )
+            TouchControllerID.GG ->
+                framedHandheld(
+                    palette,
+                    listOf(cornerDpad) + cornerTwoButtons(B to "1", A to "2") + framedHandheldBand(select = null),
+                )
+            TouchControllerID.NGP ->
+                framedHandheld(
+                    palette,
+                    listOf(cornerDpad) +
+                        cornerTwoButtons(B to "A", A to "B") +
+                        framedHandheldBand(select = null, start = "OPTION"),
                 )
             TouchControllerID.GBA ->
                 fullScreen(
                     palette,
                     listOf(cornerShoulderL, cornerShoulderR, cornerDpad) +
                         cornerTwoButtons(B to "B", A to "A") +
+                        // A and B with one tap, under A (as on Delta's GBA skin).
+                        SkinControl.Button(A, "AB", ButtonShape.PILL, r(716, 304, 66, 38), alsoKey = B) +
                         landscapeCommon(),
                 )
             TouchControllerID.SNES ->
@@ -716,7 +788,7 @@ object ArcaduneSkins {
                         nintendoFace(700f, 268f, 54f) +
                         landscapeCommon(),
                 )
-            TouchControllerID.SMS, TouchControllerID.GG ->
+            TouchControllerID.SMS ->
                 fullScreen(
                     palette,
                     listOf(cornerDpad) + cornerTwoButtons(B to "1", A to "2") + landscapeCommon(select = null),
@@ -725,13 +797,6 @@ object ArcaduneSkins {
                 fullScreen(
                     palette,
                     listOf(cornerDpad) + cornerTwoButtons(B to "I", A to "II") + landscapeCommon(start = "RUN"),
-                )
-            TouchControllerID.NGP ->
-                fullScreen(
-                    palette,
-                    listOf(cornerDpad) +
-                        cornerTwoButtons(B to "A", A to "B") +
-                        landscapeCommon(select = null, start = "OPTION"),
                 )
             TouchControllerID.WS_LANDSCAPE ->
                 fullScreen(
@@ -1019,17 +1084,24 @@ object ArcaduneSkins {
                     ) + nintendoFace(255f, 92f, 42f) + portraitBottomRow(y = 166),
                     height = 206f,
                 ),
+            // Sideways the way Delta does it: both screens side by side across the top, the
+            // controls in the band under them (d-pad and buttons in the corners, L / R under the
+            // screens, the small buttons between them).
             landscape =
                 landscape(
                     listOf(
-                        shoulder(L, "L", r(10, 8, 128, 36)),
-                        shoulder(R, "R", r(674, 8, 128, 36)),
-                        SkinControl.Dpad(r(14, 96, 124)),
-                        round(L2, "MIC", r(22, 254, 44), icon = SkinIcon.MIC),
-                        round(L3, "LID", r(86, 254, 44), icon = SkinIcon.LID),
-                    ) + nintendoFace(735f, 166f, 50f) + landscapeShellBand(),
+                        SkinControl.Dpad(r(22, 254, 116), reach = 10f),
+                        shoulder(L, "L", r(196, 258, 150, 40)),
+                        shoulder(R, "R", r(466, 258, 150, 40)),
+                        SkinControl.Menu(r(196, 322, 56, 24), reach = 6f),
+                        pill(SELECT, "SELECT", r(268, 322, 56, 24), reach = 6f),
+                        round(L2, "MIC", r(352, 316, 34), icon = SkinIcon.MIC, reach = 4f),
+                        round(L3, "LID", r(426, 316, 34), icon = SkinIcon.LID, reach = 4f),
+                        pill(START, "START", r(488, 322, 56, 24), reach = 6f),
+                        SkinControl.Rewind(r(560, 322, 56, 24), reach = 6f),
+                    ) + nintendoFace(732f, 314f, 38f),
                     SkinPalettes.DS,
-                    SHELL_SCREENS,
+                    DS_SIDEWAYS_SCREENS,
                 ),
         )
 

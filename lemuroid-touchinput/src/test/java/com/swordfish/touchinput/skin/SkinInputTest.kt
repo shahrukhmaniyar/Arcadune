@@ -226,6 +226,16 @@ class SkinInputTest {
     }
 
     @Test
+    fun theAbButtonPressesBothKeys() {
+        val ab = SkinControl.Button(a, "AB", ButtonShape.PILL, SkinRect(0f, 0f, 1f, 1f), alsoKey = b)
+        input.targets += SkinInput.Target(6, ab, Rect(800f, 600f, 900f, 650f), round = false)
+        input.onDown(1, Offset(850f, 625f))
+        assertEquals(setOf(a to true, b to true), buttonEvents().toSet())
+        input.onUp(1)
+        assertEquals(setOf(a to false, b to false), buttonEvents().drop(2).toSet())
+    }
+
+    @Test
     fun releaseAllLetsGoOfEverything() {
         input.onDown(1, Offset(150f, 150f))
         input.onDown(2, Offset(500f, 120f))

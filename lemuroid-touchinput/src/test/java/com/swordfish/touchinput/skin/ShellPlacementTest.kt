@@ -146,6 +146,18 @@ class ShellPlacementTest {
         assertTrue(found.distinct().joinToString("\n"), found.isEmpty())
     }
 
+    /** Both skins of every console put the same controls in the same places: moved buttons apply to either. */
+    @Test
+    fun theMinimalSkinHasTheSameControlsAsTheConsoleOne() {
+        for ((id, skin) in skins) {
+            val minimal = ArcaduneSkins.forController(id, SkinVariant.MINIMAL)!!
+            assertEquals("$id upright", skin.portrait.signature(), minimal.portrait.signature())
+            assertEquals("$id sideways", skin.landscape.signature(), minimal.landscape.signature())
+            assertEquals("$id sideways screens", skin.landscape.screenArea, minimal.landscape.screenArea)
+            assertEquals("$id style", SkinStyle.OUTLINE, minimal.portrait.style)
+        }
+    }
+
     @Test
     fun changesSurviveSavingAndLoading() {
         val changed = SkinCustomization(size = 1.2f, offsets = mapOf(0 to Offset(10f, -4f), 3 to Offset(-2.5f, 7f)), opacity = 0.6f)
@@ -160,7 +172,8 @@ class ShellPlacementTest {
         val nes = ArcaduneSkins.forController(TouchControllerID.NES)!!.portrait
         assertEquals(nes.signature(), ArcaduneSkins.forController(TouchControllerID.NES)!!.portrait.signature())
         // The colours do not matter, the controls do.
-        assertEquals(nes.signature(), ArcaduneSkins.forController(TouchControllerID.NES, monochrome = true)!!.portrait.signature())
+        val minimal = ArcaduneSkins.forController(TouchControllerID.NES, SkinVariant.MINIMAL)!!
+        assertEquals(nes.signature(), minimal.portrait.signature())
         val moved = nes.copy(controls = nes.controls.drop(1))
         assertNotEquals(nes.signature(), moved.signature())
     }

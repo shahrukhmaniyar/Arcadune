@@ -40,6 +40,8 @@ import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.touchinput.skin.ArcaduneSkin
 import com.swordfish.touchinput.skin.ArcaduneSkinEditor
 import com.swordfish.touchinput.skin.SkinCustomization
+import com.swordfish.touchinput.skin.SkinVariant
+import com.swordfish.touchinput.skin.signature
 
 /** Saves the player's skin changes, one set per controller and orientation. */
 class SkinCustomizationStore(context: Context) {
@@ -52,17 +54,41 @@ class SkinCustomizationStore(context: Context) {
         customization: SkinCustomization,
     ) = preferences.edit { putString(prefKey(key), customization.encode()) }
 
-    /** Black and white instead of the console's colours, one choice per controller ([controller] is its name). */
-    fun isMonochrome(controller: String): Boolean = preferences.getBoolean(monoKey(controller), false)
+    /**
+     * Which of its two skins a controller uses ([controller] is its name). Players who had chosen
+     * black and white before there were two skins get the Minimal one.
+     */
+    fun variant(controller: String): SkinVariant =
+        preferences.getString(variantKey(controller), null)
+            ?.let { name -> SkinVariant.values().firstOrNull { it.name == name } }
+            ?: if (preferences.getBoolean(monoKey(controller), false)) SkinVariant.MINIMAL else SkinVariant.CONSOLE
 
-    fun setMonochrome(
+    fun setVariant(
         controller: String,
-        monochrome: Boolean,
-    ) = preferences.edit { putBoolean(monoKey(controller), monochrome) }
+        variant: SkinVariant,
+    ) = preferences.edit {
+        putString(variantKey(controller), variant.name)
+        remove(monoKey(controller))
+    }
 
     private fun prefKey(key: String) = "arcadune_skin_$key"
 
+    private fun variantKey(controller: String) = "arcadune_skin_variant_$controller"
+
     private fun monoKey(controller: String) = "arcadune_skin_mono_$controller"
+
+    companion object {
+        /**
+         * Where the changes to [layout] (the [landscape] or upright layout of [controller]) are
+         * kept: one set per controller, orientation and version of the layout, so a redesigned
+         * layout never gets moves made for the old one. The game and Settings share it.
+         */
+        fun keyOf(
+            controller: String,
+            landscape: Boolean,
+            layout: com.swordfish.touchinput.skin.SkinLayout,
+        ) = "${controller}_${if (landscape) "landscape" else "portrait"}_${layout.signature()}"
+    }
 }
 
 /**
@@ -77,9 +103,9 @@ fun SkinEditorOverlay(
     customizationState: MutableState<SkinCustomization>,
     /** Where the game shows the upright controller panel (in pixels); the editor shows it there too. */
     panel: androidx.compose.ui.geometry.Rect?,
-    /** Null when the controller has no colours of its own to switch off. */
-    monochrome: Boolean?,
-    onMonochromeChange: (Boolean) -> Unit,
+    /** Which of its two skins the controller uses (the Console one, or Minimal). */
+    variant: SkinVariant,
+    onVariantChange: (SkinVariant) -> Unit,
     onReset: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -177,8 +203,8 @@ fun SkinEditorOverlay(
                 valueRange = SkinCustomization.MIN_OPACITY..1f,
                 onValueChange = { customizationState.value = customizationState.value.copy(opacity = it) },
             )
-            if (monochrome != null) {
-                // Two halves of one pill: the console's colours, or black and white.
+            run {
+                // Two halves of one pill: the Console skin, or the Minimal one.
                 Row(
                     modifier =
                         Modifier
@@ -187,14 +213,19 @@ fun SkinEditorOverlay(
                             .background(Color(0xFF2A2738), RoundedCornerShape(50))
                             .padding(3.dp),
                 ) {
-                    listOf(false to R.string.skin_editor_colours, true to R.string.skin_editor_mono).forEach { (mono, label) ->
-                        val selected = mono == monochrome
+                    val options =
+                        listOf(
+                            SkinVariant.CONSOLE to R.string.skin_variant_console,
+                            SkinVariant.MINIMAL to R.string.skin_variant_minimal,
+                        )
+                    options.forEach { (option, label) ->
+                        val selected = option == variant
                         Box(
                             modifier =
                                 Modifier
                                     .weight(1f)
                                     .background(if (selected) Color(0xFF4A4560) else Color.Transparent, RoundedCornerShape(50))
-                                    .clickable { onMonochromeChange(mono) }
+                                    .clickable { onVariantChange(option) }
                                     .padding(vertical = 9.dp),
                             contentAlignment = Alignment.Center,
                         ) {

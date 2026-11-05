@@ -214,6 +214,8 @@ fun ArcaduneSkinEditor(
     rewindAvailable: Boolean,
     customization: SkinCustomization,
     onMove: (Int, Offset) -> Unit,
+    /** True when a [ConsoleShell] is drawn behind: the panel then has no background of its own. */
+    shell: Boolean = false,
 ) {
     val currentOnMove by rememberUpdatedState(onMove)
     val notPressed = remember { mutableStateOf(false) }
@@ -263,6 +265,7 @@ fun ArcaduneSkinEditor(
                 pinToEdges,
                 rewindAvailable,
                 customization,
+                drawBody = !shell,
             ) { index, control, frame, placement, scale ->
                 val inset = (control.reach * scale).dp
                 val active = dragging.value == index
@@ -277,7 +280,7 @@ fun ArcaduneSkinEditor(
                             )
                             .padding(inset / 2),
                 ) {
-                    StaticControl(layout, control, frame, notPressed, scale)
+                    StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
                 }
             }
         }
@@ -291,11 +294,20 @@ fun ArcaduneSkinPreview(
     layout: SkinLayout,
     pinToEdges: Boolean = false,
     shell: Boolean = false,
+    customization: SkinCustomization = SkinCustomization(),
 ) {
     val notPressed = remember { mutableStateOf(false) }
-    SkinFrame(modifier, layout, pinToEdges, rewindAvailable = true, customization = SkinCustomization(), drawBody = !shell) { _, control, frame, placement, scale ->
+    val frameModifier = modifier.graphicsLayer { alpha = customization.opacity }
+    SkinFrame(
+        frameModifier,
+        layout,
+        pinToEdges,
+        rewindAvailable = true,
+        customization = customization,
+        drawBody = !shell,
+    ) { _, control, frame, placement, scale ->
         Box(modifier = placement.padding((control.reach * scale).dp)) {
-            StaticControl(layout, control, frame, notPressed, scale)
+            StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
         }
     }
 }
@@ -308,6 +320,7 @@ private fun StaticControl(
     frame: SkinRect,
     notPressed: State<Boolean>,
     scale: Float,
+    pinned: Boolean,
 ) {
     when (control) {
         is SkinControl.Dpad -> Canvas(Modifier.fillMaxSize()) { drawAnyDpad(layout, control.look, Offset.Zero) }
@@ -319,7 +332,7 @@ private fun StaticControl(
                     drawStickKnob(layout, false, knob)
                 }
             }
-        else -> ControlGlyph(layout, control, frame, notPressed, 0.dp, scale, pinned = false)
+        else -> ControlGlyph(layout, control, frame, notPressed, 0.dp, scale, pinned)
     }
 }
 
@@ -477,6 +490,14 @@ private object Nes {
     val Label = Color(0xFFC3161C)
 }
 
+/** The Minimal skin: every control a white outline, filled in a little while pressed. */
+private object Outline {
+    val Line = Color(0xF2F2F2F4)
+    val Pressed = Color(0x47FFFFFF)
+
+    fun DrawScope.stroke() = Stroke(2.dp.toPx())
+}
+
 /**
  * The full-screen sideways controls: solid enough to find at a glance over any game (like Delta's
  * default skins), dark grey or in the console's colours, with a light rim.
@@ -501,7 +522,7 @@ private fun DrawScope.drawSkinBody(
     unit: Float,
 ) {
     when (layout.style) {
-        SkinStyle.CONSOLE -> {
+        SkinStyle.CONSOLE, SkinStyle.OUTLINE -> {
             val palette = layout.palette ?: SkinPalettes.MONO
             drawRoundRect(
                 brush = Brush.verticalGradient(listOf(palette.body, palette.bodyShade)),
@@ -561,6 +582,8 @@ private fun DrawScope.drawAnyDpad(
     val direction = Offset(padDirection.x, -padDirection.y)
     when {
         look == DpadLook.BALL_TOP -> drawBallTop(layout, direction)
+        layout.style == SkinStyle.OUTLINE && look == DpadLook.CROSS -> drawDpad(SkinStyle.OUTLINE, direction)
+        layout.style == SkinStyle.OUTLINE -> drawFourPads(look, direction, outline = true)
         layout.style == SkinStyle.OVERLAY && look == DpadLook.CROSS ->
             drawDpad(SkinStyle.OVERLAY, direction, layout.palette?.dpad)
         layout.style == SkinStyle.OVERLAY -> drawFourPads(look, direction, overlayTint = layout.palette)
@@ -578,6 +601,14 @@ private fun DrawScope.drawBallTop(
     val r = size.minDimension / 2
     val c = Offset(size.width / 2, size.height / 2)
     val lean = c + direction * (r * 0.32f)
+    if (layout.style == SkinStyle.OUTLINE) {
+        with(Outline) {
+            drawCircle(Outline.Line, r - 1.dp.toPx(), c, style = stroke())
+            if (direction != Offset.Zero) drawCircle(Outline.Pressed, r * 0.36f, lean)
+            drawCircle(Outline.Line, r * 0.36f, lean, style = stroke())
+        }
+        return
+    }
     if (layout.style == SkinStyle.OVERLAY) {
         drawCircle(Overlay.Fill, r, c)
         drawCircle(Overlay.Edge, r, c, style = Stroke(1.5.dp.toPx()))
@@ -642,10 +673,32 @@ private fun DrawScope.drawFourPads(
     direction: Offset,
     palette: SkinPalette? = null,
     overlayTint: SkinPalette? = null,
+    /** The Minimal skin: outlines only. */
+    outline: Boolean = false,
 ) {
     val full = size.minDimension
     val c = Offset(size.width / 2, size.height / 2)
     val away = full * 0.32f
+    if (outline) {
+        for ((dir, isPressed) in fourWays(direction)) {
+            val centre = c + dir * away
+            val stroke = Stroke(2.dp.toPx())
+            if (look == DpadLook.C_BUTTONS) {
+                val r = full * 0.165f
+                if (isPressed) drawCircle(Outline.Pressed, r, centre)
+                drawCircle(Outline.Line, r, centre, style = stroke)
+                drawTriangleMark(centre, dir, r * 0.42f, Outline.Line)
+            } else {
+                val half = full * 0.17f
+                val corner = CornerRadius(half * 0.45f)
+                val box = Size(half * 2, half * 2)
+                if (isPressed) drawRoundRect(Outline.Pressed, centre - Offset(half, half), box, corner)
+                drawRoundRect(Outline.Line, centre - Offset(half, half), box, corner, style = stroke)
+                drawTriangleMark(centre, dir, half * 0.5f, Outline.Line)
+            }
+        }
+        return
+    }
     val overlay = palette == null
     val cColor = (overlayTint ?: palette)?.buttons?.get(SkinPalettes.C_BUTTONS_KEY)
     if (palette != null && look == DpadLook.SEPARATE) drawWell(palette, full * 0.62f)
@@ -713,6 +766,15 @@ private fun DrawScope.drawFourPads(
     }
 }
 
+/** The four directions of a d-pad and whether [direction] (screen y down) presses each. */
+private fun fourWays(direction: Offset) =
+    listOf(
+        Offset(0f, -1f) to (direction.y < -0.3f),
+        Offset(0f, 1f) to (direction.y > 0.3f),
+        Offset(-1f, 0f) to (direction.x < -0.3f),
+        Offset(1f, 0f) to (direction.x > 0.3f),
+    )
+
 /** A small triangle at [centre] pointing to [dir]. */
 private fun DrawScope.drawTriangleMark(
     centre: Offset,
@@ -731,6 +793,10 @@ private fun DrawScope.drawTriangleMark(
 /** The well an analog stick sits in. */
 private fun DrawScope.drawStickBase(layout: SkinLayout) {
     val r = size.minDimension / 2
+    if (layout.style == SkinStyle.OUTLINE) {
+        with(Outline) { drawCircle(Outline.Line, r - 1.dp.toPx(), style = stroke()) }
+        return
+    }
     if (layout.style == SkinStyle.OVERLAY) {
         drawCircle(Overlay.Fill, r)
         drawCircle(Overlay.Edge, r, style = Stroke(1.5.dp.toPx()))
@@ -753,6 +819,13 @@ private fun DrawScope.drawStickKnob(
 ) {
     val r = knob / 2
     val c = Offset(knob / 2, knob / 2)
+    if (layout.style == SkinStyle.OUTLINE) {
+        with(Outline) {
+            drawCircle(if (pressed) Outline.Pressed else Color(0xFF2C2C30), r * 0.86f, c)
+            drawCircle(Outline.Line, r * 0.86f, c, style = stroke())
+        }
+        return
+    }
     if (layout.style == SkinStyle.OVERLAY) {
         drawCircle(Overlay.tinted(layout.palette?.stickKnob ?: Color(0xFF6A6A70), pressed), r * 0.86f, c)
         drawCircle(Overlay.Edge, r * 0.86f, c, style = Stroke(1.5.dp.toPx()))
@@ -786,6 +859,17 @@ private fun DrawScope.drawDpad(
         }
 
     when (style) {
+        SkinStyle.OUTLINE -> {
+            val middle = Offset(left + 1.5f * arm, top + 1.5f * arm)
+            if (direction.y < -0.3f) drawRect(Outline.Pressed, Offset(left + arm, top), Size(arm, arm))
+            if (direction.y > 0.3f) drawRect(Outline.Pressed, Offset(left + arm, top + 2 * arm), Size(arm, arm))
+            if (direction.x < -0.3f) drawRect(Outline.Pressed, Offset(left, top + arm), Size(arm, arm))
+            if (direction.x > 0.3f) drawRect(Outline.Pressed, Offset(left + 2 * arm, top + arm), Size(arm, arm))
+            val line = 2.dp.toPx()
+            drawPath(cross(-line / 2), Outline.Line, style = Stroke(line))
+            drawChevrons(middle, arm, Outline.Line)
+            return
+        }
         SkinStyle.OVERLAY -> {
             drawPath(cross(0f), tint?.let { lerp(it, Color.White, 0.14f).copy(alpha = 0.9f) } ?: Overlay.Fill)
             // Only the pressed arm (or two, on a diagonal) lights up.
@@ -937,8 +1021,11 @@ private fun ControlGlyph(
                         else -> consolePalette.buttonLabel
                     }
                 style == SkinStyle.OVERLAY -> Overlay.Glyph
+                style == SkinStyle.OUTLINE -> Outline.Line
                 style != SkinStyle.CONSOLE -> Mono.Emboss
-                shape == ButtonShape.SHOULDER -> consolePalette.shoulderLabel
+                // Names on pills and shoulders (always on them sideways) must read on their fill.
+                shape == ButtonShape.SHOULDER -> readableOn(fill, consolePalette.shoulderLabel)
+                shape == ButtonShape.PILL -> readableOn(fill, consolePalette.buttonLabel)
                 key != null -> consolePalette.labelOf(key)
                 else -> consolePalette.buttonLabel
             }
@@ -946,6 +1033,7 @@ private fun ControlGlyph(
         Canvas(Modifier.fillMaxSize()) {
             when {
                 style == SkinStyle.OVERLAY -> drawOverlayButton(shape, isPressed, overlayTint)
+                style == SkinStyle.OUTLINE -> drawOutlineButton(shape, isPressed)
                 style == SkinStyle.CONSOLE -> drawConsoleButton(shape, fill, isPressed)
                 style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
                     drawNesFaceButton(isPressed)
@@ -971,7 +1059,8 @@ private fun ControlGlyph(
                 else -> null
             }
         if (glyph != null && style != SkinStyle.NES_CLASSIC) {
-            val glyphColor = if (style == SkinStyle.CONSOLE || style == SkinStyle.OVERLAY) labelColor else Mono.Glyph
+            val coloured = style == SkinStyle.CONSOLE || style == SkinStyle.OVERLAY || style == SkinStyle.OUTLINE
+            val glyphColor = if (coloured) labelColor else Mono.Glyph
             Canvas(Modifier.fillMaxSize(if (shape == ButtonShape.PILL) 0.7f else 0.56f)) { drawGlyph(glyph, glyphColor) }
         }
         if (onButton != null && onButton in PlayStationSymbols) {
@@ -991,6 +1080,17 @@ private fun ControlGlyph(
         }
     }
 }
+
+/** [preferred] if it stands out on [fill], else near-black on light fills and near-white on dark ones. */
+private fun readableOn(
+    fill: Color,
+    preferred: Color,
+): Color =
+    when {
+        kotlin.math.abs(fill.luminance() - preferred.luminance()) >= 0.3f -> preferred
+        fill.luminance() > 0.4f -> Color(0xFF1E1E22)
+        else -> Color(0xFFF2F2F4)
+    }
 
 /** The pictures drawn on buttons. */
 private enum class Glyph { MENU, REWIND, MIC, LID, SWAP }
@@ -1141,6 +1241,26 @@ private fun DrawScope.drawNesSmallButton(pressed: Boolean) {
     drawCircle(if (pressed) Color(0xFFBDBDBF) else Color(0xFFF2F2F4), r * 0.86f)
 }
 
+private fun DrawScope.drawOutlineButton(
+    shape: ButtonShape,
+    pressed: Boolean,
+) {
+    val line = 2.dp.toPx()
+    val radius =
+        when (shape) {
+            ButtonShape.ROUND, ButtonShape.PILL -> CornerRadius(size.minDimension / 2)
+            ButtonShape.SHOULDER -> CornerRadius(size.height * 0.45f)
+        }
+    if (pressed) drawRoundRect(Outline.Pressed, cornerRadius = radius)
+    drawRoundRect(
+        Outline.Line,
+        Offset(line / 2, line / 2),
+        Size(size.width - line, size.height - line),
+        CornerRadius((radius.x - line / 2).coerceAtLeast(0f)),
+        style = Stroke(line),
+    )
+}
+
 private fun DrawScope.drawOverlayButton(
     shape: ButtonShape,
     pressed: Boolean,
@@ -1200,7 +1320,7 @@ private fun Caption(
         when {
             nes && (control is SkinControl.Menu || control is SkinControl.Rewind) -> Color(0xFFEDEDEF)
             nes -> Nes.Label
-            style == SkinStyle.CONSOLE -> layout.paletteOrMono().caption
+            style == SkinStyle.CONSOLE || style == SkinStyle.OUTLINE -> layout.paletteOrMono().caption
             else -> Mono.Caption
         }
     val fontSize = with(LocalDensity.current) { (fontUnits * scale).dp.toSp() }

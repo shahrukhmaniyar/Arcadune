@@ -213,6 +213,7 @@ class SkinInput(
                     // A finger that wanders onto the d-pad presses nothing there: the d-pad wants its own finger.
                     for (target in buttonsAt(owner, position)) {
                         keys += target.control.key()
+                        (target.control as? SkinControl.Button)?.alsoKey?.let { keys += it }
                         pressedIndices += target.index
                     }
                 }

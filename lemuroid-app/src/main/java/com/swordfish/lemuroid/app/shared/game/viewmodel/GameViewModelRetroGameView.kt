@@ -490,7 +490,8 @@ class GameViewModelRetroGameView(
         private val SIDEWAYS_LAYOUTS =
             mapOf(
                 "citra_layout_option" to ("Default Top-Bottom Screen" to "Large Screen, Small Screen"),
-                "melonds_screen_layout1" to ("top-bottom" to "hybrid-top"),
+                // The DS sideways shows its screens side by side, like Delta (the skin's band of controls goes under them).
+                "melonds_screen_layout1" to ("top-bottom" to "left-right"),
             )
 
         val RESTART_ONLY_VARIABLES =

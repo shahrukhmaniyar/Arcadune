@@ -14,6 +14,8 @@ import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.composable
 import com.swordfish.lemuroid.R
 
@@ -82,6 +84,15 @@ enum class MainRoute(
         route = "settings/skins",
         titleId = R.string.skin_gallery_title,
         parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
+
+    /** One console's layout editor; [skinLayoutRoute] builds the route. */
+    SETTINGS_SKIN_LAYOUT(
+        route = "settings/skins/layout/{controller}",
+        titleId = R.string.skin_layout_title,
+        parent = SETTINGS_SKINS,
+        arguments = listOf(navArgument("controller") { type = NavType.StringType }),
         showBottomNavigation = false,
     ),
     SETTINGS_INPUT_DEVICES(
