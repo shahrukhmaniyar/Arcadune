@@ -19,8 +19,8 @@ val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
     defaultConfig {
-        versionCode = 258
-        versionName = "1.0.6" // Always remember to update Cores Tag!
+        versionCode = 259
+        versionName = "1.0.7" // Always remember to update Cores Tag!
         applicationId = "io.github.shahrukhmaniyar.arcadune"
 
         // Only ARM phones: the cores Arcadune downloads exist only for these, and leaving out the
