@@ -51,7 +51,11 @@ dependencies {
     implementation("org.jetbrains.compose.ui:ui-desktop:$compose")
     implementation("org.jetbrains.compose.foundation:foundation-desktop:$compose")
     implementation("org.jetbrains.compose.material3:material3-desktop:$compose")
-    implementation("org.jetbrains.compose.desktop:desktop-jvm-linux-x64:$compose")
+    // The native graphics library of the machine it runs on (Linux, Windows or macOS).
+    val os = System.getProperty("os.name").lowercase()
+    val arch = if (System.getProperty("os.arch").contains("aarch64")) "arm64" else "x64"
+    val platform = when { os.contains("win") -> "windows" ; os.contains("mac") -> "macos" ; else -> "linux" }
+    implementation("org.jetbrains.compose.desktop:desktop-jvm-$platform-$arch:$compose")
     implementation(androidAll)
     testImplementation("junit:junit:4.13.2")
 }

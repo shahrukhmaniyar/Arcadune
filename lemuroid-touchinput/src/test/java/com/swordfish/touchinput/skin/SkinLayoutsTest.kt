@@ -40,7 +40,13 @@ class SkinLayoutsTest {
         val found = mutableListOf<String>()
         layout.controls.forEachIndexed { i, control ->
             val frame = frames[i]
-            if (frame.x < -0.5f || frame.y < -0.5f || frame.x + frame.width > width + 0.5f || frame.y + frame.height > layout.height + 0.5f) {
+            // Above the controller only beside inset screens (the DS L / R tabs): inside the margin
+            // the screens leave, low enough to sit next to the touch screen.
+            val side = layout.uprightScreenSide?.let { it * layout.width } ?: 0f
+            val besideScreens =
+                frame.y < -0.5f && side > 0f && frame.y >= -100f && frame.y + frame.height <= 0f &&
+                    (frame.x + frame.width + control.reach <= side || frame.x - control.reach >= layout.width - side)
+            if (frame.x < -0.5f || (frame.y < -0.5f && !besideScreens) || frame.x + frame.width > width + 0.5f || frame.y + frame.height > layout.height + 0.5f) {
                 found += "$name: ${describe(control)} goes outside the skin"
             }
             val touch = frame.grow(control.reach)

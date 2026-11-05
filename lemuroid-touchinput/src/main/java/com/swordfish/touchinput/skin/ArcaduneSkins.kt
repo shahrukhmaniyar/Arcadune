@@ -5,7 +5,6 @@ import androidx.compose.ui.graphics.Color
 import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_REWIND
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_SWAP_SCREENS
-import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_FAST_FORWARD
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_LOAD
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_SAVE
 import com.swordfish.touchinput.radial.settings.TouchControllerID
@@ -762,17 +761,36 @@ object ArcaduneSkins {
         controls: List<SkinControl>,
     ) = landscape(controls, palette, FRAMED_SCREEN)
 
-    private val FRAMED_SCREEN = SkinRect(226f, 0f, 360f, 302f)
+    /**
+     * Sideways for the wide pictures (3DS, DS, PSP): the screens between two slim 120-unit wings,
+     * the full height, so the main screen is as big as the width allows (a wide picture's height
+     * is set by the width it gets).
+     */
+    private val SLIM_WING_SCREENS = SkinRect(106f, 4f, 600f, 367f)
 
-    /** Menu and rewind top left, select and start under the screen. */
+    /** The small buttons of the slim wings, at their bottom: menu and select left, start right. */
+    private fun slimWingBand(select: String? = "SELECT") =
+        listOfNotNull(
+            SkinControl.Menu(r(6, 336, 46, 26), reach = 3f),
+            select?.let { pill(SELECT, it, r(56, 336, 46, 26), reach = 3f) },
+            pill(START, "START", r(738, 336, 60, 26), reach = 3f),
+        )
+
+    /** How far in from each side the DS screens sit upright: room for the L and R tabs beside them. */
+    private const val DS_UPRIGHT_SIDE = 0.11f
+
+    // The whole height: nothing goes under the screen, so it is as big as the phone allows.
+    private val FRAMED_SCREEN = SkinRect(200f, 4f, 412f, 367f)
+
+    /** Menu and rewind top left; select and start on the right, above the face buttons. */
     private fun framedHandheldBand(
         select: String? = "SELECT",
         start: String = "START",
     ) = listOfNotNull(
         SkinControl.Menu(r(28, 18, 66, 24)),
         SkinControl.Rewind(r(112, 18, 66, 24)),
-        select?.let { pill(SELECT, it, r(330, 320, 66, 24)) },
-        pill(START, start, if (select == null) r(373, 320, 66, 24) else r(416, 320, 66, 24)),
+        select?.let { pill(SELECT, it, r(646, 140, 64, 26)) },
+        pill(START, start, if (select == null) r(682, 140, 64, 26) else r(718, 140, 64, 26)),
     )
 
     // About 40% of the height, low in the left corner, where the left thumb rests.
@@ -907,11 +925,17 @@ object ArcaduneSkins {
                     }
                 shell(palette, shoulders + pad + landscapeShellBand(rewind = false))
             }
+            // PSP: its wide picture gets the slim wings (like the 3DS), so it is as big as it can be.
             TouchControllerID.PSP ->
-                shell(
+                landscape(
+                    listOf(
+                        shoulder(L, "L", r(4, 6, 98, 32)),
+                        shoulder(R, "R", r(710, 6, 98, 32)),
+                        separateDpad(r(6, 64, 94)),
+                        SkinControl.Stick(r(30, 220, 60), LEFT_STICK),
+                    ) + psSymbols(760f, 172f, 32f) + slimWingBand(),
                     palette,
-                    listOf(wingShoulderL, wingShoulderR, separateDpad(r(20, 70, 110)), SkinControl.Stick(r(48, 222, 56), LEFT_STICK)) +
-                        psSymbols(737f, 158f, 46f) + landscapeShellBand(rewind = false),
+                    SLIM_WING_SCREENS,
                 )
             // N64: the stick is the main control, the small d-pad and Z under it; the C buttons above B and A.
             TouchControllerID.N64 ->
@@ -1133,46 +1157,45 @@ object ArcaduneSkins {
     private fun ds() =
         ArcaduneSkin(
             // Upright the way Delta's standard DS skin is laid out: the body behind everything,
-            // both screens in one recessed panel with the L / R tabs right under the touch screen,
-            // a big d-pad and big X / Y / A / B, and menu, start and select along the bottom (with
-            // the lid between start and select).
+            // both screens in one recessed panel with L and R as tabs either side of the touch screen,
+            // a big d-pad and big X / Y / A / B, the lid in the middle right under the touch screen,
+            // and menu, start and select along the bottom, start in the middle.
             portrait =
                 console(
                     SkinPalettes.DS,
                     listOf(
-                        shoulder(L, "L", r(22, 0, 102, 24)),
-                        shoulder(R, "R", r(196, 0, 102, 24)),
-                        SkinControl.Dpad(r(8, 46, 130), reach = 10f),
-                    ) + diamondAt(246f, 114f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
+                        // L and R as upright tabs either side of the touch screen, like Delta's DS:
+                        // above the controller (negative y), in the margins the screens leave, low
+                        // enough to sit beside the touch screen on every phone shape.
+                        shoulder(L, "L", r(5, -84, 22, 74)),
+                        shoulder(R, "R", r(293, -84, 22, 74)),
+                        SkinControl.Dpad(r(8, 20, 130), reach = 10f),
+                    ) + diamondAt(246f, 88f, 48f, 45f, X to "X", Y to "Y", A to "A", B to "B") +
                         listOf(
-                            SkinControl.Menu(r(8, 192, 40, 17)),
-                            pill(START, "START", r(96, 192, 40, 17)),
-                            dsLid(r(192, 188, 24)),
-                            pill(SELECT, "SELECT", r(272, 192, 40, 17)),
+                            SkinControl.Menu(r(8, 166, 40, 17)),
+                            pill(START, "START", r(140, 166, 40, 17)),
+                            dsLid(r(148, 0, 24)),
+                            pill(SELECT, "SELECT", r(272, 166, 40, 17)),
                         ),
-                    height = 236f,
-                ).copy(uprightScreenSide = 0.075f, screenPanelBelow = 24f),
-            // Sideways, as Delta's standard DS skin: both screens side by side across the top in
-            // one panel, L / R tabs right under them near the middle, the d-pad and X / Y / A / B
-            // low in the corners, menu, start and select along the bottom. The quick buttons
-            // (fast forward, save, load) go down the left side, the lid on the right one.
+                    height = 210f,
+                ).copy(uprightScreenSide = DS_UPRIGHT_SIDE, screenPanelBelow = 6f),
+            // Sideways like the 3DS: slim wings, a big main screen with the other one small at its
+            // lower right (Swap trades them), the quick buttons and L on the left wing, R, Swap,
+            // the lid and X / Y / A / B on the right one.
             landscape =
                 landscape(
                     listOf(
-                        round(KEYCODE_FAST_FORWARD, "FAST", r(16, 16, 40), icon = SkinIcon.FAST_FORWARD, reach = 4f),
-                        round(KEYCODE_QUICK_SAVE, "SAVE", r(16, 64, 40), icon = SkinIcon.QUICK_SAVE, reach = 4f),
-                        round(KEYCODE_QUICK_LOAD, "LOAD", r(16, 112, 40), icon = SkinIcon.QUICK_LOAD, reach = 4f),
-                        dsLid(r(756, 16, 40)),
-                        SkinControl.Dpad(r(26, 246, 126), reach = 8f),
-                        shoulder(L, "L", r(250, 236, 142, 32)),
-                        shoulder(R, "R", r(420, 236, 142, 32)),
-                        SkinControl.Menu(r(254, 328, 56, 22), reach = 6f),
-                        pill(START, "START", r(378, 328, 56, 22), reach = 6f),
-                        pill(SELECT, "SELECT", r(502, 328, 56, 22), reach = 6f),
-                    ) + diamondAt(728f, 310f, 44f, 42f, X to "X", Y to "Y", A to "A", B to "B"),
+                        shoulder(L, "L", r(4, 6, 98, 32)),
+                        shoulder(R, "R", r(710, 6, 98, 32)),
+                        round(KEYCODE_QUICK_SAVE, "SAVE", r(14, 54, 34), icon = SkinIcon.QUICK_SAVE, reach = 2f),
+                        round(KEYCODE_QUICK_LOAD, "LOAD", r(58, 54, 34), icon = SkinIcon.QUICK_LOAD, reach = 2f),
+                        SkinControl.Dpad(r(5, 160, 96), reach = 6f),
+                        round(KEYCODE_SWAP_SCREENS, "SWAP", r(714, 54, 36), icon = SkinIcon.SWAP, reach = 2f),
+                        dsLid(r(764, 54, 36)),
+                    ) + diamondAt(760f, 214f, 32f, 33f, X to "X", Y to "Y", A to "A", B to "B") + slimWingBand(),
                     SkinPalettes.DS,
-                    DS_SIDEWAYS_SCREENS,
-                ).copy(screenPanelBelow = 36f),
+                    SLIM_WING_SCREENS,
+                ),
         )
 
     /** Closing / opening the DS lid: melonDS DS toggles it when Y is pressed with L2 held. */
@@ -1200,24 +1223,26 @@ object ArcaduneSkins {
                         // Small, under the Circle Pad and above the menu: it reaches less far.
                         SkinControl.Dpad(r(36, 124, 64), reach = 6f),
                         SkinControl.Stick(r(190, 32, 30), RIGHT_STICK),
-                        round(KEYCODE_SWAP_SCREENS, "SWAP", r(142, 62, 36), icon = SkinIcon.SWAP),
+                        round(KEYCODE_SWAP_SCREENS, "SWAP", r(145, 65, 30), icon = SkinIcon.SWAP),
                     ) + portraitBottomRow(y = y, rewind = false) + nintendoFace(256f, 96f, 42f),
                     height = 232f,
                 ),
             landscape =
+                // Slim wings, so the big main screen takes as much of the width as it can (the
+                // 3DS picture is wide: its height is set by the width it gets).
                 landscape(
                     listOf(
-                        shoulder(L, "L", r(10, 8, 82, 36)),
-                        shoulder(L2, "ZL", r(96, 8, 46, 36)),
-                        shoulder(R2, "ZR", r(670, 8, 46, 36)),
-                        shoulder(R, "R", r(720, 8, 82, 36)),
-                        SkinControl.Stick(r(24, 62, 108), LEFT_STICK),
-                        SkinControl.Dpad(r(40, 206, 76), reach = 8f),
-                        SkinControl.Stick(r(676, 60, 30), RIGHT_STICK),
-                        round(KEYCODE_SWAP_SCREENS, "SWAP", r(712, 272, 44), icon = SkinIcon.SWAP),
-                    ) + nintendoFace(736f, 178f, 46f) + landscapeShellBand(rewind = false),
+                        shoulder(L, "L", r(4, 6, 50, 32)),
+                        shoulder(L2, "ZL", r(58, 6, 44, 32)),
+                        shoulder(R2, "ZR", r(710, 6, 44, 32)),
+                        shoulder(R, "R", r(758, 6, 50, 32)),
+                        SkinControl.Stick(r(10, 64, 88), LEFT_STICK),
+                        SkinControl.Dpad(r(22, 190, 76), reach = 6f),
+                        SkinControl.Stick(r(741, 52, 26), RIGHT_STICK, reach = 4f),
+                        round(KEYCODE_SWAP_SCREENS, "SWAP", r(743, 262, 34), icon = SkinIcon.SWAP),
+                    ) + nintendoFace(760f, 163f, 32f) + slimWingBand(),
                     SkinPalettes.N3DS,
-                    SHELL_SCREENS,
+                    SLIM_WING_SCREENS,
                 ),
         )
     }

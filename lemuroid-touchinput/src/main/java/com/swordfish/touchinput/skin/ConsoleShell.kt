@@ -81,9 +81,9 @@ object ScreenSpecs {
     ): ScreenSpec? =
         when (id) {
             TouchControllerID.MELONDS ->
-                when (values["melonds_screen_layout1"] ?: if (landscape) "left-right" else "top-bottom") {
+                when (values["melonds_screen_layout1"] ?: if (landscape) "hybrid-top" else "top-bottom") {
                     "top-bottom" -> DS_STACKED
-                    "hybrid-top" -> DS_HYBRID
+                    "hybrid-top", "hybrid-bottom" -> DS_HYBRID
                     "left-right" -> DS_SIDE_BY_SIDE
                     else -> null
                 }

@@ -985,6 +985,8 @@ data class GameSystem(
                     ),
                     uniqueExtensions = listOf("nds"),
                     hasTouchScreen = true,
+                    // Phones run it at full speed at best: double speed gets no faster, so it is not offered.
+                    fastForwardSupport = false,
                 ),
                 GameSystem(
                     SystemID.ATARI7800,
@@ -1313,6 +1315,8 @@ data class GameSystem(
                     ),
                     uniqueExtensions = listOf("3ds"),
                     hasTouchScreen = true,
+                    // Phones run it at full speed at best: double speed gets no faster, so it is not offered.
+                    fastForwardSupport = false,
                 ),
             )
 

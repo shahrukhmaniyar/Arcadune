@@ -393,14 +393,27 @@ class GameViewModelRetroGameView(
         value: String,
     ): String {
         val (stacked, sideBySide) = SIDEWAYS_LAYOUTS[key] ?: return value
-        return if (landscape && value == stacked) sideBySide else value
+        if (!landscape || value != stacked) return value
+        // The DS sideways: the big screen is the top one, or (after Swap) the touch screen.
+        return if (key == MELONDS_LAYOUT && dsSwapped) DS_SWAPPED_SIDEWAYS else sideBySide
     }
 
+    // Whether Swap has made the DS touch screen the big one (sideways), for this session.
+    private var dsSwapped = false
+
     /**
-     * The 3DS swap-screens button: the other screen becomes the main one. Only for this session;
-     * the game menu's "Main screen" stays the choice the game starts with.
+     * The swap-screens button: the other screen becomes the main one. Only for this session; the
+     * game menu's "Main screen" (3DS) stays the choice the game starts with.
      */
     fun swapScreens() {
+        if (MELONDS_LAYOUT in currentValues) {
+            dsSwapped = !dsSwapped
+            currentValues[MELONDS_LAYOUT]?.let {
+                retroGameView?.updateVariables(Variable(MELONDS_LAYOUT, sidewaysAware(MELONDS_LAYOUT, it)))
+            }
+            publishScreenLayout()
+            return
+        }
         val next = if (currentValues[CITRA_SWAP_SCREEN] == "Bottom") "Top" else "Bottom"
         currentValues[CITRA_SWAP_SCREEN] = next
         retroGameView?.updateVariables(Variable(CITRA_SWAP_SCREEN, next))
@@ -487,11 +500,14 @@ class GameViewModelRetroGameView(
         private const val CITRA_SWAP_SCREEN = "citra_swap_screen"
 
         /** The stacked layout of each two-screen core, and what it becomes when the phone is sideways. */
+        private const val MELONDS_LAYOUT = "melonds_screen_layout1"
+        private const val DS_SWAPPED_SIDEWAYS = "hybrid-bottom"
+
         private val SIDEWAYS_LAYOUTS =
             mapOf(
                 "citra_layout_option" to ("Default Top-Bottom Screen" to "Large Screen, Small Screen"),
-                // The DS sideways shows its screens side by side, like Delta (the skin's band of controls goes under them).
-                "melonds_screen_layout1" to ("top-bottom" to "left-right"),
+                // The DS sideways: a big main screen and the other small at its lower right, like the 3DS.
+                "melonds_screen_layout1" to ("top-bottom" to "hybrid-top"),
             )
 
         val RESTART_ONLY_VARIABLES =
