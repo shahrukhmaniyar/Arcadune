@@ -1030,7 +1030,11 @@ object ArcaduneSkins {
                 emptyList()
             }
         return ArcaduneSkin(
-            portrait = console(SkinPalettes.PLAYSTATION, shoulders + portraitControls + portraitBottomRow(rewind = false)),
+            portrait =
+                console(
+                    SkinPalettes.PLAYSTATION,
+                    shoulders + portraitControls + portraitBottomRow(rewind = false),
+                ),
             landscape =
                 landscape(
                     listOf(
@@ -1385,10 +1389,16 @@ object ArcaduneSkins {
                 )
             }
         return ArcaduneSkin(
-            portrait = console(palette, listOf(ballTop(r(14, 46, 132), stick)) + portraitButtons + portraitBottomRow(select = "COIN", rewind = false)),
+            portrait =
+                console(
+                    palette,
+                    listOf(ballTop(r(14, 46, 132), stick)) + portraitButtons +
+                        portraitBottomRow(select = "COIN", rewind = false),
+                ),
             landscape =
                 landscape(
-                    listOf(ballTop(r(30, 160, 180), stick)) + landscapeButtons + landscapeCommon(select = "COIN", rewind = false),
+                    listOf(ballTop(r(30, 160, 180), stick)) + landscapeButtons +
+                        landscapeCommon(select = "COIN", rewind = false),
                     palette,
                 ),
         )

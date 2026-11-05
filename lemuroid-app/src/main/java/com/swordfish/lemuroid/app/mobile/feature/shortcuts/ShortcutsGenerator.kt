@@ -67,7 +67,7 @@ class ShortcutsGenerator(
 
     private fun retrieveFallbackBitmap(game: Game): Bitmap {
         val desiredIconSize = getDesiredIconSize()
-        return CoverUtils.getFallbackDrawable(game).toBitmap(desiredIconSize, desiredIconSize)
+        return CoverUtils.getFallbackDrawable(appContext, dim = false).toBitmap(desiredIconSize, desiredIconSize)
     }
 
     private fun getDesiredIconSize(): Int {

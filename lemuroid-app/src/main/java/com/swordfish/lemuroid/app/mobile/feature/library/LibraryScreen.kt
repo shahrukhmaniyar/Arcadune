@@ -415,7 +415,7 @@ private fun GameTile(
     val scale by animateFloatAsState(if (pressed) 0.93f else 1f, ArcaduneMotion.press(), label = "press")
 
     val name = remember(game) { game.displayName() }
-    val fallback = rememberDrawablePainter(remember(game) { CoverUtils.getFallbackDrawable(game) })
+    val fallback = rememberDrawablePainter(remember { CoverUtils.getFallbackDrawable(context) })
     val request =
         remember(game) {
             ImageRequest.Builder(context)

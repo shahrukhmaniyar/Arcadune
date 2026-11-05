@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.shared.covers
 
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import coil.ImageLoader
 import coil.disk.DiskCache
@@ -8,7 +9,6 @@ import coil.imageLoader
 import coil.load
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
-import com.swordfish.lemuroid.common.drawable.TextDrawable
 import com.swordfish.lemuroid.common.graphics.ColorUtils
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ object CoverUtils {
         if (imageView == null) return
 
         imageView.load(game.displayCoverUrl(), imageView.context.imageLoader) {
-            val fallbackDrawable = getFallbackDrawable(game)
+            val fallbackDrawable = getFallbackDrawable(imageView.context)
             fallback(fallbackDrawable)
             error(fallbackDrawable)
         }
@@ -71,7 +71,11 @@ object CoverUtils {
         }
     }
 
-    fun getFallbackDrawable(game: Game) = TextDrawable(computeTitle(game), computeColor(game))
+    /** The cover of a game without artwork: the app's icon under a dark layer, as Delta does it. */
+    fun getFallbackDrawable(
+        context: Context,
+        dim: Boolean = true,
+    ): Drawable = CoverPlaceholderDrawable(context, dim)
 
     fun getFallbackRemoteUrl(game: Game): String {
         val color = Integer.toHexString(computeColor(game)).substring(2)

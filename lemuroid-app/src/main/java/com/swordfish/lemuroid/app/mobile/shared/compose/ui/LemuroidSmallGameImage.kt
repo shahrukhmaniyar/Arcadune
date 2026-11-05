@@ -22,10 +22,8 @@ fun LemuroidSmallGameImage(
     modifier: Modifier = Modifier,
     game: Game,
 ) {
-    val fallbackDrawable =
-        remember(game) {
-            CoverUtils.getFallbackDrawable(game)
-        }
+    val context = LocalContext.current
+    val fallbackDrawable = remember { CoverUtils.getFallbackDrawable(context) }
 
     val fallbackPainter = rememberDrawablePainter(fallbackDrawable)
 
