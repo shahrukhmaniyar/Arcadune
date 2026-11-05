@@ -30,6 +30,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -566,6 +568,67 @@ private fun DrawScope.drawSkinBody(
     }
 }
 
+/**
+ * Polished plastic, the way Delta draws its controls: a soft shadow under the part, its side (so
+ * it has some thickness), a crisp thin edge, a face lit from above with a little light along its
+ * top. [shape] gives the part's outline grown by some pixels (its face is `shape(0f)`); [extent]
+ * is its size, which the shadow and side scale with.
+ */
+private fun DrawScope.drawRaised(
+    shape: (grow: Float) -> Path,
+    fill: Color,
+    pressed: Boolean,
+    extent: Float,
+    faceTop: Float,
+    faceBottom: Float,
+) {
+    val edge = 1.1f.dp.toPx()
+    // A soft shadow: faint copies growing outwards, a little lower. Smaller while pressed.
+    val spread = extent * if (pressed) 0.03f else 0.08f
+    val drop = extent * if (pressed) 0.015f else 0.05f
+    val layers = 6
+    for (i in layers downTo 1) {
+        translate(top = drop) { drawPath(shape(spread * i / layers), Color.Black.copy(alpha = 0.32f / layers)) }
+    }
+    // The side, showing under the face; then the crisp edge all round.
+    val depth = extent * if (pressed) 0.012f else 0.035f
+    translate(top = depth) { drawPath(shape(0f), fill.shade(-0.42f)) }
+    drawPath(shape(edge), fill.shade(-0.58f))
+    // The face, lit from above, a little darker while pressed.
+    val face = if (pressed) fill.shade(-0.12f) else fill
+    val lit = Brush.verticalGradient(listOf(face.shade(0.16f), face, face.shade(-0.05f)), faceTop, faceBottom)
+    drawPath(shape(0f), lit)
+    // Light along the top inside edge, like a glossy rim.
+    val light = Color.White.copy(alpha = if (fill.luminance() < 0.2f) 0.16f else 0.42f)
+    clipPath(shape(0f)) { translate(top = edge * 1.4f) { drawPath(shape(0f), light, style = Stroke(edge * 2.2f)) } }
+}
+
+/** A rounded rectangle of [size] at [topLeft] with corners [radius], grown by [grow] pixels. */
+private fun roundedBox(
+    topLeft: Offset,
+    size: Size,
+    radius: Float,
+    grow: Float,
+): Path =
+    Path().apply {
+        addRoundRect(
+            RoundRect(
+                Rect(topLeft.x - grow, topLeft.y - grow, topLeft.x + size.width + grow, topLeft.y + size.height + grow),
+                CornerRadius((radius + grow).coerceAtLeast(0f)),
+            ),
+        )
+    }
+
+/**
+ * This colour, or a shade of it that stands out from [body]: without the shadow-and-ring wells
+ * of before, a dark d-pad on a dark body (Genesis, Game Gear) would all but vanish.
+ */
+private fun Color.standingOutFrom(body: Color): Color {
+    val gap = kotlin.math.abs(luminance() - body.luminance())
+    if (gap >= 0.05f) return this
+    return if (body.luminance() < 0.3f) lerp(this, Color.White, 0.2f) else lerp(this, Color.Black, 0.25f)
+}
+
 /** Lighter ([amount] > 0) or darker ([amount] < 0) shade of a colour. */
 private fun Color.shade(amount: Float): Color =
     if (amount >= 0) lerp(this, Color.White, amount) else lerp(this, Color.Black, -amount)
@@ -587,7 +650,10 @@ private fun DrawScope.drawAnyDpad(
         layout.style == SkinStyle.OVERLAY && look == DpadLook.CROSS ->
             drawDpad(SkinStyle.OVERLAY, direction, layout.palette?.dpad)
         layout.style == SkinStyle.OVERLAY -> drawFourPads(look, direction, overlayTint = layout.palette)
-        look == DpadLook.CROSS && layout.style == SkinStyle.CONSOLE -> drawConsoleCross(layout.paletteOrMono(), direction)
+        look == DpadLook.CROSS && layout.style == SkinStyle.CONSOLE -> {
+            val palette = layout.paletteOrMono()
+            drawConsoleCross(palette.copy(dpad = palette.dpad.standingOutFrom(palette.body)), direction)
+        }
         look == DpadLook.CROSS -> drawDpad(layout.style, direction)
         else -> drawFourPads(look, direction, palette = layout.paletteOrMono())
     }
@@ -638,30 +704,87 @@ private fun DrawScope.drawConsoleCross(
     palette: SkinPalette,
     direction: Offset,
 ) {
-    val full = size.minDimension
+    val full = size.minDimension * 0.94f
     val left = (size.width - full) / 2
-    val top = (size.height - full) / 2
+    val top = (size.height - full) / 2 - size.minDimension * 0.02f
     val arm = full / 3f
-    val radius = CornerRadius(arm * 0.24f)
+    // Rounded outside corners and rounded inside ones (where the arms meet), like a real cross.
+    val fillet = arm * 0.2f
+    val radius = CornerRadius(arm * 0.06f)
 
-    fun cross(grow: Float): Path =
-        Path().apply {
-            addRoundRect(RoundRect(left + arm - grow, top - grow, left + 2 * arm + grow, top + full + grow, radius))
-            addRoundRect(RoundRect(left - grow, top + arm - grow, left + full + grow, top + 2 * arm + grow, radius))
-        }
+    fun cross(grow: Float): Path {
+        val g = grow - fillet
+        val bars =
+            Path().apply {
+                addRoundRect(RoundRect(left + arm - g, top - g, left + 2 * arm + g, top + full + g, radius))
+                addRoundRect(RoundRect(left - g, top + arm - g, left + full + g, top + 2 * arm + g, radius))
+            }
+        // Drawn filled and stroked with round joins, the fillet wide, every corner comes out rounded.
+        return bars
+    }
 
-    drawWell(palette, full * 0.6f)
-    translate(top = arm * 0.06f) { drawPath(cross(0f), Color(0x33000000)) }
-    drawPath(cross(0f), palette.dpad.shade(-0.45f))
-    val inner = arm * 0.07f
-    drawPath(cross(-inner), Brush.verticalGradient(listOf(palette.dpad.shade(0.12f), palette.dpad), top, top + full))
-    val pressed = palette.dpad.shade(-0.6f)
-    if (direction.y < -0.3f) drawRect(pressed, Offset(left + arm + inner, top + inner), Size(arm - 2 * inner, arm - inner))
-    if (direction.y > 0.3f) drawRect(pressed, Offset(left + arm + inner, top + 2 * arm), Size(arm - 2 * inner, arm - inner))
-    if (direction.x < -0.3f) drawRect(pressed, Offset(left + inner, top + arm + inner), Size(arm - inner, arm - 2 * inner))
-    if (direction.x > 0.3f) drawRect(pressed, Offset(left + 2 * arm, top + arm + inner), Size(arm - inner, arm - 2 * inner))
-    drawArrows(left, top, arm, palette.dpadMark, direction)
-    drawCircle(palette.dpad.shade(-0.2f), arm * 0.28f, Offset(left + full / 2, top + full / 2))
+    val pressedTilt = Offset(direction.x, direction.y) * (arm * 0.04f)
+    translate(pressedTilt.x, pressedTilt.y) {
+        drawRoundedRaised(
+            { grow -> cross(grow) },
+            fillet,
+            palette.dpad,
+            direction != Offset.Zero,
+            full,
+            top,
+            top + full,
+        )
+    }
+    // The pressed arm sinks a little darker.
+    val dim = Color.Black.copy(alpha = 0.16f)
+    if (direction.y < -0.3f) drawRect(dim, Offset(left + arm, top), Size(arm, arm))
+    if (direction.y > 0.3f) drawRect(dim, Offset(left + arm, top + 2 * arm), Size(arm, arm))
+    if (direction.x < -0.3f) drawRect(dim, Offset(left, top + arm), Size(arm, arm))
+    if (direction.x > 0.3f) drawRect(dim, Offset(left + 2 * arm, top + arm), Size(arm, arm))
+    // Marks pressed into the plastic: a light edge under each, the mark itself in the cross's own tone.
+    val mark = if (palette.dpad.luminance() < 0.2f) palette.dpad.shade(0.22f) else palette.dpad.shade(-0.3f)
+    translate(top = 1.dp.toPx()) { drawArrows(left, top, arm, Color.White.copy(alpha = 0.14f)) }
+    drawArrows(left, top, arm, mark, direction)
+    val middle = Offset(left + full / 2, top + full / 2)
+    drawCircle(mark, arm * 0.3f, middle, style = Stroke(arm * 0.05f))
+}
+
+/**
+ * [drawRaised] for shapes whose corners are rounded by stroking them with round joins ([fillet]
+ * wide): every layer is filled and stroked the same way.
+ */
+private fun DrawScope.drawRoundedRaised(
+    shape: (grow: Float) -> Path,
+    fillet: Float,
+    fill: Color,
+    pressed: Boolean,
+    extent: Float,
+    faceTop: Float,
+    faceBottom: Float,
+) {
+    val join = androidx.compose.ui.graphics.StrokeJoin.Round
+
+    fun DrawScope.solid(
+        path: Path,
+        color: Color,
+    ) {
+        drawPath(path, color)
+        drawPath(path, color, style = Stroke(fillet * 2, join = join))
+    }
+    val edge = 1.1f.dp.toPx()
+    val spread = extent * if (pressed) 0.03f else 0.07f
+    val drop = extent * if (pressed) 0.015f else 0.045f
+    val layers = 6
+    for (i in layers downTo 1) {
+        translate(top = drop) { solid(shape(spread * i / layers), Color.Black.copy(alpha = 0.3f / layers)) }
+    }
+    val depth = extent * if (pressed) 0.012f else 0.03f
+    translate(top = depth) { solid(shape(0f), fill.shade(-0.42f)) }
+    solid(shape(edge), fill.shade(-0.58f))
+    val face = if (pressed) fill.shade(-0.1f) else fill
+    val brush = Brush.verticalGradient(listOf(face.shade(0.16f), face, face.shade(-0.05f)), faceTop, faceBottom)
+    drawPath(shape(0f), brush)
+    drawPath(shape(0f), brush, style = Stroke(fillet * 2, join = join))
 }
 
 /**
@@ -701,7 +824,6 @@ private fun DrawScope.drawFourPads(
     }
     val overlay = palette == null
     val cColor = (overlayTint ?: palette)?.buttons?.get(SkinPalettes.C_BUTTONS_KEY)
-    if (palette != null && look == DpadLook.SEPARATE) drawWell(palette, full * 0.62f)
     val ups =
         listOf(
             Offset(0f, -1f) to (direction.y < -0.3f),
@@ -721,16 +843,14 @@ private fun DrawScope.drawFourPads(
                 mark = Overlay.Glyph
             } else {
                 val fill = cColor?.first ?: palette!!.button
-                if (!isPressed) drawCircle(Color(0x33000000), r, centre + Offset(0f, r * 0.12f))
-                drawCircle(fill.shade(-0.4f), r, centre)
-                drawCircle(
-                    Brush.verticalGradient(
-                        if (isPressed) listOf(fill.shade(-0.2f), fill.shade(-0.2f)) else listOf(fill.shade(0.15f), fill),
-                        centre.y - r,
-                        centre.y + r,
-                    ),
-                    r * 0.9f,
-                    centre,
+                val face = r * 0.92f
+                drawRaised(
+                    { grow -> Path().apply { addOval(Rect(centre, face + grow)) } },
+                    fill,
+                    isPressed,
+                    r * 2,
+                    centre.y - face,
+                    centre.y + face,
                 )
                 mark = cColor?.second ?: palette.buttonLabel
             }
@@ -746,20 +866,15 @@ private fun DrawScope.drawFourPads(
                 mark = Overlay.Glyph
             } else {
                 val fill = palette!!.dpad
-                if (!isPressed) drawRoundRect(Color(0x33000000), topLeft + Offset(0f, half * 0.14f), box, corner)
-                drawRoundRect(fill.shade(-0.4f), topLeft, box, corner)
-                val ring = half * 0.1f
-                drawRoundRect(
-                    Brush.verticalGradient(
-                        if (isPressed) listOf(fill.shade(-0.6f), fill.shade(-0.6f)) else listOf(fill.shade(0.14f), fill),
-                        topLeft.y,
-                        topLeft.y + box.height,
-                    ),
-                    topLeft + Offset(ring, ring),
-                    Size(box.width - 2 * ring, box.height - 2 * ring),
-                    CornerRadius(corner.x - ring),
+                drawRaised(
+                    { grow -> roundedBox(topLeft, box, corner.x, grow) },
+                    fill,
+                    isPressed,
+                    box.width,
+                    topLeft.y,
+                    topLeft.y + box.height,
                 )
-                mark = palette.dpadMark
+                mark = if (fill.luminance() < 0.2f) fill.shade(0.3f) else palette.dpadMark
             }
             drawTriangleMark(centre, dir, half * 0.5f, if (isPressed) PressedMark else mark)
         }
@@ -803,7 +918,7 @@ private fun DrawScope.drawStickBase(layout: SkinLayout) {
         return
     }
     val palette = layout.paletteOrMono()
-    drawWell(palette, r * 1.14f)
+    // The gate the stick sits in, sunk into the body: shaded on its upper edge.
     drawCircle(palette.stickBase.shade(-0.35f), r)
     drawCircle(
         Brush.verticalGradient(listOf(palette.stickBase.shade(-0.15f), palette.stickBase.shade(0.08f))),
@@ -833,9 +948,15 @@ private fun DrawScope.drawStickKnob(
     }
     val palette = layout.paletteOrMono()
     val cap = palette.stickKnob
-    drawCircle(Color(0x44000000), r * 0.9f, c + Offset(0f, r * 0.1f))
-    drawCircle(cap.shade(-0.4f), r * 0.9f, c)
-    drawCircle(Brush.verticalGradient(listOf(cap.shade(0.18f), cap), c.y - r, c.y + r), r * 0.82f, c)
+    val capRadius = r * 0.86f
+    drawRaised(
+        { grow -> Path().apply { addOval(Rect(c, capRadius + grow)) } },
+        cap,
+        pressed,
+        knob,
+        c.y - capRadius,
+        c.y + capRadius,
+    )
     // The dish of the cap, like the grippy top of a real stick.
     drawCircle(cap.shade(if (pressed) -0.2f else -0.08f), r * 0.55f, c)
 }
@@ -1035,7 +1156,8 @@ private fun ControlGlyph(
             when {
                 style == SkinStyle.OVERLAY -> drawOverlayButton(shape, isPressed, overlayTint)
                 style == SkinStyle.OUTLINE -> drawOutlineButton(shape, isPressed)
-                style == SkinStyle.CONSOLE -> drawConsoleButton(shape, fill, isPressed)
+                style == SkinStyle.CONSOLE ->
+                    drawConsoleButton(shape, fill.standingOutFrom(consolePalette.body), isPressed)
                 style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
                     drawNesFaceButton(isPressed)
                 style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) ->
@@ -1071,12 +1193,20 @@ private fun ControlGlyph(
         } else if (onButton != null) {
             val unitDp = scale
             val fontSize = with(LocalDensity.current) { (minOf(frame.width, frame.height) * unitDp * if (control is SkinControl.Button && control.shape == ButtonShape.PILL) 0.42f else 0.46f).dp.toSp() }
+            // Medium weight with a faint emboss, like lettering moulded into the plastic.
+            val emboss =
+                if (style == SkinStyle.CONSOLE) {
+                    androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.3f), Offset(0f, 1.5f), 2f)
+                } else {
+                    null
+                }
             Text(
                 text = onButton,
                 color = labelColor,
-                fontWeight = FontWeight.Black,
+                fontWeight = if (style == SkinStyle.CONSOLE) FontWeight.Medium else FontWeight.Black,
                 fontSize = fontSize,
                 maxLines = 1,
+                style = androidx.compose.ui.text.TextStyle(shadow = emboss),
             )
         }
     }
@@ -1205,18 +1335,14 @@ private fun DrawScope.drawConsoleButton(
             ButtonShape.ROUND, ButtonShape.PILL -> CornerRadius(size.minDimension / 2)
             ButtonShape.SHOULDER -> CornerRadius(size.height * 0.45f)
         }
-    val ring = size.minDimension * if (shape == ButtonShape.ROUND) 0.06f else 0.12f
-    if (!pressed) drawRoundRect(Color(0x33000000), Offset(0f, size.minDimension * 0.06f), size, radius)
-    drawRoundRect(fill.shade(-0.42f), cornerRadius = radius)
-    drawRoundRect(
-        brush =
-            Brush.verticalGradient(
-                if (pressed) listOf(fill.shade(-0.22f), fill.shade(-0.22f)) else listOf(fill.shade(0.16f), fill),
-            ),
-        topLeft = Offset(ring, ring),
-        size = Size(size.width - 2 * ring, size.height - 2 * ring),
-        cornerRadius = CornerRadius((radius.x - ring).coerceAtLeast(0f)),
-    )
+    // The face leaves room under it for the button's side, and sinks onto it while pressed.
+    val depth = size.minDimension * 0.05f
+    val sink = if (pressed) depth * 0.7f else 0f
+    val face = Size(size.width - 2 * depth, size.height - 2 * depth)
+    val topLeft = Offset(depth, depth * 0.5f + sink)
+    val corner = minOf(radius.x, face.minDimension / 2)
+    val faceBottom = topLeft.y + face.height
+    drawRaised({ grow -> roundedBox(topLeft, face, corner, grow) }, fill, pressed, size.minDimension, topLeft.y, faceBottom)
 }
 
 /** Triangle, circle, cross or square, as outlines like on the real buttons. */
@@ -1367,22 +1493,11 @@ private fun Caption(
             text = text,
             color = color,
             fontSize = fontSize,
-            fontWeight = FontWeight.Black,
+            fontWeight = if (style == SkinStyle.CONSOLE) FontWeight.Bold else FontWeight.Black,
+            letterSpacing = with(LocalDensity.current) { (0.6f * scale).dp.toSp() },
             textAlign = align,
             maxLines = 1,
             softWrap = false,
         )
     }
-}
-
-/** The round hollow in the body that a d-pad or stick sits in, centred in this canvas. */
-private fun DrawScope.drawWell(
-    palette: SkinPalette,
-    radius: Float,
-) {
-    val c = Offset(size.width / 2, size.height / 2)
-    drawCircle(palette.body.shade(-0.07f), radius, c)
-    // Shade on the upper edge, light on the lower one, like a dip in the plastic.
-    drawArc(Color.Black.copy(alpha = 0.16f), 180f, 180f, false, c - Offset(radius, radius), Size(radius * 2, radius * 2), style = Stroke(radius * 0.05f))
-    drawArc(Color.White.copy(alpha = 0.22f), 0f, 180f, false, c - Offset(radius, radius), Size(radius * 2, radius * 2), style = Stroke(radius * 0.04f))
 }
