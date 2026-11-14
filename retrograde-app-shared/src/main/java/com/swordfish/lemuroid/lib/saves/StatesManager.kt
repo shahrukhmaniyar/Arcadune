@@ -1,5 +1,6 @@
 package com.swordfish.lemuroid.lib.saves
 
+import android.util.AtomicFile
 import com.swordfish.lemuroid.common.kotlin.readBytesUncompressedAtomic
 import com.swordfish.lemuroid.common.kotlin.readTextAtomic
 import com.swordfish.lemuroid.common.kotlin.runCatchingWithRetry
@@ -32,6 +33,23 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
     ) = withContext(Dispatchers.IO) {
         assert(index in 0 until MAX_STATES)
         setSaveState(getSlotSaveFileName(game, index), coreID.coreName, saveState)
+    }
+
+    suspend fun deleteSlotSave(
+        game: Game,
+        coreID: CoreID,
+        index: Int,
+    ) = withContext(Dispatchers.IO) {
+        require(index in 0 until MAX_STATES)
+        val fileName = getSlotSaveFileName(game, index)
+        runCatchingWithRetry(FILE_ACCESS_RETRIES) {
+            val saveFile = getStateFile(fileName, coreName = coreID.coreName)
+            val metadataFile = getMetadataStateFile(fileName, coreName = coreID.coreName)
+            AtomicFile(saveFile).delete()
+            AtomicFile(metadataFile).delete()
+            saveFile.delete()
+            metadataFile.delete()
+        }
     }
 
     suspend fun getAutoSaveInfo(

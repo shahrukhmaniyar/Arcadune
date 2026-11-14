@@ -7,17 +7,19 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
+import com.swordfish.lemuroid.app.shared.covers.CoverCompression
 import com.swordfish.lemuroid.app.shared.game.GameLauncher
 import com.swordfish.lemuroid.app.shared.main.BusyActivity
 import com.swordfish.lemuroid.common.displayToast
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
-import com.swordfish.lemuroid.app.shared.covers.CoverCompression
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
 
 class GameInteractor(
     private val activity: BusyActivity,
@@ -27,6 +29,8 @@ class GameInteractor(
     private val gameLauncher: GameLauncher,
     private val customCoverManager: CustomCoverManager,
 ) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun onGamePlay(game: Game) {
         if (!ensureNotBusy()) {
             return
@@ -51,14 +55,18 @@ class GameInteractor(
         game: Game,
         isFavorite: Boolean,
     ) {
-        GlobalScope.launch {
-            retrogradeDb.gameDao().update(game.copy(isFavorite = isFavorite))
+        ioScope.launch {
+            runCatching {
+                retrogradeDb.gameDao().updateFavorite(game.id, isFavorite)
+            }.onFailure { Timber.e(it, "Failed to update favorite state for game ${game.id}") }
         }
     }
 
     fun onCreateShortcut(game: Game) {
-        GlobalScope.launch {
-            shortcutsGenerator.pinShortcutForGame(game)
+        ioScope.launch {
+            runCatching {
+                shortcutsGenerator.pinShortcutForGame(game)
+            }.onFailure { Timber.e(it, "Failed to create shortcut for game ${game.id}") }
         }
     }
 
@@ -66,15 +74,22 @@ class GameInteractor(
         return shortcutsGenerator.supportShortcuts()
     }
 
-    fun onSetCustomName(game: Game, customName: String) {
-        GlobalScope.launch {
-            retrogradeDb.gameDao().update(game.copy(customName = customName))
+    fun onSetCustomName(
+        game: Game,
+        customName: String,
+    ) {
+        ioScope.launch {
+            runCatching {
+                retrogradeDb.gameDao().updateCustomName(game.id, customName)
+            }.onFailure { Timber.e(it, "Failed to set custom name for game ${game.id}") }
         }
     }
 
     fun onClearCustomName(game: Game) {
-        GlobalScope.launch {
-            retrogradeDb.gameDao().update(game.copy(customName = null))
+        ioScope.launch {
+            runCatching {
+                retrogradeDb.gameDao().updateCustomName(game.id, null)
+            }.onFailure { Timber.e(it, "Failed to clear custom name for game ${game.id}") }
         }
     }
 
@@ -83,12 +98,17 @@ class GameInteractor(
      * the local file URI in the database.  This ensures the cover survives
      * app restarts regardless of where the user picked the file from.
      */
-    fun onSetCustomCoverUri(game: Game, sourceUri: String) {
-        GlobalScope.launch {
-            val localUri = customCoverManager.importCover(game.id, Uri.parse(sourceUri))
-            // A photo or a downloaded artwork can be several MB; keep a small copy, like other covers.
-            withContext(Dispatchers.IO) { Uri.parse(localUri).path?.let { CoverCompression.compressFile(java.io.File(it)) } }
-            retrogradeDb.gameDao().update(game.copy(customCoverUri = localUri))
+    fun onSetCustomCoverUri(
+        game: Game,
+        sourceUri: String,
+    ) {
+        ioScope.launch {
+            runCatching {
+                val localUri = customCoverManager.importCover(game.id, Uri.parse(sourceUri))
+                // A photo or a downloaded artwork can be several MB; keep a small copy, like other covers.
+                Uri.parse(localUri).path?.let { CoverCompression.compressFile(File(it)) }
+                retrogradeDb.gameDao().updateCustomCoverUri(game.id, localUri)
+            }.onFailure { Timber.e(it, "Failed to set custom cover for game ${game.id}") }
         }
     }
 
@@ -97,9 +117,11 @@ class GameInteractor(
      * clears the database field.
      */
     fun onClearCustomCoverUri(game: Game) {
-        GlobalScope.launch {
-            customCoverManager.deleteCover(game.id)
-            retrogradeDb.gameDao().update(game.copy(customCoverUri = null))
+        ioScope.launch {
+            runCatching {
+                customCoverManager.deleteCover(game.id)
+                retrogradeDb.gameDao().updateCustomCoverUri(game.id, null)
+            }.onFailure { Timber.e(it, "Failed to clear custom cover for game ${game.id}") }
         }
     }
 

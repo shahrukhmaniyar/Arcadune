@@ -8,16 +8,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
-import androidx.preference.PreferenceManager
 import com.alorma.compose.settings.storage.base.SettingValueState
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 
 @Composable
 fun rememberSafePreferenceStringsSetSettingState(
     key: String,
     defaultValue: Set<String>,
-    preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(LocalContext.current),
+    preferences: SharedPreferences =
+        SharedPreferencesHelper.getSharedPreferences(
+            LocalContext.current.applicationContext,
+        ),
 ): SafeStringsSetPreferenceSettingValueState {
-    return remember {
+    return remember(key, preferences) {
         SafeStringsSetPreferenceSettingValueState(preferences, key, defaultValue)
     }
 }
@@ -27,7 +30,7 @@ class SafeStringsSetPreferenceSettingValueState(
     val key: String,
     private val defaultValue: Set<String>,
 ) : SettingValueState<Set<String>> {
-    private var _value by mutableStateOf(preferences.safeGetStringSet(key, defaultValue)!!)
+    private var _value by mutableStateOf(preferences.safeGetStringSet(key, defaultValue).orEmpty())
 
     override var value: Set<String>
         set(index) {

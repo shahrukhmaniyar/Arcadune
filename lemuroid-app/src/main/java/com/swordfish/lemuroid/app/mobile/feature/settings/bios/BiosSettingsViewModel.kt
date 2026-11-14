@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.lib.bios.BiosManager
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class BiosSettingsViewModel(private val biosManager: BiosManager) : ViewModel() {
@@ -18,11 +20,14 @@ class BiosSettingsViewModel(private val biosManager: BiosManager) : ViewModel() 
             }
         }
 
-    val uiState =
-        flow { emit(biosManager.getBiosInfoAsync()) }
-            .stateIn(
-                viewModelScope,
-                SharingStarted.Lazily,
-                BiosManager.BiosInfo(emptyList(), emptyList()),
-            )
+    private val _uiState =
+        MutableStateFlow(biosManager.cachedBiosInfo ?: biosManager.getBiosInfo())
+    val uiState: StateFlow<BiosManager.BiosInfo> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            delay(260)
+            _uiState.value = biosManager.getBiosInfoAsync()
+        }
+    }
 }

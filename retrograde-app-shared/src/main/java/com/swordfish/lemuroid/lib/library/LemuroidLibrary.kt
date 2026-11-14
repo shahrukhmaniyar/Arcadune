@@ -34,6 +34,7 @@ import com.swordfish.lemuroid.lib.storage.StorageFile
 import com.swordfish.lemuroid.lib.storage.StorageProvider
 import com.swordfish.lemuroid.lib.storage.StorageProviderRegistry
 import dagger.Lazy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -54,12 +55,19 @@ class LemuroidLibrary(
 ) {
     suspend fun indexLibrary() {
         val startedAtMs = System.currentTimeMillis()
+        var completedCleanly = false
 
         try {
             indexProviders(startedAtMs)
+            completedCleanly = true
+        } catch (e: CancellationException) {
+            Timber.i("Library indexing cancelled; skipping destructive cleanup")
+            throw e
         } catch (e: Throwable) {
-            Timber.e(e, "Library indexing stopped due to exception")
-        } finally {
+            Timber.e(e, "Library indexing stopped due to exception; skipping destructive cleanup")
+        }
+
+        if (completedCleanly) {
             cleanUp(startedAtMs)
         }
 
@@ -94,10 +102,12 @@ class LemuroidLibrary(
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
     ) = flow<Unit> {
-        val entries = batch.map { fetchEntriesFromDatabase(it) }
+        val entries = fetchEntriesFromDatabase(batch)
 
         val existingEntries = entries.filterIsInstance<ScanEntry.GameFile>()
-        handleExistingEntries(existingEntries, startedAtMs)
+        if (existingEntries.isNotEmpty()) {
+            handleExistingEntries(existingEntries, startedAtMs)
+        }
 
         val newEntries =
             entries.filterIsInstance<ScanEntry.File>()
@@ -106,10 +116,17 @@ class LemuroidLibrary(
         handleNewEntries(newEntries, startedAtMs, provider)
     }
 
-    private fun fetchEntriesFromDatabase(storageFile: GroupedStorageFiles): ScanEntry {
-        Timber.d("Retrieving scan entry for uri: ${storageFile.primaryFile}")
-        val game = retrogradedb.gameDao().selectByFileUri(storageFile.primaryFile.uri.toString())
-        return buildScanEntry(storageFile, game)
+    private fun fetchEntriesFromDatabase(batch: List<GroupedStorageFiles>): List<ScanEntry> {
+        if (batch.isEmpty()) return emptyList()
+        val uris = batch.map { it.primaryFile.uri.toString() }
+        val gamesByUri =
+            uris.chunked(SQLITE_BIND_CHUNK_SIZE)
+                .flatMap { chunk -> retrogradedb.gameDao().selectByFileUris(chunk) }
+                .associateBy { it.fileUri }
+        return batch.map { storageFile ->
+            Timber.d("Retrieving scan entry for uri: ${storageFile.primaryFile}")
+            buildScanEntry(storageFile, gamesByUri[storageFile.primaryFile.uri.toString()])
+        }
     }
 
     private fun buildScanEntry(
@@ -127,22 +144,22 @@ class LemuroidLibrary(
         entries: List<ScanEntry.GameFile>,
         startedAtMs: Long,
     ) {
-        updateGames(entries, startedAtMs)
-        updateDataFiles(entries, startedAtMs)
+        retrogradedb.runInTransaction {
+            updateGames(entries, startedAtMs)
+            updateDataFiles(entries, startedAtMs)
+        }
     }
 
     private fun updateGames(
         entries: List<ScanEntry.GameFile>,
         startedAtMs: Long,
     ) {
-        val updatedGames =
-            entries
-                .map { it.game.copy(lastIndexedAt = startedAtMs) }
-
-        updatedGames
-            .forEach { Timber.d("Updating game: $it") }
-
-        retrogradedb.gameDao().update(updatedGames)
+        entries.forEach { Timber.d("Updating game indexed timestamp: ${it.game.id}") }
+        entries.map { it.game.id }
+            .chunked(SQLITE_BIND_CHUNK_SIZE)
+            .forEach { ids ->
+                retrogradedb.gameDao().updateLastIndexedAt(ids, startedAtMs)
+            }
     }
 
     private fun updateDataFiles(
@@ -196,24 +213,29 @@ class LemuroidLibrary(
         pairs: List<ScanEntry.GameFile>,
         startedAtMs: Long,
     ) {
+        if (pairs.isEmpty()) return
         val games =
             pairs
                 .map { it.game }
 
         games.forEach { Timber.d("Insert: $it") }
 
-        val gameIds = retrogradedb.gameDao().insert(games)
-        val dataFiles =
-            pairs
-                .map { it.file.dataFiles }
-                .zip(gameIds)
-                .flatMap { (files, gameId) ->
-                    files.map {
-                        convertIntoDataFile(gameId.toInt(), it, startedAtMs)
+        retrogradedb.runInTransaction {
+            val gameIds = retrogradedb.gameDao().insert(games)
+            val dataFiles =
+                pairs
+                    .map { it.file.dataFiles }
+                    .zip(gameIds)
+                    .flatMap { (files, gameId) ->
+                        files.map {
+                            convertIntoDataFile(gameId.toInt(), it, startedAtMs)
+                        }
                     }
-                }
 
-        retrogradedb.dataFileDao().insert(dataFiles)
+            if (dataFiles.isNotEmpty()) {
+                retrogradedb.dataFileDao().insert(dataFiles)
+            }
+        }
     }
 
     private fun handleUnknownFiles(
@@ -226,7 +248,11 @@ class LemuroidLibrary(
             val inputStream = storageFile?.uri?.let { provider.getInputStream(it) }
 
             if (storageFile != null && inputStream != null) {
-                biosManager.tryAddBiosAfter(storageFile, inputStream, startedAtMs)
+                inputStream.use { stream ->
+                    biosManager.tryAddBiosAfter(storageFile, stream, startedAtMs)
+                }
+            } else {
+                inputStream?.close()
             }
         }
     }
@@ -287,7 +313,8 @@ class LemuroidLibrary(
             return null
         }
 
-        val gameSystem = GameSystem.findById(gameMetadata.system!!)
+        val systemId = gameMetadata.system ?: return null
+        val gameSystem = runCatching { GameSystem.findById(systemId) }.getOrNull() ?: return null
 
         // If the databased matched a data file (as with bin/cue) we force link the primary filename
         val fileName =
@@ -343,5 +370,6 @@ class LemuroidLibrary(
         // We batch database updates to avoid unnecessary UI updates.
         const val MAX_BUFFER_SIZE = 200
         const val MAX_TIME = 5000
+        private const val SQLITE_BIND_CHUNK_SIZE = 500
     }
 }

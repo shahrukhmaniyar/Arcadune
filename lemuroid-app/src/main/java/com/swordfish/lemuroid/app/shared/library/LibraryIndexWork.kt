@@ -12,6 +12,7 @@ import com.swordfish.lemuroid.lib.library.LemuroidLibrary
 import dagger.Binds
 import dagger.android.AndroidInjector
 import dagger.multibindings.IntoMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -35,15 +36,14 @@ class LibraryIndexWork(context: Context, workerParams: WorkerParameters) :
 
         setForegroundAsync(foregroundInfo)
 
-        val result =
+        try {
             withContext(Dispatchers.IO) {
-                kotlin.runCatching {
-                    lemuroidLibrary.indexLibrary()
-                }
+                lemuroidLibrary.indexLibrary()
             }
-
-        result.exceptionOrNull()?.let {
-            Timber.e("Library indexing work terminated with an exception:", it)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Timber.e(e, "Library indexing work terminated with an exception")
         }
 
         LibraryIndexScheduler.scheduleCoreUpdate(applicationContext)

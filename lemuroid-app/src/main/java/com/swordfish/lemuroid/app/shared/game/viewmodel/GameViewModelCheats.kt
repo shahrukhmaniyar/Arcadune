@@ -31,6 +31,7 @@ class GameViewModelCheats(
     private val game: Game,
     private val retroGameView: GameViewModelRetroGameView,
     private val scope: CoroutineScope,
+    private val isHardcoreActive: () -> Boolean = { false },
 ) {
     private val store = CheatsStore(File(appContext.filesDir, "cheats"))
     private val key = CheatsStore.keyFor(game.systemId, game.fileName)
@@ -93,6 +94,14 @@ class GameViewModelCheats(
     private fun applyNow() =
         synchronized(applyLock) {
             val view = retroGameView.retroGameView ?: return@synchronized
+            if (isHardcoreActive()) {
+                runCatching {
+                    target(view).clear()
+                    store.saveApplied(key, emptyList())
+                    store.endSession()
+                }.onFailure { Timber.e(it, "Could not clear cheats for Hardcore mode") }
+                return@synchronized
+            }
             val cheats = store.load(key)
             val previouslyApplied = store.loadApplied(key)
             val applier = CheatApplier(target(view), game.systemId)

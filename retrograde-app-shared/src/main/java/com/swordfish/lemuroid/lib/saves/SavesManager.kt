@@ -56,6 +56,27 @@ class SavesManager(private val directoriesManager: DirectoriesManager) {
         }
     }
 
+    suspend fun hasSingleFileSave(game: Game): Boolean =
+        withContext(Dispatchers.IO) {
+            val saveFile = getSaveRAMFile(game)
+            saveFile.exists() && saveFile.length() > 0L
+        }
+
+    fun getSaveRAMFile(game: Game): File =
+        File(directoriesManager.getSavesDirectory(), getSaveRAMFileName(game))
+
+    suspend fun writeSaveRAMOrThrow(
+        game: Game,
+        data: ByteArray,
+    ) {
+        require(data.isNotEmpty()) { "Save data must not be empty" }
+        withContext(Dispatchers.IO) {
+            runCatchingWithRetry(FILE_ACCESS_RETRIES) {
+                getSaveRAMFile(game).writeBytesAtomic(data)
+            }.getOrThrow()
+        }
+    }
+
     private suspend fun getSaveFile(fileName: String): File {
         return withContext(Dispatchers.IO) {
             val savesDirectory = directoriesManager.getSavesDirectory()
@@ -64,9 +85,11 @@ class SavesManager(private val directoriesManager: DirectoriesManager) {
     }
 
     /** This name should make it compatible with RetroArch so that users can freely sync saves across the two application. */
-    private fun getSaveRAMFileName(game: Game) = "${game.fileName.substringBeforeLast(".")}.srm"
+    private fun getSaveRAMFileName(game: Game) = saveFileNameFor(game)
 
     companion object {
         private const val FILE_ACCESS_RETRIES = 3
+
+        fun saveFileNameFor(game: Game) = "${game.fileName.substringBeforeLast(".")}.srm"
     }
 }

@@ -1,10 +1,16 @@
 package com.swordfish.lemuroid.app.mobile.feature.library
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,51 +21,43 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.input.pointer.pointerInput
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.provider.Settings
-import androidx.core.content.ContextCompat
-import androidx.compose.animation.core.spring
-import androidx.compose.ui.platform.LocalDensity
-import coil.compose.AsyncImage
-import coil.transform.RoundedCornersTransformation
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,19 +65,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.VideogameAsset
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -90,46 +81,51 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.transform.RoundedCornersTransformation
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconPill
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.shared.covers.CoverUtils
 import com.swordfish.lemuroid.lib.library.MetaSystemID
@@ -139,6 +135,9 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -157,8 +156,10 @@ fun LibraryScreen(
     notices: @Composable () -> Unit,
 ) {
     val pages = viewModel.pages.collectAsState().value
-    val query by viewModel.searchQuery.collectAsState()
-    val searching = query.isNotBlank()
+    // Only whether a search is on is read here, not the text: typing must not rebuild the library.
+    val searching by remember(viewModel) {
+        viewModel.searchQuery.map { it.isNotBlank() }.distinctUntilChanged()
+    }.collectAsState(initial = false)
     val focusManager = LocalFocusManager.current
     val hazeState = remember { HazeState() }
 
@@ -173,6 +174,23 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .background(ArcaduneColors.Background),
     ) {
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                ArcaduneColors.Purple.copy(alpha = 0.09f),
+                                ArcaduneColors.Purple.copy(alpha = 0.03f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+        )
+
         if (pages == null) return@Box
 
         // Delta opens on Recently Played; without it, on the first console.
@@ -182,15 +200,13 @@ fun LibraryScreen(
                 (pages.firstOrNull { it is LibraryViewModel.Page.RecentlyPlayed } ?: pages.getOrNull(1) ?: pages.first()).id
         }
         val pagerState =
-            rememberPagerState(initialPage = pages.indexOfFirst { it.id == startPageId }.coerceAtLeast(0)) { pages.size }
+            rememberPagerState(
+                initialPage = pages.indexOfFirst { it.id == startPageId }.coerceAtLeast(0),
+            ) { pages.size }
 
-        // Every page is built once, a moment after the library opens, and then kept: swiping only
-        // moves pages that already exist instead of building the next one in the middle of a swipe.
-        var keptPages by remember { mutableStateOf(1) }
-        LaunchedEffect(pages.size) {
-            kotlinx.coroutines.delay(700)
-            keptPages = pages.size.coerceAtLeast(1)
-        }
+        // Pre-compose the immediate neighbor page on each side instead of all ~20 pages at once,
+        // avoiding a multi-hundred-millisecond main-thread hitch right after opening the library.
+        val keptPages = 1
 
         Column(
             modifier =
@@ -249,12 +265,17 @@ fun LibraryScreen(
                     }
                 }
 
-                androidx.compose.animation.AnimatedVisibility(visible = searching, enter = ArcaduneMotion.appear, exit = ArcaduneMotion.disappear) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = searching,
+                    enter = ArcaduneMotion.appear,
+                    exit = ArcaduneMotion.disappear,
+                ) {
                     val results = viewModel.searchResults.collectAsLazyPagingItems()
                     Box(modifier = Modifier.fillMaxSize().background(ArcaduneColors.Background)) {
                         GameGrid(
                             games = results,
                             emptyMessage = stringResource(R.string.library_search_empty),
+                            emptyIcon = Icons.Filled.Search,
                             onGameClick = onGameClick,
                             onGameLongClick = onGameLongClick,
                         )
@@ -270,7 +291,9 @@ fun LibraryScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .height(96.dp)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, ArcaduneColors.Background.copy(alpha = 0.7f)))),
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Transparent, ArcaduneColors.Background.copy(alpha = 0.7f))),
+                    ),
         )
 
         val scope = rememberCoroutineScope()
@@ -286,11 +309,12 @@ fun LibraryScreen(
             // Each new page from the scrub glides there; a newer one replaces a glide still running.
             onScrub = { page ->
                 scrubGlide?.cancel()
-                scrubGlide = scope.launch {
-                    pagerState.animateScrollToPage(page, animationSpec = spring(dampingRatio = 1f, stiffness = 1200f))
-                }
+                scrubGlide =
+                    scope.launch {
+                        pagerState.animateScrollToPage(page, animationSpec = spring(dampingRatio = 1f, stiffness = 1200f))
+                    }
             },
-            query = query,
+            query = viewModel.searchQuery,
             onQueryChange = { viewModel.searchQuery.value = it },
         )
     }
@@ -309,19 +333,26 @@ private fun LibraryTopBar(
     title: @Composable () -> String,
     onOpenSettings: () -> Unit,
 ) {
-    Row(
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
-        IconButton(onClick = onOpenSettings) {
-            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings))
-        }
+        ArcaduneIconPill(
+            icon = Icons.Outlined.Settings,
+            contentDescription = stringResource(R.string.settings),
+            size = 38.dp,
+            onClick = onOpenSettings,
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
         AnimatedContent(
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 48.dp),
             targetState = title(),
             transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(100)) },
             label = "title",
@@ -329,13 +360,12 @@ private fun LibraryTopBar(
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 text = text,
+                color = ArcaduneColors.OnSurface,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
         }
     }
 }
@@ -344,11 +374,12 @@ private fun LibraryTopBar(
 private fun GameGrid(
     games: LazyPagingItems<Game>,
     emptyMessage: String?,
+    emptyIcon: ImageVector = Icons.Outlined.StarOutline,
     onGameClick: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
 ) {
     if (games.itemCount == 0) {
-        if (emptyMessage != null) CenteredMessage(emptyMessage)
+        if (emptyMessage != null) CenteredMessage(emptyMessage, emptyIcon)
         return
     }
 
@@ -361,22 +392,30 @@ private fun GameGrid(
             Modifier
                 .fillMaxSize()
                 // Clear of the camera cutout and the side navigation bar in landscape.
-                .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal)),
+                .windowInsetsPadding(
+                    WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal),
+                ),
     ) {
-    LazyVerticalGrid(
-        // Its own drawing layer: while pages slide, the phone moves the finished picture of the page
-        // instead of drawing every cover again on every frame, and skips pages that are off screen.
-        modifier = Modifier.fillMaxSize().graphicsLayer(),
-        columns = GridCells.Fixed(libraryColumns(maxWidth)),
-        contentPadding = PaddingValues(start = 26.dp, end = 26.dp, top = 6.dp, bottom = (if (landscape) 84.dp else 120.dp) + keyboard),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        items(games.itemCount, key = { games.peek(it)?.id ?: -it - 1 }, contentType = { "game" }) { index ->
-            val game = games[index] ?: return@items
-            GameTile(game = game, onClick = { onGameClick(game) }, onLongClick = { onGameLongClick(game) })
+        LazyVerticalGrid(
+            // Its own drawing layer: while pages slide, the phone moves the finished picture of the page
+            // instead of drawing every cover again on every frame, and skips pages that are off screen.
+            modifier = Modifier.fillMaxSize().graphicsLayer(),
+            columns = GridCells.Fixed(libraryColumns(maxWidth)),
+            contentPadding =
+                PaddingValues(
+                    start = 26.dp,
+                    end = 26.dp,
+                    top = 6.dp,
+                    bottom = (if (landscape) 84.dp else 120.dp) + keyboard,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(games.itemCount, key = { games.peek(it)?.id ?: -it - 1 }, contentType = { "game" }) { index ->
+                val game = games[index] ?: return@items
+                GameTile(game = game, onClick = { onGameClick(game) }, onLongClick = { onGameLongClick(game) })
+            }
         }
-    }
     }
 }
 
@@ -416,11 +455,14 @@ private fun GameTile(
 
     val name = remember(game) { game.displayName() }
     val fallback = rememberDrawablePainter(remember { CoverUtils.getFallbackDrawable(context) })
+    val cornerPx = with(density) { 10.dp.toPx() }
+    val strokePx = with(density) { 1.dp.toPx() }
+    var coverSize by remember(game) { mutableStateOf(Size.Unspecified) }
     val request =
-        remember(game) {
+        remember(game, cornerPx) {
             ImageRequest.Builder(context)
                 .data(game.displayCoverUrl())
-                .transformations(RoundedCornersTransformation(with(density) { 8.dp.toPx() }))
+                .transformations(RoundedCornersTransformation(cornerPx))
                 .crossfade(100)
                 .build()
         }
@@ -442,18 +484,42 @@ private fun GameTile(
     ) {
         AsyncImage(
             model = request,
-            contentDescription = name,
+            contentDescription = null,
             contentScale = ContentScale.Fit,
             alignment = Alignment.BottomCenter,
             placeholder = null,
             fallback = fallback,
             error = fallback,
-            modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+            onSuccess = { state -> coverSize = state.painter.intrinsicSize },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .drawWithContent {
+                        drawContent()
+                        val srcW = coverSize.width
+                        val srcH = coverSize.height
+                        if (srcW > 0f && srcH > 0f && size.width > 0f && size.height > 0f) {
+                            val fitScale = minOf(size.width / srcW, size.height / srcH)
+                            val w = srcW * fitScale
+                            val h = srcH * fitScale
+                            val halfStroke = strokePx / 2f
+                            val left = (size.width - w) / 2f + halfStroke
+                            val top = size.height - h + halfStroke
+                            drawRoundRect(
+                                color = Color(0x2EFFFFFF),
+                                topLeft = Offset(left, top),
+                                size = Size((w - strokePx).coerceAtLeast(0f), (h - strokePx).coerceAtLeast(0f)),
+                                cornerRadius = CornerRadius(cornerPx, cornerPx),
+                                style = Stroke(width = strokePx),
+                            )
+                        }
+                    },
         )
-        Spacer(modifier = Modifier.height(5.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = name,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
             color = ArcaduneColors.OnSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,
@@ -461,7 +527,6 @@ private fun GameTile(
         )
     }
 }
-
 
 @Composable
 private fun LibraryBottomBar(
@@ -472,7 +537,7 @@ private fun LibraryBottomBar(
     showPages: Boolean,
     onPageSelected: (Int) -> Unit,
     onScrub: (Int) -> Unit,
-    query: String,
+    query: StateFlow<String>,
     onQueryChange: (String) -> Unit,
 ) {
     val barModifier =
@@ -503,7 +568,7 @@ private fun LibraryBottomBar(
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         AnimatedVisibility(visible = showPages, enter = ArcaduneMotion.appear, exit = ArcaduneMotion.disappear) {
-            PageIndicator(hazeState, pages, currentPage, onPageSelected, onScrub)
+            PageIndicator(hazeState, pages, currentPage, onPageSelected, onScrub, maxWidth = 196.dp)
         }
         // On a tablet the search stays a comfortable width instead of stretching across the screen.
         Box(modifier = Modifier.widthIn(max = 560.dp)) {
@@ -518,15 +583,27 @@ private fun LibraryBottomBar(
  */
 @Composable
 private fun Modifier.fadingEdges(listState: LazyListState): Modifier {
-    val start by animateFloatAsState(if (listState.canScrollBackward) 1f else 0f, ArcaduneMotion.quick(), label = "fadeStart")
-    val end by animateFloatAsState(if (listState.canScrollForward) 1f else 0f, ArcaduneMotion.quick(), label = "fadeEnd")
+    val start by animateFloatAsState(
+        if (listState.canScrollBackward) 1f else 0f,
+        ArcaduneMotion.quick(),
+        label = "fadeStart",
+    )
+    val end by animateFloatAsState(
+        if (listState.canScrollForward) 1f else 0f,
+        ArcaduneMotion.quick(),
+        label = "fadeEnd",
+    )
     return this
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent {
             drawContent()
-            // Over the outer 52dp: clear at the rim, about a third at the first icon, full after.
-            val edge = (52.dp.toPx() / size.width).coerceAtMost(0.5f)
-            fun faded(strength: Float, alpha: Float) = Color.Black.copy(alpha = 1f - strength * (1f - alpha))
+            // Over the outer 40dp: clear at the rim, about a third at the first icon, full after.
+            val edge = (40.dp.toPx() / size.width).coerceAtMost(0.5f)
+
+            fun faded(
+                strength: Float,
+                alpha: Float,
+            ) = Color.Black.copy(alpha = 1f - strength * (1f - alpha))
             drawRect(
                 brush =
                     Brush.horizontalGradient(
@@ -583,6 +660,8 @@ private fun PageIndicator(
     onScrub: (Int) -> Unit,
     // 36 under the search; 48 beside it (landscape), the same height as the search.
     height: Dp = 36.dp,
+    // 196 (30% narrower) under the search upright; 280 beside it sideways.
+    maxWidth: Dp = 280.dp,
 ) {
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -594,7 +673,7 @@ private fun PageIndicator(
     // few frames behind as they glide).
     var scrubbing by remember { mutableStateOf<Int?>(null) }
     val selectedIndex = scrubbing ?: currentPage()
-    LaunchedEffect(selectedIndex) { listState.animateScrollToItem((selectedIndex - 4).coerceAtLeast(0)) }
+    LaunchedEffect(selectedIndex) { listState.animateScrollToItem((selectedIndex - 3).coerceAtLeast(0)) }
 
     val lift by animateFloatAsState(if (scrubbing != null) 1.06f else 1f, ArcaduneMotion.press(), label = "lift")
 
@@ -607,7 +686,7 @@ private fun PageIndicator(
                     scaleX = lift
                     scaleY = lift
                 }
-                .widthIn(max = 280.dp)
+                .widthIn(max = maxWidth)
                 .height(height)
                 .glass(hazeState, RoundedCornerShape(50))
                 .fadingEdges(listState)
@@ -635,6 +714,7 @@ private fun PageIndicator(
                     }
                     detectHorizontalDragGestures(
                         onDragStart = { start ->
+                            ticks.refreshHapticSetting()
                             scrubbing = currentPageNow()
                             pick(start.x)
                         },
@@ -646,7 +726,7 @@ private fun PageIndicator(
                     }
                 },
         contentPadding = PaddingValues(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         itemsIndexed(pages, key = { _, page -> page.id }) { index, page ->
@@ -664,7 +744,7 @@ private fun PageIndicator(
             Box(
                 modifier =
                     Modifier
-                        .size(width = 28.dp, height = height)
+                        .size(width = 24.dp, height = height)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -678,7 +758,7 @@ private fun PageIndicator(
                     Box(
                         modifier =
                             Modifier
-                                .size(7.dp)
+                                .size(6.dp)
                                 .graphicsLayer {
                                     val shrink = (1f - emphasis).coerceIn(0f, 1f)
                                     scaleX = shrink
@@ -695,10 +775,10 @@ private fun PageIndicator(
                         contentDescription = pageTitle(page),
                         modifier =
                             Modifier
-                                .size(22.dp)
+                                .size(21.dp)
                                 .graphicsLayer {
-                                    // Star and clock rest at 16 of 22; console icons grow out of the dot.
-                                    val rest = if (isSystem) 0.3f else 0.73f
+                                    // Star and clock rest at 16 of 21; console icons grow out of the dot.
+                                    val rest = if (isSystem) 0.3f else 0.76f
                                     val scale = rest + (1f - rest) * emphasis
                                     scaleX = scale
                                     scaleY = scale
@@ -713,29 +793,47 @@ private fun PageIndicator(
 }
 
 /** Arcadune's own icons, drawn in the style of Delta's: a star, a clock, and a silhouette per console. */
+
 /**
  * Short vibrations for the page pill, played on the vibrator like the game buttons do: some phones
  * (Samsung) silently drop View.performHapticFeedback. Follows the phone's touch vibration setting.
  */
 private class PillTicks(private val context: Context) {
     private val vibrator = ContextCompat.getSystemService(context, Vibrator::class.java)
+    private val hasVibrator = vibrator?.hasVibrator() == true
+    private var hapticsEnabled = queryHapticSetting()
+
+    private fun queryHapticSetting(): Boolean =
+        Settings.System.getInt(context.contentResolver, Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) != 0
+
+    fun refreshHapticSetting() {
+        hapticsEnabled = queryHapticSetting()
+    }
 
     fun tick() = play(strong = false)
 
-    fun click() = play(strong = true)
+    fun click() {
+        refreshHapticSetting()
+        play(strong = true)
+    }
 
     private fun play(strong: Boolean) {
         val vibrator = vibrator ?: return
-        val enabled = Settings.System.getInt(context.contentResolver, Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) != 0
-        if (!enabled || !vibrator.hasVibrator()) return
+        if (!hasVibrator || !hapticsEnabled) return
         when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
                 vibrator.vibrate(
-                    VibrationEffect.createPredefined(if (strong) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK),
+                    VibrationEffect.createPredefined(
+                        if (strong) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK,
+                    ),
                 )
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ->
-                vibrator.vibrate(VibrationEffect.createOneShot(if (strong) 12L else 6L, VibrationEffect.DEFAULT_AMPLITUDE))
-            else -> @Suppress("DEPRECATION") vibrator.vibrate(if (strong) 12L else 6L)
+                vibrator.vibrate(
+                    VibrationEffect.createOneShot(if (strong) 12L else 6L, VibrationEffect.DEFAULT_AMPLITUDE),
+                )
+            else ->
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(if (strong) 12L else 6L)
         }
     }
 }
@@ -763,10 +861,17 @@ private fun pageIcon(page: LibraryViewModel.Page): Int =
 @Composable
 private fun SearchField(
     hazeState: HazeState,
-    query: String,
+    queryFlow: StateFlow<String>,
     onQueryChange: (String) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
+    // The field keeps the text it shows itself, so a key press appears at once and the cursor never
+    // jumps back (the library's own copy of the query arrives a frame later). Only this field reads
+    // the query, so typing does not rebuild the whole library screen.
+    var field by remember { mutableStateOf(TextFieldValue(queryFlow.value)) }
+    val query = field.text
+    val outside by queryFlow.collectAsState()
+    LaunchedEffect(outside) { if (outside != field.text) field = TextFieldValue(outside) }
     Row(
         modifier =
             Modifier
@@ -776,16 +881,29 @@ private fun SearchField(
                 .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.Search, contentDescription = null, tint = ArcaduneColors.OnSurfaceDim, modifier = Modifier.size(18.dp))
+        Icon(
+            Icons.Filled.Search,
+            contentDescription = null,
+            tint = ArcaduneColors.OnSurfaceDim,
+            modifier = Modifier.size(18.dp),
+        )
         Box(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
             val textStyle = MaterialTheme.typography.bodyMedium
             if (query.isEmpty()) {
-                Text(stringResource(R.string.library_search_hint), color = ArcaduneColors.OnSurfaceDim, style = textStyle)
+                Text(
+                    stringResource(R.string.library_search_hint),
+                    color = ArcaduneColors.OnSurfaceDim,
+                    style = textStyle,
+                )
             }
             BasicTextField(
                 modifier = Modifier.fillMaxWidth(),
-                value = query,
-                onValueChange = onQueryChange,
+                value = field,
+                onValueChange = { new ->
+                    val changed = new.text != field.text
+                    field = new
+                    if (changed) onQueryChange(new.text)
+                },
                 singleLine = true,
                 textStyle = textStyle.copy(color = ArcaduneColors.OnSurface),
                 cursorBrush = SolidColor(ArcaduneColors.Purple),
@@ -794,20 +912,25 @@ private fun SearchField(
             )
         }
         if (query.isNotEmpty()) {
-            Icon(
-                Icons.Filled.Close,
-                contentDescription = stringResource(R.string.library_search_clear),
-                tint = ArcaduneColors.OnSurfaceDim,
+            Box(
                 modifier =
                     Modifier
-                        .size(26.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .clickable {
+                            field = TextFieldValue("")
                             onQueryChange("")
                             focusManager.clearFocus()
-                        }
-                        .padding(4.dp),
-            )
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.library_search_clear),
+                    tint = ArcaduneColors.OnSurfaceDim,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
@@ -835,14 +958,19 @@ private fun EmptyLibrary() {
 }
 
 @Composable
-private fun CenteredMessage(message: String) {
+private fun CenteredMessage(
+    message: String,
+    icon: ImageVector = Icons.Outlined.StarOutline,
+) {
+    val keyboard = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val bottomPadding = (if (isLandscape()) 84.dp else 120.dp) + keyboard
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).padding(bottom = 120.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).padding(bottom = bottomPadding),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            Icons.Outlined.StarOutline,
+            icon,
             contentDescription = null,
             tint = ArcaduneColors.OnSurfaceDim,
             modifier = Modifier.size(40.dp),

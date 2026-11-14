@@ -1,19 +1,22 @@
 package com.swordfish.lemuroid.app.mobile.feature.main
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.swordfish.lemuroid.R
-
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 
 @Composable
 fun CustomNameDialog(
@@ -21,34 +24,37 @@ fun CustomNameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var text by remember { mutableStateOf(initialName) }
+    var text by rememberSaveable(initialName) { mutableStateOf(initialName) }
 
-    AlertDialog(
+    ArcaduneDialog(
         onDismissRequest = onDismiss,
+        icon = Icons.Default.Edit,
         title = { Text(text = stringResource(id = R.string.game_context_menu_custom_name_dialog_title)) },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+        dismissButton = {
+            ArcadunePillButton(
+                label = stringResource(id = android.R.string.cancel),
+                onClick = onDismiss,
             )
         },
         confirmButton = {
-            TextButton(
+            ArcadunePillButton(
+                label = stringResource(id = R.string.ok),
+                highlighted = true,
+                enabled = text.isNotBlank(),
                 onClick = {
                     if (text.isNotBlank()) {
                         onConfirm(text.trim())
                     }
                 },
-            ) {
-                Text("OK")
-            }
+            )
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }

@@ -1,15 +1,17 @@
 package com.swordfish.lemuroid.app.mobile.feature.gamemenu
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,20 +28,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,18 +48,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.swordfish.lemuroid.R
-import com.swordfish.lemuroid.app.mobile.feature.gamemenu.tilt.TiltConfigurationMenuEntry
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.shared.GameMenuContract
+import com.swordfish.lemuroid.app.shared.achievements.AchievementSessionStatus
+import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 import kotlin.reflect.KFunction1
 
 /**
@@ -72,87 +79,135 @@ fun GameMenuHomeScreen(
     gameMenuRequest: GameMenuActivity.GameMenuRequest,
     onResult: KFunction1<Intent.() -> Unit, Unit>,
 ) {
-    var showDisks by remember { mutableStateOf(false) }
-    var showTilt by remember { mutableStateOf(false) }
-
-    // The menu settles in with a small spring, like an iOS sheet appearing.
-    val entrance = remember { androidx.compose.animation.core.Animatable(0f) }
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        entrance.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 500f))
-    }
+    val context = LocalContext.current
+    val achState by RetroAchievementsSessionHolder.state.collectAsState()
+    val achievementsBadge =
+        when {
+            achState.status == AchievementSessionStatus.LOADED && achState.totalCount > 0 ->
+                "${achState.unlockedCount}/${achState.totalCount}"
+            achState.status == AchievementSessionStatus.SIGNING_IN ||
+                achState.status == AchievementSessionStatus.IDENTIFYING ->
+                stringResource(R.string.ra_menu_loading)
+            else -> null
+        }
 
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    alpha = entrance.value.coerceIn(0f, 1f)
-                    val size = 0.94f + 0.06f * entrance.value
-                    scaleX = size
-                    scaleY = size
-                }
                 .safeDrawingPadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
-        Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-            contentAlignment = Alignment.Center,
-        ) {
-            FlowRow(
-                modifier = Modifier.padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (gameMenuRequest.coreConfig.statesSupported) {
-                    MenuTile(stringResource(R.string.game_menu_save), painterResource(R.drawable.ic_menu_save)) {
-                        navController.navigateToRoute(GameMenuRoute.SAVE)
-                    }
-                    MenuTile(stringResource(R.string.game_menu_load), painterResource(R.drawable.ic_menu_load)) {
-                        navController.navigateToRoute(GameMenuRoute.LOAD)
-                    }
-                }
-                MenuTile(stringResource(R.string.game_menu_cheats), rememberVectorPainter(Icons.Filled.Star)) {
-                    navController.navigateToRoute(GameMenuRoute.CHEATS)
-                }
-                if (gameMenuRequest.fastForwardSupported) {
-                    MenuTile(
-                        stringResource(R.string.game_menu_fast_forward),
-                        painterResource(R.drawable.ic_menu_fast_forward),
-                        selected = gameMenuRequest.fastForwardEnabled,
+        // Held upright the tiles go three to a row, sideways five (so nine tiles are 5 and 4); they
+        // grow to fill a wider screen, and shrink on a short one so every row stays in view.
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val sideways = maxWidth > maxHeight
+            val columns = if (sideways) 5 else 3
+            val tile = tileSize(maxWidth, maxHeight, columns, rows = if (sideways) 2 else 3)
+            CompositionLocalProvider(LocalTileSize provides tile) {
+                Box(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    FlowRow(
+                        modifier = Modifier.padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(TILE_GAP, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(TILE_GAP),
+                        maxItemsInEachRow = columns,
                     ) {
-                        onResult {
-                            putExtra(GameMenuContract.RESULT_ENABLE_FAST_FORWARD, !gameMenuRequest.fastForwardEnabled)
+                        if (gameMenuRequest.coreConfig.statesSupported) {
+                            MenuTile(
+                                stringResource(R.string.game_menu_save),
+                                painterResource(R.drawable.ic_menu_save),
+                            ) {
+                                navController.navigateToRoute(GameMenuRoute.SAVE)
+                            }
+                            MenuTile(
+                                text = stringResource(R.string.game_menu_load),
+                                icon = painterResource(R.drawable.ic_menu_load),
+                                supportingText =
+                                    if (achState.hardcoreActive) {
+                                        stringResource(R.string.game_menu_hardcore_badge)
+                                    } else {
+                                        null
+                                    },
+                            ) {
+                                if (achState.hardcoreActive) {
+                                    Toast.makeText(
+                                        context,
+                                        R.string.ra_hardcore_load_disabled_toast,
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                } else {
+                                    navController.navigateToRoute(GameMenuRoute.LOAD)
+                                }
+                            }
+                        }
+                        MenuTile(
+                            text = stringResource(R.string.game_menu_achievements),
+                            icon = rememberVectorPainter(Icons.Filled.EmojiEvents),
+                            supportingText = achievementsBadge,
+                        ) {
+                            navController.navigateToRoute(GameMenuRoute.ACHIEVEMENTS)
+                        }
+                        MenuTile(stringResource(R.string.game_menu_cheats), rememberVectorPainter(Icons.Filled.Star)) {
+                            navController.navigateToRoute(GameMenuRoute.CHEATS)
+                        }
+                        if (gameMenuRequest.fastForwardSupported) {
+                            MenuTile(
+                                if (gameMenuRequest.frameSpeed > 1) {
+                                    stringResource(R.string.game_menu_fast_forward_speed, gameMenuRequest.frameSpeed)
+                                } else {
+                                    stringResource(R.string.game_menu_fast_forward)
+                                },
+                                painterResource(R.drawable.ic_menu_fast_forward),
+                                selected = gameMenuRequest.frameSpeed > 1,
+                            ) {
+                                navController.navigateToRoute(GameMenuRoute.FAST_FORWARD)
+                            }
+                        }
+                        MenuTile(
+                            stringResource(R.string.game_menu_mute_audio),
+                            painterResource(R.drawable.ic_menu_mute),
+                            selected = !gameMenuRequest.audioEnabled,
+                        ) {
+                            onResult { putExtra(GameMenuContract.RESULT_ENABLE_AUDIO, !gameMenuRequest.audioEnabled) }
+                        }
+                        MenuTile(
+                            stringResource(R.string.game_menu_restart),
+                            painterResource(R.drawable.ic_menu_restart),
+                        ) {
+                            onResult { putExtra(GameMenuContract.RESULT_RESET, true) }
+                        }
+                        if (gameMenuRequest.numDisks > 1) {
+                            MenuTile(
+                                stringResource(R.string.game_menu_change_disk_button),
+                                painterResource(R.drawable.ic_menu_disk),
+                            ) {
+                                navController.navigateToRoute(GameMenuRoute.DISKS)
+                            }
+                        }
+                        if (gameMenuRequest.allTiltConfigurations.isNotEmpty()) {
+                            MenuTile(
+                                stringResource(R.string.game_menu_tilt_sensor),
+                                rememberVectorPainter(Icons.Filled.Sensors),
+                            ) {
+                                navController.navigateToRoute(GameMenuRoute.TILT)
+                            }
+                        }
+                        MenuTile(
+                            stringResource(R.string.game_menu_edit_touch_controls),
+                            painterResource(R.drawable.ic_menu_controls),
+                        ) {
+                            onResult { putExtra(GameMenuContract.RESULT_EDIT_TOUCH_CONTROLS, true) }
+                        }
+                        MenuTile(
+                            stringResource(R.string.game_menu_settings),
+                            painterResource(R.drawable.ic_menu_settings),
+                        ) {
+                            navController.navigateToRoute(GameMenuRoute.OPTIONS)
                         }
                     }
-                }
-                MenuTile(
-                    stringResource(R.string.game_menu_mute_audio),
-                    painterResource(R.drawable.ic_menu_mute),
-                    selected = !gameMenuRequest.audioEnabled,
-                ) {
-                    onResult { putExtra(GameMenuContract.RESULT_ENABLE_AUDIO, !gameMenuRequest.audioEnabled) }
-                }
-                MenuTile(stringResource(R.string.game_menu_restart), painterResource(R.drawable.ic_menu_restart)) {
-                    onResult { putExtra(GameMenuContract.RESULT_RESET, true) }
-                }
-                if (gameMenuRequest.numDisks > 1) {
-                    MenuTile(stringResource(R.string.game_menu_change_disk_button), painterResource(R.drawable.ic_menu_disk)) {
-                        showDisks = true
-                    }
-                }
-                if (gameMenuRequest.allTiltConfigurations.isNotEmpty()) {
-                    MenuTile(stringResource(R.string.game_menu_tilt_sensor), rememberVectorPainter(Icons.Filled.Sensors)) {
-                        showTilt = true
-                    }
-                }
-                MenuTile(
-                    stringResource(R.string.game_menu_edit_touch_controls),
-                    painterResource(R.drawable.ic_menu_controls),
-                ) {
-                    onResult { putExtra(GameMenuContract.RESULT_EDIT_TOUCH_CONTROLS, true) }
-                }
-                MenuTile(stringResource(R.string.game_menu_settings), painterResource(R.drawable.ic_menu_settings)) {
-                    navController.navigateToRoute(GameMenuRoute.OPTIONS)
                 }
             }
         }
@@ -177,46 +232,67 @@ fun GameMenuHomeScreen(
             )
         }
     }
+}
 
-    if (showDisks) {
-        ChoiceDialog(
-            title = stringResource(R.string.game_menu_change_disk_button),
-            choices = (1..gameMenuRequest.numDisks).map { stringResource(R.string.game_menu_change_disk_disk, it) },
-            selected = gameMenuRequest.currentDisk,
-            onDismiss = { showDisks = false },
-            onChoice = { index -> onResult { putExtra(GameMenuContract.RESULT_CHANGE_DISK, index) } },
-        )
-    }
+/** Size of one menu tile, and the gap between tiles. */
+internal data class TileSize(val width: Dp, val height: Dp)
 
-    if (showTilt) {
-        val entries = gameMenuRequest.allTiltConfigurations.map { TiltConfigurationMenuEntry.fromTiltConfiguration(it) }
-        ChoiceDialog(
-            title = stringResource(R.string.game_menu_tilt_sensor),
-            choices = entries.map { stringResource(it.descriptionId) },
-            selected = gameMenuRequest.allTiltConfigurations.indexOf(gameMenuRequest.currentTiltConfiguration),
-            onDismiss = { showTilt = false },
-            onChoice = { index ->
-                onResult { putExtra(GameMenuContract.RESULT_CHANGE_TILT_CONFIG, entries[index].configuration) }
-            },
-        )
+internal val TILE_GAP = 12.dp
+
+internal val LocalTileSize = compositionLocalOf { TileSize(100.dp, 92.dp) }
+
+/**
+ * A tile that fills its share of the room ([columns] across, [rows] down), but never gets huge on
+ * a tablet nor too short to hold an icon and two lines of text.
+ */
+internal fun tileSize(
+    maxWidth: Dp,
+    maxHeight: Dp,
+    columns: Int,
+    rows: Int,
+): TileSize {
+    // A dp of slack, so rounding never pushes the last tile of a row onto the next one.
+    if (columns < 5) {
+        val cols = columns.coerceAtLeast(1)
+        val width = ((maxWidth - TILE_GAP * (cols - 1)) / cols - 1.dp).coerceIn(84.dp, 106.dp)
+        val roomForRows = (maxHeight - 32.dp - TILE_GAP * (rows.coerceAtLeast(1) - 1)) / rows.coerceAtLeast(1)
+        val height = minOf(width * 0.92f, roomForRows).coerceAtLeast(76.dp)
+        return TileSize(width, height)
     }
+    val width = ((maxWidth - TILE_GAP * (columns - 1)) / columns - 1.dp).coerceIn(72.dp, 132.dp)
+    val roomForRows = (maxHeight - 32.dp - TILE_GAP * (rows - 1)) / rows
+    val height = minOf(width * 0.92f, roomForRows).coerceAtLeast(72.dp)
+    return TileSize(width, height)
 }
 
 @Composable
-private fun PillButton(
+internal fun PillButton(
     text: String,
     icon: Painter,
     highlighted: Boolean,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(50)
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
+    val borderWidth = if (focused) 2.dp else 1.dp
+    val borderColor =
+        when {
+            focused -> ArcaduneColors.OnSurface
+            highlighted -> Color.Transparent
+            else -> ArcaduneColors.GlassEdge
+        }
     Row(
         modifier =
             Modifier
-                .pressableClick(onClick)
+                .semantics {
+                    role = Role.Button
+                    if (highlighted) selected = true
+                }
+                .pressableClick(onClick, interactions)
                 .clip(shape)
                 .background(if (highlighted) ArcaduneColors.Purple else Color(0xE61C1A27))
-                .border(1.dp, if (highlighted) Color.Transparent else ArcaduneColors.GlassEdge, shape)
+                .border(borderWidth, borderColor, shape)
                 .size(width = 84.dp, height = 52.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -228,21 +304,31 @@ private fun PillButton(
 }
 
 @Composable
-private fun MenuTile(
+internal fun MenuTile(
     text: String,
     icon: Painter,
     selected: Boolean = false,
+    supportingText: String? = null,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
+    val tile = LocalTileSize.current
+    val interactions = remember { MutableInteractionSource() }
+    val focused by interactions.collectIsFocusedAsState()
+    val borderWidth = if (focused) 2.dp else 1.dp
+    val borderColor = if (focused) ArcaduneColors.OnSurface else ArcaduneColors.GlassEdge
     Column(
         modifier =
             Modifier
-                .size(width = 100.dp, height = 92.dp)
-                .pressableClick(onClick)
+                .size(width = tile.width, height = tile.height)
+                .semantics {
+                    role = Role.Button
+                    if (selected) this.selected = true
+                }
+                .pressableClick(onClick, interactions)
                 .clip(shape)
                 .background(if (selected) ArcaduneColors.Purple else Color(0xE61C1A27))
-                .border(1.dp, ArcaduneColors.GlassEdge, shape)
+                .border(borderWidth, borderColor, shape)
                 .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -250,21 +336,41 @@ private fun MenuTile(
         val color = if (selected) ArcaduneColors.OnAccent else ArcaduneColors.OnSurface
         Icon(painter = icon, contentDescription = null, tint = color, modifier = Modifier.size(28.dp))
         Spacer(modifier = Modifier.height(8.dp))
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val fontBoost = density.fontScale.coerceIn(1f, 1.15f)
+        val labelSize = with(density) { (11.dp * fontBoost).toSp() }
+        val labelLine = with(density) { (13.dp * fontBoost).toSp() }
         Text(
             text = text,
             color = color,
-            fontSize = 11.sp,
-            lineHeight = 13.sp,
+            fontSize = labelSize,
+            lineHeight = labelLine,
             textAlign = TextAlign.Center,
-            maxLines = 2,
+            maxLines = if (supportingText == null || tile.height >= 104.dp) 2 else 1,
+            softWrap = true,
+            overflow = TextOverflow.Ellipsis,
         )
+        if (supportingText != null) {
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = supportingText,
+                color = color.copy(alpha = 0.78f),
+                fontSize = with(density) { (9.5f.dp * fontBoost).toSp() },
+                lineHeight = with(density) { (11.5f.dp * fontBoost).toSp() },
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 /** A click that also shrinks the element a little while pressed, so every touch is felt. */
 @Composable
-private fun Modifier.pressableClick(onClick: () -> Unit): Modifier {
-    val interactions = remember { MutableInteractionSource() }
+private fun Modifier.pressableClick(
+    onClick: () -> Unit,
+    interactions: MutableInteractionSource = remember { MutableInteractionSource() },
+): Modifier {
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.94f else 1f, ArcaduneMotion.press(), label = "press")
     return this
@@ -273,36 +379,4 @@ private fun Modifier.pressableClick(onClick: () -> Unit): Modifier {
             scaleY = scale
         }
         .clickable(interactionSource = interactions, indication = null, onClick = onClick)
-}
-
-@Composable
-private fun ChoiceDialog(
-    title: String,
-    choices: List<String>,
-    selected: Int,
-    onDismiss: () -> Unit,
-    onChoice: (Int) -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                choices.forEachIndexed { index, choice ->
-                    Text(
-                        text = choice,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onChoice(index) }
-                                .padding(vertical = 12.dp, horizontal = 8.dp),
-                        color = if (index == selected) ArcaduneColors.Purple else ArcaduneColors.OnSurface,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
 }

@@ -38,10 +38,13 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE fileUri = :fileUri")
     fun selectByFileUri(fileUri: String): Game?
 
+    @Query("SELECT * FROM games WHERE fileUri IN (:fileUris)")
+    fun selectByFileUris(fileUris: List<String>): List<Game>
+
     @Query("SELECT * FROM games WHERE lastIndexedAt < :lastIndexedAt")
     fun selectByLastIndexedAtLessThan(lastIndexedAt: Long): List<Game>
 
-    @Query("SELECT * FROM games WHERE isFavorite = 1 ORDER BY COALESCE(customName, title) ASC")
+    @Query("SELECT * FROM games WHERE isFavorite = 1 ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC")
     fun selectFavorites(): PagingSource<Int, Game>
 
     @Query(
@@ -63,10 +66,10 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE lastPlayedAt IS NULL LIMIT :limit")
     fun selectFirstNotPlayed(limit: Int): Flow<List<Game>>
 
-    @Query("SELECT * FROM games WHERE systemId = :systemId ORDER BY COALESCE(customName, title) ASC, id DESC")
+    @Query("SELECT * FROM games WHERE systemId = :systemId ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC")
     fun selectBySystem(systemId: String): PagingSource<Int, Game>
 
-    @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) ASC, id DESC")
+    @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC")
     fun selectBySystems(systemIds: List<String>): PagingSource<Int, Game>
 
     @Query("SELECT DISTINCT systemId FROM games ORDER BY systemId ASC")
@@ -85,6 +88,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE lastPlayedAt IS NOT NULL ORDER BY lastPlayedAt DESC")
     fun selectRecentlyPlayed(): PagingSource<Int, Game>
 
+    @Query("SELECT COUNT(*) FROM games")
+    fun countGames(): Flow<Int>
+
     @Query("SELECT COUNT(*) FROM games WHERE isFavorite = 1")
     fun countFavorites(): Flow<Int>
 
@@ -95,6 +101,30 @@ interface GameDao {
     suspend fun markPlayed(
         id: Int,
         playedAt: Long,
+    )
+
+    @Query("UPDATE games SET lastIndexedAt = :lastIndexedAt WHERE id IN (:ids)")
+    fun updateLastIndexedAt(
+        ids: List<Int>,
+        lastIndexedAt: Long,
+    )
+
+    @Query("UPDATE games SET isFavorite = :isFavorite WHERE id = :id")
+    suspend fun updateFavorite(
+        id: Int,
+        isFavorite: Boolean,
+    )
+
+    @Query("UPDATE games SET customName = :customName WHERE id = :id")
+    suspend fun updateCustomName(
+        id: Int,
+        customName: String?,
+    )
+
+    @Query("UPDATE games SET customCoverUri = :customCoverUri WHERE id = :id")
+    suspend fun updateCustomCoverUri(
+        id: Int,
+        customCoverUri: String?,
     )
 
     @Insert

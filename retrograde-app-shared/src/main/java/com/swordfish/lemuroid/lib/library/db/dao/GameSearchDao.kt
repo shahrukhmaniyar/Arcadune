@@ -9,6 +9,7 @@ import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import java.util.Locale
 
 class GameSearchDao(private val internalDao: Internal) {
     object CALLBACK : RoomDatabase.Callback() {
@@ -110,20 +111,42 @@ class GameSearchDao(private val internalDao: Internal) {
                 """.trimIndent(),
             )
         }
+        private val FTS_TOKEN_SPLIT = Regex("[^\\p{L}\\p{N}]+")
+
+        /**
+         * Sanitizes arbitrary user input into safe FTS4 prefix tokens (`token*`).
+         * Splitting on non-alphanumeric characters strips quotes, parentheses, hyphens, and colons,
+         * and lowercasing prevents uppercase FTS4 boolean keywords (AND/OR/NOT/NEAR) from being
+         * parsed as operators while preserving FTS4 prefix wildcard matching (`pok*`).
+         */
+        fun sanitizeFtsQuery(rawQuery: String): String =
+            rawQuery
+                .trim()
+                .split(FTS_TOKEN_SPLIT)
+                .filter { it.isNotEmpty() }
+                .joinToString(" ") { "${it.lowercase(Locale.ROOT)}*" }
     }
 
-    fun search(query: String): PagingSource<Int, Game> =
-        internalDao.rawSearch(
+    fun search(query: String): PagingSource<Int, Game> {
+        val sanitized = sanitizeFtsQuery(query)
+        if (sanitized.isEmpty()) {
+            return internalDao.rawSearch(
+                SimpleSQLiteQuery("SELECT * FROM games WHERE 0"),
+            )
+        }
+        return internalDao.rawSearch(
             SimpleSQLiteQuery(
                 """
                 SELECT games.*
                     FROM fts_games
                     JOIN games ON games.id = fts_games.docid
                     WHERE fts_games MATCH ?
+                    ORDER BY COALESCE(games.customName, games.title) COLLATE NOCASE ASC, games.id DESC
                 """,
-                arrayOf(query),
+                arrayOf(sanitized),
             ),
         )
+    }
 
     @Dao
     interface Internal {

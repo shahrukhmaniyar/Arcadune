@@ -1,12 +1,10 @@
 package com.swordfish.lemuroid.app.mobile.feature.settings.advanced
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -18,10 +16,14 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.main.MainRoute
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneRowDivider
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidCardSettingsGroup
+import com.swordfish.lemuroid.app.utils.android.settings.LemuroidLazySettingsPage
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsList
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsMenuLink
-import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsPage
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsSlider
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsSwitch
 import com.swordfish.lemuroid.app.utils.android.settings.booleanPreferenceState
@@ -39,71 +41,15 @@ fun AdvancedSettingsScreen(
             .collectAsState()
             .value
 
-    LemuroidSettingsPage(
+    LemuroidLazySettingsPage(
         modifier = modifier.fillMaxSize(),
     ) {
-        if (uiState?.cache == null) {
-            return@LemuroidSettingsPage
+        item(key = "input") {
+            InputSettings()
         }
-
-        InputSettings()
-        GeneralSettings(uiState.cache, viewModel, navController)
-        BackupSettings(viewModel)
-    }
-}
-
-@Composable
-private fun BackupSettings(viewModel: AdvancedSettingsViewModel) {
-    val pendingRestore = remember { mutableStateOf<Uri?>(null) }
-
-    val backupLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-            if (uri != null) viewModel.backupSaves(uri)
+        item(key = "general") {
+            GeneralSettings(uiState.cache, viewModel, navController)
         }
-    val restoreLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) pendingRestore.value = uri
-        }
-
-    LemuroidCardSettingsGroup(
-        title = { Text(text = stringResource(id = R.string.settings_category_backup)) },
-    ) {
-        LemuroidSettingsMenuLink(
-            title = { Text(text = stringResource(id = R.string.settings_title_backup_saves)) },
-            subtitle = { Text(text = stringResource(id = R.string.settings_description_backup_saves)) },
-            onClick = { backupLauncher.launch(viewModel.backupFileName) },
-        )
-        LemuroidSettingsMenuLink(
-            title = { Text(text = stringResource(id = R.string.settings_title_restore_saves)) },
-            subtitle = { Text(text = stringResource(id = R.string.settings_description_restore_saves)) },
-            onClick = {
-                restoreLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
-            },
-        )
-    }
-
-    pendingRestore.value?.let { uri ->
-        val dismiss = { pendingRestore.value = null }
-        AlertDialog(
-            title = { Text(stringResource(id = R.string.restore_saves_warning_title)) },
-            text = { Text(stringResource(id = R.string.restore_saves_warning_message)) },
-            onDismissRequest = dismiss,
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.restoreSaves(uri)
-                        dismiss()
-                    },
-                ) {
-                    Text(text = stringResource(id = R.string.ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = dismiss) {
-                    Text(text = stringResource(id = R.string.cancel))
-                }
-            },
-        )
     }
 }
 
@@ -118,12 +64,14 @@ private fun InputSettings() {
             title = { Text(text = stringResource(id = R.string.settings_title_enable_rumble)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_rumble)) },
         )
+        ArcaduneRowDivider()
         LemuroidSettingsSwitch(
             enabled = rumbleEnabled.value,
             state = booleanPreferenceState(R.string.pref_key_enable_device_rumble, false),
             title = { Text(text = stringResource(id = R.string.settings_title_enable_device_rumble)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_device_rumble)) },
         )
+        ArcaduneRowDivider()
         LemuroidSettingsSlider(
             state =
                 intPreferenceState(
@@ -133,7 +81,7 @@ private fun InputSettings() {
             steps = 10,
             valueRange = 0f..10f,
             enabled = true,
-            title = { Text(text = stringResource(R.string.settings_title_tilt_sensitivity)) },
+            title = { Text(text = stringResource(id = R.string.settings_title_tilt_sensitivity)) },
         )
     }
 }
@@ -154,6 +102,7 @@ private fun GeneralSettings(
             title = { Text(text = stringResource(id = R.string.settings_title_low_latency_audio)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_low_latency_audio)) },
         )
+        ArcaduneRowDivider()
         LemuroidSettingsList(
             title = { Text(text = stringResource(R.string.settings_title_maximum_cache_usage)) },
             items = cacheState.displayNames,
@@ -164,11 +113,13 @@ private fun GeneralSettings(
                     cacheState.values,
                 ),
         )
+        ArcaduneRowDivider()
         LemuroidSettingsSwitch(
             state = booleanPreferenceState(R.string.pref_key_allow_direct_game_load, true),
             title = { Text(text = stringResource(id = R.string.settings_title_direct_game_load)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_direct_game_load)) },
         )
+        ArcaduneRowDivider()
         LemuroidSettingsMenuLink(
             title = { Text(text = stringResource(id = R.string.settings_title_reset_settings)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_reset_settings)) },
@@ -190,24 +141,31 @@ private fun FactoryResetDialog(
     val onDismiss = {
         factoryResetDialogState.value = false
     }
-    AlertDialog(
-        title = { Text(stringResource(id = R.string.reset_settings_warning_message_title)) },
-        text = { Text(stringResource(id = R.string.reset_settings_warning_message_description)) },
+    ArcaduneDialog(
         onDismissRequest = onDismiss,
+        icon = Icons.Filled.Warning,
+        title = { Text(stringResource(id = R.string.reset_settings_warning_message_title)) },
+        dismissButton = {
+            ArcadunePillButton(
+                label = stringResource(id = R.string.cancel),
+                onClick = onDismiss,
+            )
+        },
         confirmButton = {
-            TextButton(
+            ArcadunePillButton(
+                label = stringResource(id = R.string.ok),
+                highlighted = true,
                 onClick = {
                     viewModel.resetAllSettings()
                     navController.popBackStack(MainRoute.SETTINGS.route, false)
                 },
-            ) {
-                Text(text = stringResource(id = R.string.ok))
-            }
+            )
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = stringResource(id = R.string.cancel))
-            }
-        },
-    )
+    ) {
+        Text(
+            text = stringResource(id = R.string.reset_settings_warning_message_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = ArcaduneColors.OnSurfaceDim,
+        )
+    }
 }

@@ -12,13 +12,17 @@ import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -56,29 +60,35 @@ class CoverManagerViewModel(
     private val permits = Semaphore(4)
 
     init {
-        viewModelScope.launch {
-            retrogradeDb.gameDao().selectAllFlow().collectLatest { games -> check(games) }
+        viewModelScope.launch(Dispatchers.Default) {
+            delay(250)
+            retrogradeDb.gameDao().selectAllFlow()
+                .flowOn(Dispatchers.IO)
+                .collectLatest { games -> check(games) }
         }
     }
 
-    private suspend fun check(games: List<Game>) {
-        mutableState.update { it.copy(total = games.size, checked = games.count { isKnown(it) }) }
-        publish(games)
-
-        val unknown = games.filterNot { isKnown(it) }
-        unknown.chunked(CHUNK).forEach { chunk ->
-            chunk.map { game ->
-                viewModelScope.async(Dispatchers.IO) {
-                    permits.withPermit {
-                        val url = game.displayCoverUrl()
-                        if (url != null) results[url] = loads(url)
-                    }
-                }
-            }.awaitAll()
-            mutableState.update { it.copy(checked = games.count { game -> isKnown(game) }) }
+    private suspend fun check(games: List<Game>) =
+        withContext(Dispatchers.Default) {
+            mutableState.update { it.copy(total = games.size, checked = games.count { game -> isKnown(game) }) }
             publish(games)
+
+            val unknown = games.filterNot { isKnown(it) }
+            unknown.chunked(CHUNK).forEach { chunk ->
+                coroutineScope {
+                    chunk.map { game ->
+                        async(Dispatchers.IO) {
+                            permits.withPermit {
+                                val url = game.displayCoverUrl()
+                                if (url != null) results[url] = loads(url)
+                            }
+                        }
+                    }.awaitAll()
+                }
+                mutableState.update { it.copy(checked = games.count { game -> isKnown(game) }) }
+                publish(games)
+            }
         }
-    }
 
     private fun isKnown(game: Game): Boolean = game.displayCoverUrl()?.let { results.containsKey(it) } ?: true
 

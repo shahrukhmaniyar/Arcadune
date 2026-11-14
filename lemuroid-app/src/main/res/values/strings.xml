@@ -120,6 +120,10 @@
     <string name="cheats_too_long">Too long for the emulator, this cheat cannot be switched on</string>
     <string name="game_settings_only_this_game">Only for this game</string>
     <string name="game_settings_only_this_game_description">The settings below apply to this game only, other games keep the settings of the console</string>
+    <string name="game_settings_scope_game">This game</string>
+    <string name="game_settings_scope_console">All console games</string>
+    <string name="game_settings_value_on">On</string>
+    <string name="game_settings_value_off">Off</string>
     <string name="settings_title_rewind">Rewind</string>
     <string name="settings_description_rewind">Hold the rewind button to go back up to 30 seconds. On older consoles (NES, SNES, Game Boy, GBA, Sega, PC Engine and more)</string>
     <string name="library_title">Library</string>
@@ -132,7 +136,7 @@
     <string name="about_start_step_scan">Arcadune finds your games and their covers. Tap Rescan after adding new ones.</string>
     <string name="about_start_step_missing">A game is missing? Unzip it, or put it in a folder named after its console:</string>
     <string name="about_credits_title">Credits</string>
-    <string name="about_credits_message">Arcadune is based on Lemuroid by Swordfish90 and is free software under the GNU GPL v3. The emulators come from the Libretro project, each under its own license.</string>
+    <string name="about_credits_message">Arcadune is free software under the GNU GPL v3, modified from Lemuroid by Swordfish90. Emulators come from the Libretro project under their own licenses, and achievements are powered by rcheevos (MIT).</string>
     <string name="about_github">GitHub</string>
     <string name="about_close">Close</string>
     <string name="update_title">Updates</string>
@@ -159,21 +163,47 @@
     <string name="theme_color_amber">Amber</string>
     <string name="pause_main_menu">Main Menu</string>
     <string name="skin_editor_title">Edit controls</string>
-    <string name="skin_editor_hint">Drag any button to move it. The size changes every button at once.</string>
-    <string name="skin_editor_size">Button size: %1$d%%</string>
+    <string name="skin_editor_hint">Tap a button · Drag to move · Pinch to resize</string>
+    <string name="skin_editor_size">All buttons</string>
+    <string name="skin_editor_button_size">Size</string>
+    <string name="skin_editor_all_buttons">All buttons</string>
+    <string name="skin_editor_nudge">Nudge</string>
+    <string name="skin_editor_position">Position</string>
+    <string name="skin_editor_default_pos">Default</string>
+    <string name="skin_editor_visible">Hide</string>
+    <string name="skin_editor_hidden">Show</string>
+    <string name="skin_editor_reset_button">Reset button</string>
+    <string name="skin_editor_dock_panel">Move toolbar</string>
+    <string name="skin_editor_undo">Undo</string>
+    <string name="skin_editor_redo">Redo</string>
+    <string name="skin_editor_snap">Alignment snap</string>
+    <string name="skin_editor_global_options">Controller options</string>
+    <string name="skin_editor_pick_button">Select button</string>
+    <string name="skin_editor_hidden_tray">Hidden</string>
+    <string name="skin_editor_deselect">Close inspector</string>
     <string name="skin_gallery_title">Controllers</string>
     <string name="skin_gallery_description">Choose each console\'s skin and arrange its buttons</string>
+    <string name="skin_gallery_filter_all">All</string>
+    <string name="skin_gallery_filter_nintendo">Nintendo</string>
+    <string name="skin_gallery_filter_playstation">PlayStation</string>
+    <string name="skin_gallery_filter_sega">Sega</string>
+    <string name="skin_gallery_filter_more">Arcade &amp; More</string>
+    <string name="skin_gallery_filter_customized">Customized</string>
+    <string name="skin_gallery_customized_badge">Edited</string>
     <string name="skin_variant_console">Console</string>
     <string name="skin_variant_minimal">Minimal</string>
-    <string name="skin_layout_edit">Edit layout</string>
+    <string name="skin_layout_edit">Customize layout</string>
     <string name="skin_layout_title">Controller layout</string>
     <string name="skin_layout_upright">Upright</string>
     <string name="skin_layout_sideways">Sideways</string>
-    <string name="skin_editor_opacity">Opacity: %1$d%%</string>
-    <string name="skin_editor_reset">Reset to default</string>
+    <string name="skin_editor_opacity">Opacity</string>
+    <string name="skin_editor_reset">Reset all</string>
+    <string name="skin_editor_reset_short">Reset</string>
+    <string name="skin_editor_snap_short">Snap</string>
     <string name="skin_editor_done">Done</string>
     <string name="pause_resume">Resume</string>
     <string name="game_menu_state_empty">Empty</string>
+    <string name="game_menu_state_remove">Remove</string>
     <string name="library_recently_played">Recently Played</string>
     <string name="library_favorites_empty">Long-press a game to add it to your favorites</string>
     <string name="library_search_title">Search</string>
@@ -246,6 +276,9 @@
     <string name="game_menu_edit_touch_controls">Edit Controls</string>
     <string name="game_menu_mute_audio">Mute</string>
     <string name="game_menu_fast_forward">Fast-Forward</string>
+    <string name="game_menu_fast_forward_speed">Fast-Forward %1$dX</string>
+    <string name="game_menu_fast_forward_off">Off</string>
+    <string name="game_menu_fast_forward_pick">Choose a speed</string>
     <string name="game_menu_change_disk_disk">Disk %1$s</string>
     <string name="game_menu_tilt_sensor">Tilt Sensor</string>
 
@@ -329,7 +362,7 @@
         <b>&#8226;Why aren\'t my games detected?</b><br/>
         If your games are compressed, try uncompressing them. If this doesn\'t work try putting ROMs into separate directories, one for each system with the following names: $SYSTEMS.<br/><br/>
         <b>&#8226;Credits</b><br/>
-        Arcadune is based on Lemuroid by Swordfish90 and is free software released under the GNU GPL v3. Emulation is provided by Libretro cores, each under its own license.
+        Arcadune is free software released under the GNU GPL v3, modified from Lemuroid by Swordfish90. Emulation is provided by Libretro cores under their own licenses, and achievements are powered by rcheevos (MIT).
     ]]></string>
 
     <string name="lemuroid_crash_disclamer">It looks like the Libretro core has experienced an unexpected issue. If it\'s persistent please try the following:\n
@@ -362,5 +395,163 @@
     <string name="tilt_configuration_buttons_l_r">L - R</string>
     <string name="tilt_configuration_buttons_l1_r1">L1 - R1</string>
     <string name="tilt_configuration_buttons_l2_r2">L2 - R2</string>
+
+    <string name="settings_category_saves">Saves</string>
+    <string name="settings_title_saves">Saves &amp; backups</string>
+    <string name="settings_description_saves">See where saves are stored, export save files &amp; restore backups</string>
+    <plurals name="saves_count_label">
+        <item quantity="one">%1$d save</item>
+        <item quantity="other">%1$d saves</item>
+    </plurals>
+    <plurals name="states_count_label">
+        <item quantity="one">%1$d state</item>
+        <item quantity="other">%1$d states</item>
+    </plurals>
+    <string name="settings_saves_summary">%1$s (%2$s) \u2022 %3$s (%4$s)</string>
+    <string name="settings_saves_summary_empty">No saves stored yet \u2022 View save folder &amp; backups</string>
+
+    <string name="saves_storage_title">Where your saves live</string>
+    <string name="saves_storage_on_phone">Stored on this phone</string>
+    <string name="saves_storage_folder_title">In-game saves folder</string>
+    <string name="saves_storage_folder_hint">%1$s\nTap to copy full path</string>
+    <string name="saves_storage_path_copied">Save folder path copied</string>
+    <string name="saves_storage_android_note">Android 11 and later hide Android/data folders from most built-in file managers when browsing internal storage without an SD card or PC, and Arcadune stores saves under its own package (%1$s).\n\nUninstalling Arcadune deletes this folder, so keep a copy in a visible folder or backup zip below.</string>
+    <string name="saves_export_category">Visible folder export</string>
+    <string name="saves_export_folder_title">Export save files to folder</string>
+    <string name="saves_export_folder_description">Copy raw save files (.srm, memory cards, PSP/3DS saves) into Documents, Downloads, or an SD card folder</string>
+    <string name="saves_export_folder_empty">No in-game save files stored on this phone yet</string>
+    <string name="saves_export_folder_done">Exported %1$d save files</string>
+    <string name="saves_export_folder_none">No in-game saves found to export</string>
+    <string name="saves_export_folder_failed">Export failed: %1$s</string>
+
+    <string name="saves_single_game_category">Single-game save (.srm)</string>
+    <string name="saves_single_game_export_title">Export a game\u2019s .srm save</string>
+    <string name="saves_single_game_export_description">Pick a game and save its cartridge/memory-card .srm file</string>
+    <string name="saves_single_game_export_empty">No single-file .srm saves found yet</string>
+    <string name="saves_single_game_import_title">Import a game\u2019s .srm save</string>
+    <string name="saves_single_game_import_description">Load an external .srm file into a specific game</string>
+    <string name="saves_single_game_import_empty">Add compatible games to your library first</string>
+    <string name="saves_single_game_picker_export_title">Export save (.srm)</string>
+    <string name="saves_single_game_picker_import_title">Choose target game</string>
+    <string name="saves_single_game_picker_search">Search games</string>
+    <string name="saves_single_game_picker_no_matches">No matching games</string>
+    <string name="saves_single_game_has_save_label">%1$s \u2022 %2$s</string>
+
+    <string name="import_single_save_warning_title">Replace in-game save?</string>
+    <string name="import_single_save_warning_message">This replaces the current in-game save for %1$s with the selected file.</string>
+    <string name="export_single_save_done">Exported save for %1$s</string>
+    <string name="export_single_save_failed">Could not export save: %1$s</string>
+    <string name="import_single_save_done">Imported save for %1$s</string>
+    <string name="import_single_save_invalid">Could not import save: %1$s</string>
+    <string name="import_single_save_failed">Import failed: %1$s</string>
+
+    <!-- RetroAchievements -->
+    <string name="settings_category_achievements">Achievements</string>
+    <string name="settings_title_retro_achievements">RetroAchievements</string>
+    <string name="settings_ra_signed_out_subtitle">Sign in to earn trophies across classic games</string>
+    <string name="settings_ra_signed_in_active_subtitle">%1$s \u2022 %2$,d pts</string>
+    <string name="settings_ra_signed_in_hardcore_subtitle">%1$s \u2022 %2$,d pts \u2022 Hardcore</string>
+    <string name="settings_ra_signed_in_softcore_subtitle">%1$s \u2022 %2$,d pts \u2022 Softcore</string>
+    <string name="settings_ra_signed_in_disabled_subtitle">%1$s \u2022 Paused</string>
+
+    <string name="ra_login_hero_title">Earn Trophies on Classic Games</string>
+    <string name="ra_login_hero_subtitle">Sign in with your free RetroAchievements.org account to unlock achievements, track live progress, and master classic titles.</string>
+    <string name="ra_username_label">Username</string>
+    <string name="ra_password_label">Password</string>
+    <string name="ra_show_password">Show password</string>
+    <string name="ra_hide_password">Hide password</string>
+    <string name="ra_sign_in_button">Sign in</string>
+    <string name="ra_signing_in_button">Signing in\u2026</string>
+    <string name="ra_create_account_button">Create free account</string>
+    <string name="ra_security_note">Your password is used once to request a session token and is never stored on your device.</string>
+
+    <string name="ra_profile_total_points">%1$,d Achievement pts</string>
+    <string name="ra_profile_hardcore_points">%1$,d Hardcore pts</string>
+    <string name="ra_profile_softcore_points">%1$,d Softcore pts</string>
+    <string name="ra_status_active_badge">ACTIVE</string>
+    <string name="ra_profile_refresh">Refresh points</string>
+    <string name="ra_profile_open_web">Open profile on RetroAchievements.org</string>
+    <string name="ra_sign_out_button">Sign out</string>
+    <string name="ra_sign_out_confirm_title">Sign out of RetroAchievements?</string>
+    <string name="ra_sign_out_confirm_message">You can sign back in anytime. Unlocked achievements on your RetroAchievements profile are safe.</string>
+
+    <string name="ra_pref_category_gameplay">Gameplay &amp; Mode</string>
+    <string name="ra_pref_enable_title">Enable RetroAchievements</string>
+    <string name="ra_pref_enable_subtitle">Identify games, unlock trophies, and broadcast Rich Presence</string>
+    <string name="ra_pref_hardcore_title">Hardcore Mode</string>
+    <string name="ra_pref_hardcore_subtitle">Earn gold mastery badges and full points. Disables Load State, Rewind, and Cheats while playing.</string>
+    <string name="ra_pref_encore_title">Encore Mode</string>
+    <string name="ra_pref_encore_subtitle">Re-trigger achievements you already unlocked during this session</string>
+    <string name="ra_pref_unofficial_title">Unofficial Achievements</string>
+    <string name="ra_pref_unofficial_subtitle">Include community test achievements not yet promoted to core sets</string>
+
+    <string name="ra_pref_category_overlay">In-Game Overlay</string>
+    <string name="ra_pref_notifications_title">Achievement Popups</string>
+    <string name="ra_pref_notifications_subtitle">Show animated glass banners on game start, unlocks, and mastery</string>
+    <string name="ra_pref_sound_title">Unlock Chime &amp; Haptics</string>
+    <string name="ra_pref_sound_subtitle">Play a trophy chime and double-pulse haptic celebration on unlocks</string>
+    <string name="ra_pref_progress_title">Progress Trackers</string>
+    <string name="ra_pref_progress_subtitle">Show live progress pills when advancing multi-step achievements</string>
+    <string name="ra_pref_challenges_title">Active Challenge Badges</string>
+    <string name="ra_pref_challenges_subtitle">Show subtle corner icons while a boss or stage challenge is active</string>
+    <string name="ra_hardcore_registration_note">RetroAchievements.org requires official emulator registration for Hardcore unlocks. Until Arcadune is registered on their allowlist, sessions automatically run in Softcore Mode so your trophies still save.</string>
+    <string name="ra_changes_next_launch_hint">Gameplay mode changes take effect the next time you start or restart a game.</string>
+
+    <string name="ra_hardcore_load_disabled_toast">Load State is disabled while Hardcore Mode is active</string>
+    <string name="ra_cheats_hardcore_banner">Cheats are paused while RetroAchievements Hardcore Mode is active.</string>
+
+    <string name="ra_hud_hardcore_badge">HARDCORE</string>
+    <string name="ra_hud_softcore_badge">SOFTCORE</string>
+    <string name="ra_hud_unlocked_header">ACHIEVEMENT UNLOCKED</string>
+    <string name="ra_hud_hardcore_unlocked_header">HARDCORE UNLOCK</string>
+    <string name="ra_hud_mastered_header">GAME MASTERED</string>
+    <string name="ra_hud_completed_header">GAME COMPLETED</string>
+    <string name="ra_hud_game_loaded_stats">%1$d / %2$d unlocked \u2022 %3$d / %4$d pts</string>
+    <string name="ra_hud_points_plus">+%1$d pts</string>
+
+    <string name="game_menu_achievements">Achievements</string>
+    <string name="game_menu_hardcore_badge">Hardcore</string>
+    <string name="ra_menu_loading">Loading\u2026</string>
+    <string name="ra_menu_signing_in">Signing in to RetroAchievements\u2026</string>
+    <string name="ra_menu_identifying">Identifying game ROM\u2026</string>
+    <string name="ra_menu_progress_counts">%1$d / %2$d unlocked</string>
+    <string name="ra_menu_progress_points">%1$d / %2$d pts</string>
+    <string name="ra_menu_offline_sync_pending">Offline \u2022 Waiting to sync recent unlock</string>
+    <string name="ra_filter_all">All (%1$d)</string>
+    <string name="ra_filter_locked">Locked (%1$d)</string>
+    <string name="ra_filter_unlocked">Unlocked (%1$d)</string>
+    <string name="ra_filter_active">Active (%1$d)</string>
+    <string name="ra_kind_missable">Missable</string>
+    <string name="ra_kind_progression">Progression</string>
+    <string name="ra_kind_win">Win</string>
+    <string name="ra_badge_unofficial">Unofficial</string>
+    <string name="ra_badge_active_challenge">Active</string>
+    <string name="ra_points_label">%1$d pts</string>
+    <string name="ra_rarity_label">%1$.1f%% earned</string>
+    <string name="ra_empty_not_signed_in_title">Sign in to RetroAchievements</string>
+    <string name="ra_empty_not_signed_in_body">Open Settings \u2192 RetroAchievements from the library to link your account and start earning trophies.</string>
+    <string name="ra_empty_disabled_title">RetroAchievements is paused</string>
+    <string name="ra_empty_disabled_body">Turn on RetroAchievements in Settings \u2192 RetroAchievements, then start the game again.</string>
+    <string name="ra_empty_unsupported_system_title">Console not yet supported</string>
+    <string name="ra_empty_unsupported_system_body">RetroAchievements memory hooks are not yet available for this system.</string>
+    <string name="ra_empty_unsupported_game_title">No achievements for this ROM</string>
+    <string name="ra_empty_unsupported_game_body">This ROM hash wasn\u2019t recognized on RetroAchievements, or this game doesn\u2019t have an achievement set yet.</string>
+    <string name="ra_empty_login_failed_title">Couldn\u2019t sign in</string>
+    <string name="ra_empty_error_title">Couldn\u2019t load achievements</string>
+    <string name="ra_filter_empty_unlocked">No achievements unlocked yet \u2014 keep playing!</string>
+    <string name="ra_filter_empty_locked">Every achievement unlocked! Legendary run.</string>
+    <string name="ra_menu_hardcore_fallback_note">Softcore active \u2022 Hardcore requires RetroAchievements emulator registration</string>
+    <string name="ra_detail_title">Achievement Details</string>
+    <string name="ra_detail_status_unlocked">Unlocked</string>
+    <string name="ra_detail_status_hardcore">Unlocked in Hardcore</string>
+    <string name="ra_detail_status_softcore">Unlocked in Softcore</string>
+    <string name="ra_detail_status_locked">Locked</string>
+    <string name="ra_detail_unlocked_on">Unlocked %1$s</string>
+    <string name="ra_detail_stat_points">Points</string>
+    <string name="ra_detail_stat_rarity">Rarity</string>
+    <string name="ra_detail_stat_type">Type</string>
+    <string name="ra_kind_standard">Standard</string>
+    <string name="ra_detail_progress_label">Current Progress</string>
+    <string name="ra_detail_open_web">Open on RetroAchievements.org</string>
 
 </resources>

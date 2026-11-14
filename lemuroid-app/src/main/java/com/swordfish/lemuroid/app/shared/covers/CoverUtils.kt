@@ -11,10 +11,16 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import com.swordfish.lemuroid.common.graphics.ColorUtils
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 object CoverUtils {
+    private const val MAX_DISK_CACHE_BYTES = 256L * 1024 * 1024
+    private val cacheCleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     fun loadCover(
         game: Game,
         imageView: ImageView?,
@@ -29,14 +35,14 @@ object CoverUtils {
     }
 
     fun buildImageLoader(applicationContext: Context): ImageLoader {
-        clearOldLargeCoversOnce(applicationContext)
+        cacheCleanupScope.launch { clearOldLargeCoversOnce(applicationContext) }
         return ImageLoader.Builder(applicationContext)
-            .diskCache(
+            .diskCache {
                 DiskCache.Builder()
                     .directory(applicationContext.cacheDir.resolve("image_cache"))
-                    .maxSizePercent(0.20)
-                    .build(),
-            )
+                    .maxSizeBytes(MAX_DISK_CACHE_BYTES)
+                    .build()
+            }
             .memoryCache {
                 MemoryCache.Builder(applicationContext)
                     .maxSizePercent(0.20)
@@ -92,8 +98,8 @@ object CoverUtils {
             .filter { it.isDigit() or it.isUpperCase() or (it == '&') }
             .take(3)
             .joinToString("")
-            .ifBlank { game.displayName().first().toString() }
-            .capitalize()
+            .ifBlank { game.displayName().firstOrNull()?.toString() ?: "?" }
+            .replaceFirstChar { it.uppercase() }
     }
 
     private fun computeColor(game: Game): Int {

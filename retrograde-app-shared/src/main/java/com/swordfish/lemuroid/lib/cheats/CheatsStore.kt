@@ -35,9 +35,11 @@ class CheatsStore(private val directory: File) {
         val temporary = File(directory, file.name + ".tmp")
         try {
             temporary.writeText(json.encodeToString(cheats))
-            temporary.copyTo(file, overwrite = true)
+            if (!temporary.renameTo(file)) {
+                temporary.copyTo(file, overwrite = true)
+            }
         } finally {
-            temporary.delete()
+            if (temporary.exists()) temporary.delete()
         }
     }
 

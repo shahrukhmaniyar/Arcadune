@@ -18,9 +18,10 @@ val keystoreProperties =
 val hasReleaseKey = keystoreProperties.containsKey("storeFile")
 
 android {
+    ndkVersion = "26.3.11579264"
     defaultConfig {
-        versionCode = 260
-        versionName = "1.0.8" // Always remember to update Cores Tag!
+        versionCode = 261
+        versionName = "1.0.9"
         applicationId = "io.github.shahrukhmaniyar.arcadune"
 
         // Only ARM phones: the cores Arcadune downloads exist only for these, and leaving out the
@@ -228,7 +229,7 @@ dependencies {
     implementation(deps.libs.composeSettings.diskStorage)
     implementation(deps.libs.composeSettings.memoryStorage)
 
-    implementation(deps.libs.libretrodroid)
+    implementation(project(":libretrodroid"))
 
     // Uncomment this when using a local aar file.
     // implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))

@@ -4,12 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,13 +19,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +46,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.swordfish.lemuroid.BuildConfig
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import com.swordfish.lemuroid.lib.library.GameSystem
 
 private const val REPOSITORY_URL = "https://github.com/shahrukhmaniyar/Arcadune"
@@ -57,10 +58,17 @@ fun AboutDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.82f
 
+    val sheetShape = RoundedCornerShape(28.dp)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
-            modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth().heightIn(max = maxHeight),
-            shape = RoundedCornerShape(28.dp),
+            modifier =
+                Modifier
+                    .padding(horizontal = 20.dp)
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = maxHeight)
+                    .border(1.dp, ArcaduneColors.GlassEdge, sheetShape),
+            shape = sheetShape,
             color = ArcaduneColors.Surface,
         ) {
             Column {
@@ -106,16 +114,19 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 20.dp, top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                 ) {
-                    OutlinedButton(
+                    ArcadunePillButton(
+                        label = stringResource(R.string.about_github),
                         onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REPOSITORY_URL)))
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(REPOSITORY_URL)))
+                            }
                         },
-                    ) {
-                        Text(stringResource(R.string.about_github))
-                    }
-                    Button(onClick = onDismiss) {
-                        Text(stringResource(R.string.about_close))
-                    }
+                    )
+                    ArcadunePillButton(
+                        label = stringResource(R.string.about_close),
+                        highlighted = true,
+                        onClick = onDismiss,
+                    )
                 }
             }
         }

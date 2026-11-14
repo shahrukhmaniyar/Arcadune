@@ -1,6 +1,7 @@
 package com.swordfish.touchinput.skin
 
 import android.view.KeyEvent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import com.swordfish.touchinput.radial.settings.TouchControllerID
 import org.junit.Assert.assertEquals
@@ -86,8 +87,18 @@ class SkinLayoutsTest {
         return w * h > 0.05f * minOf(width * height, other.width * other.height)
     }
 
-    // Sideways screens in dp: wide, 16:9 and small 4:3 phones, a 16:10 and a 4:3 tablet.
-    private val sideways = listOf(800f to 360f, 640f to 360f, 915f to 412f, 600f to 450f, 1280f to 800f, 1024f to 768f)
+    // Sideways screens in dp: wide, ultra-wide, 16:9, foldable, 16:10 and 4:3 tablets.
+    private val sideways =
+        listOf(
+            800f to 360f,
+            960f to 380f,
+            640f to 360f,
+            915f to 412f,
+            840f to 700f,
+            600f to 450f,
+            1280f to 800f,
+            1024f to 768f,
+        )
 
     @Test
     fun landscapeControlsDoNotOverlapOnPhonesAndTablets() {
@@ -217,5 +228,152 @@ class SkinLayoutsTest {
                 }
             }
         }
+    }
+
+    /**
+     * Face-button diamonds stay symmetric on tall tablets and foldables instead of tearing apart
+     * across horizontal screen-zone cutoffs.
+     */
+    @Test
+    fun landscapeFaceDiamondsStayCohesiveAcrossScreenSizes() {
+        val diamondControllers =
+            listOf(
+                TouchControllerID.PSX to listOf("△", "□", "○", "✕"),
+                TouchControllerID.PSX_DUALSHOCK to listOf("△", "□", "○", "✕"),
+                TouchControllerID.PSP to listOf("△", "□", "○", "✕"),
+                TouchControllerID.MELONDS to listOf("X", "Y", "A", "B"),
+                TouchControllerID.NINTENDO_3DS to listOf("X", "Y", "A", "B"),
+                TouchControllerID.SNES to listOf("X", "Y", "A", "B"),
+                TouchControllerID.WS_PORTRAIT to listOf("X1", "X4", "X2", "X3"),
+            )
+        for ((id, labels) in diamondControllers) {
+            val layout = ArcaduneSkins.forController(id)!!.landscape
+            val idx =
+                labels.map { label ->
+                    layout.controls.indexOfFirst { it is SkinControl.Button && it.label == label }
+                }
+            for ((w, h) in sideways) {
+                val frames =
+                    SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
+                        .frameRects(SkinCustomization(), rewindAvailable = true)
+                        .toMap()
+                val topCy = frames.getValue(idx[0]).center.y
+                val leftCy = frames.getValue(idx[1]).center.y
+                val rightCy = frames.getValue(idx[2]).center.y
+                val bottomCy = frames.getValue(idx[3]).center.y
+                assertEquals("$id ${w}x$h left/right row", leftCy, rightCy, 0.5f)
+                assertEquals("$id ${w}x$h diamond vertical symmetry", leftCy - topCy, bottomCy - leftCy, 0.5f)
+            }
+        }
+    }
+
+    @Test
+    fun draggingControlAcrossScreenZonesIsContinuousAndClamped() {
+        val psx = ArcaduneSkins.forController(TouchControllerID.PSX)!!.landscape
+        val geometry = SkinGeometry(psx, pinToEdges = true, width = 1016f, height = 760f)
+        val triangleIdx = psx.controls.indexOfFirst { it is SkinControl.Button && it.label == "△" }
+        val base = psx.controls[triangleIdx].frame
+        val atZero = geometry.placedFrame(triangleIdx, base, SkinCustomization())
+        // Dragging down 80 skin units across the old 37%/63% boundary moves smoothly with no jump.
+        val moved =
+            geometry.placedFrame(
+                triangleIdx,
+                base,
+                SkinCustomization(offsets = mapOf(triangleIdx to Offset(0f, 80f))),
+            )
+        assertEquals(80f * geometry.scale, moved.center.y - atZero.center.y, 0.05f)
+
+        // Clamping on a 21:9 ultra-wide phone keeps the dragged control inside the real surface.
+        val ultraWide = psx.clampControlOffset(true, 952f, 372f, triangleIdx, SkinCustomization(), Offset(600f, 600f))
+        val clampedRect =
+            SkinGeometry(psx, pinToEdges = true, width = 952f, height = 372f)
+                .placedFrame(triangleIdx, base, SkinCustomization(offsets = mapOf(triangleIdx to ultraWide)))
+        assertTrue("clamped inside right edge: $clampedRect", clampedRect.center.x <= 952f)
+        assertTrue("clamped inside bottom edge: $clampedRect", clampedRect.center.y <= 372f)
+    }
+
+    @Test
+    fun smartSnapAlignsToOriginCenterlinesAndSiblingControls() {
+        val snes = ArcaduneSkins.forController(TouchControllerID.SNES)!!.portrait
+        val bIdx = snes.controls.indexOfFirst { it is SkinControl.Button && it.label == "B" }
+        val aIdx = snes.controls.indexOfFirst { it is SkinControl.Button && it.label == "A" }
+        val surfaceW = 360f
+        val surfaceH = 308f
+        val geometry = SkinGeometry(snes, pinToEdges = false, width = surfaceW, height = surfaceH)
+
+        // 1. Near default (0, 0) snaps cleanly back to exact origin.
+        val originSnap =
+            snes.snapControlOffset(
+                pinToEdges = false,
+                surfaceWidthDp = surfaceW,
+                surfaceHeightDp = surfaceH,
+                index = bIdx,
+                customization = SkinCustomization(),
+                candidate = Offset(2.2f, -1.8f),
+                snapEnabled = true,
+            )
+        assertTrue(originSnap.snappedToDefault)
+        assertEquals(0f, originSnap.offset.x, 0.001f)
+        assertEquals(0f, originSnap.offset.y, 0.001f)
+
+        // 2. Moving B vertically near A's row snaps B's centerY to A's centerY and emits horizontal guide.
+        val aCenterY = geometry.placedFrame(aIdx, snes.controls[aIdx].frame, SkinCustomization()).center.y
+        val bBaseCenterY = geometry.placedFrame(bIdx, snes.controls[bIdx].frame, SkinCustomization()).center.y
+        val deltaUnitsToA = (aCenterY - bBaseCenterY) / geometry.scale
+        val rowSnap =
+            snes.snapControlOffset(
+                pinToEdges = false,
+                surfaceWidthDp = surfaceW,
+                surfaceHeightDp = surfaceH,
+                index = bIdx,
+                customization = SkinCustomization(),
+                candidate = Offset(18f, deltaUnitsToA + 2.5f),
+                snapEnabled = true,
+            )
+        val snappedBCenterY =
+            geometry.placedFrame(
+                bIdx,
+                snes.controls[bIdx].frame,
+                SkinCustomization(offsets = mapOf(bIdx to rowSnap.offset)),
+            ).center.y
+        assertEquals(aCenterY, snappedBCenterY, 0.2f)
+        assertEquals(aCenterY, rowSnap.horizontalGuideDp ?: -1f, 0.2f)
+        assertTrue(rowSnap.alignedPeerCentersDp.isNotEmpty())
+
+        // 3. Disabling snap leaves the raw candidate offset untouched (within bounds).
+        val unsnapped =
+            snes.snapControlOffset(
+                pinToEdges = false,
+                surfaceWidthDp = surfaceW,
+                surfaceHeightDp = surfaceH,
+                index = bIdx,
+                customization = SkinCustomization(),
+                candidate = Offset(2.2f, -1.8f),
+                snapEnabled = false,
+            )
+        assertFalse(unsnapped.snappedToDefault)
+        assertEquals(2.2f, unsnapped.offset.x, 0.05f)
+        assertEquals(-1.8f, unsnapped.offset.y, 0.05f)
+    }
+
+    @Test
+    fun customizationTracksEditedStateAndRoundTripsCleanly() {
+        val clean = SkinCustomization()
+        assertFalse(clean.isCustomized)
+
+        val edited =
+            SkinCustomization(
+                size = 1.1f,
+                opacity = 0.85f,
+                offsets = mapOf(1 to Offset(12f, -6f)),
+                scales = mapOf(2 to 1.25f),
+                hidden = setOf(3),
+            )
+        assertTrue(edited.isCustomized)
+        val decoded = SkinCustomization.decode(edited.encode())
+        assertTrue(decoded.isCustomized)
+        assertEquals(1.25f, decoded.controlScale(2), 0.001f)
+        assertTrue(3 in decoded.hidden)
+        assertFalse(decoded.resetControl(2).hasControlChanges(2))
     }
 }

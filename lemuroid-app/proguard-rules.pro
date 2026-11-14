@@ -93,3 +93,8 @@
 -keepclassmembers class com.swordfish.lemuroid.lib.cheats.** { *** Companion; }
 -keepclasseswithmembers class com.swordfish.lemuroid.lib.cheats.** { kotlinx.serialization.KSerializer serializer(...); }
 -keep,includedescriptorclasses class com.swordfish.lemuroid.lib.cheats.**$$serializer { *; }
+
+# Arcadune: RetroAchievements Connect login JSON payloads with kotlinx.serialization.
+-keepclassmembers class com.swordfish.lemuroid.lib.achievements.** { *** Companion; }
+-keepclasseswithmembers class com.swordfish.lemuroid.lib.achievements.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class com.swordfish.lemuroid.lib.achievements.**$$serializer { *; }

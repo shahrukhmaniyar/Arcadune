@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -79,6 +80,9 @@ object AppUpdater {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
 
+    @Volatile
+    private var activeCall: Call? = null
+
     private val mutableState = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = mutableState.asStateFlow()
 
@@ -132,18 +136,25 @@ object AppUpdater {
         if (state.value is State.Downloading) return
         mutableState.value = State.Downloading(release, 0f)
         launch {
-            val file = File(updatesFolder(context), "Arcadune-${release.version}.apk")
+            val folder = updatesFolder(context)
+            val file = File(folder, "Arcadune-${release.version}.apk")
+            val tempFile = File(folder, "Arcadune-${release.version}-${System.nanoTime()}.apk.part")
             mutableState.value =
                 try {
-                    downloadTo(release, file)
+                    downloadTo(release, tempFile)
+                    file.delete()
+                    if (!tempFile.renameTo(file)) {
+                        tempFile.copyTo(file, overwrite = true)
+                        tempFile.delete()
+                    }
                     State.ReadyToInstall(release, file)
                 } catch (e: BrokenDownloadException) {
                     Timber.w(e, "The downloaded update is broken")
-                    file.delete()
+                    tempFile.delete()
                     State.Failed(Reason.DOWNLOAD_BROKEN, release)
                 } catch (e: Exception) {
                     Timber.w(e, "Could not download the update")
-                    file.delete()
+                    tempFile.delete()
                     if (coroutineContext.isActive) State.Failed(Reason.NO_CONNECTION, release) else State.Available(release)
                 }
         }
@@ -151,6 +162,8 @@ object AppUpdater {
 
     fun cancelDownload() {
         val downloading = state.value as? State.Downloading ?: return
+        activeCall?.cancel()
+        activeCall = null
         job?.cancel()
         mutableState.value = State.Available(downloading.release)
     }
@@ -169,7 +182,11 @@ object AppUpdater {
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
             // From a screen, on top of Arcadune, so Back returns to it.
             if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            runCatching { context.startActivity(intent) }.onFailure {
+                Timber.e(it, "Could not open unknown app sources settings")
+                waitingForPermission = null
+                mutableState.value = State.Failed(Reason.INSTALL_FAILED, ready.release)
+            }
             return
         }
 
@@ -228,7 +245,8 @@ object AppUpdater {
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("GitHub answered ${response.code}")
-            val json = JSONObject(response.body!!.string())
+            val bodyString = response.body?.string() ?: error("Empty GitHub release response")
+            val json = JSONObject(bodyString)
             val assets = json.getJSONArray("assets")
             val asset =
                 (0 until assets.length())
@@ -252,32 +270,40 @@ object AppUpdater {
     ) {
         val request = Request.Builder().url(release.apkUrl).build()
         val digest = MessageDigest.getInstance("SHA-256")
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("Download answered ${response.code}")
-            val body = response.body!!
-            val total = body.contentLength().takeIf { it > 0 } ?: release.apkSize
-            var done = 0L
-            var shownProgress = -1
-            body.byteStream().use { input ->
-                file.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        if (!coroutineContext.isActive) throw InterruptedException("Download cancelled")
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        digest.update(buffer, 0, read)
-                        done += read
-                        val progress = if (total > 0) (done * 100 / total).toInt() else 0
-                        if (progress != shownProgress) {
-                            shownProgress = progress
-                            mutableState.value = State.Downloading(release, progress / 100f)
+        val call = client.newCall(request)
+        activeCall = call
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) error("Download answered ${response.code}")
+                val body = response.body ?: error("Empty APK response body")
+                val total = body.contentLength().takeIf { it > 0 } ?: release.apkSize
+                var done = 0L
+                var shownProgress = -1
+                body.byteStream().use { input ->
+                    file.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            if (!coroutineContext.isActive) throw InterruptedException("Download cancelled")
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            digest.update(buffer, 0, read)
+                            done += read
+                            val progress = if (total > 0) (done * 100 / total).toInt() else 0
+                            if (progress != shownProgress) {
+                                shownProgress = progress
+                                mutableState.value = State.Downloading(release, progress / 100f)
+                            }
                         }
                     }
                 }
+                if (release.apkSize > 0 && done != release.apkSize) {
+                    throw BrokenDownloadException("Got $done bytes of ${release.apkSize}")
+                }
             }
-            if (release.apkSize > 0 && done != release.apkSize) {
-                throw BrokenDownloadException("Got $done bytes of ${release.apkSize}")
+        } finally {
+            if (activeCall === call) {
+                activeCall = null
             }
         }
         val hash = digest.digest().joinToString("") { "%02x".format(it) }
@@ -295,24 +321,29 @@ object AppUpdater {
         params.setAppPackageName(context.packageName)
         params.setSize(file.length())
         val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            file.inputStream().use { input ->
-                session.openWrite("base.apk", 0, file.length()).use { output ->
-                    input.copyTo(output, 64 * 1024)
-                    session.fsync(output)
+        try {
+            installer.openSession(sessionId).use { session ->
+                file.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, file.length()).use { output ->
+                        input.copyTo(output, 64 * 1024)
+                        session.fsync(output)
+                    }
                 }
+                val flags =
+                    PendingIntent.FLAG_UPDATE_CURRENT or
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                val callback =
+                    PendingIntent.getBroadcast(
+                        context,
+                        sessionId,
+                        Intent(context, UpdateInstallReceiver::class.java),
+                        flags,
+                    )
+                session.commit(callback.intentSender)
             }
-            val flags =
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            val callback =
-                PendingIntent.getBroadcast(
-                    context,
-                    sessionId,
-                    Intent(context, UpdateInstallReceiver::class.java),
-                    flags,
-                )
-            session.commit(callback.intentSender)
+        } catch (e: Exception) {
+            runCatching { installer.abandonSession(sessionId) }
+            throw e
         }
     }
 

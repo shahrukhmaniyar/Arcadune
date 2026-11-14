@@ -5,15 +5,21 @@ import android.content.Intent
 import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.input.GamePadBindingActivity
 import com.swordfish.lemuroid.app.mobile.feature.input.GamePadShortcutBindingActivity
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconBadge
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneRowDivider
 import com.swordfish.lemuroid.app.shared.input.InputBindingUpdater
 import com.swordfish.lemuroid.app.shared.input.InputKey
 import com.swordfish.lemuroid.app.shared.input.ShortcutBindingUpdater
@@ -36,7 +42,9 @@ fun InputDevicesSettingsScreen(
             .value
 
     LemuroidSettingsPage(modifier = modifier.fillMaxSize()) {
-        EnabledDeviceCategory(state)
+        if (state.devices.isNotEmpty()) {
+            EnabledDeviceCategory(state)
+        }
         state.bindings.forEach { (device, bindings) ->
             DeviceBindingCategory(device, bindings)
         }
@@ -53,7 +61,10 @@ private fun DeviceBindingCategory(
     val customizableKeys = device.getLemuroidInputDevice().getCustomizableKeys()
 
     LemuroidCardSettingsGroup(title = { Text(text = device.name) }) {
-        customizableKeys.forEach { retroKey ->
+        customizableKeys.forEachIndexed { index, retroKey ->
+            if (index > 0) {
+                ArcaduneRowDivider()
+            }
             val inputKey = bindings.keys[retroKey] ?: InputKey(KeyEvent.KEYCODE_UNKNOWN)
 
             LemuroidSettingsMenuLink(
@@ -70,8 +81,11 @@ private fun DeviceBindingCategory(
             )
         }
 
-        bindings.shortcuts.forEach {
-            DeviceShortcutBinding(context, device, it)
+        bindings.shortcuts.forEachIndexed { index, shortcut ->
+            if (customizableKeys.isNotEmpty() || index > 0) {
+                ArcaduneRowDivider()
+            }
+            DeviceShortcutBinding(context, device, shortcut)
         }
     }
 }
@@ -99,8 +113,12 @@ private fun DeviceShortcutBinding(
 @Composable
 private fun EnabledDeviceCategory(state: InputDevicesSettingsViewModel.State) {
     LemuroidCardSettingsGroup(title = { Text(text = stringResource(R.string.settings_gamepad_category_enabled)) }) {
-        state.devices.forEach { device ->
+        state.devices.forEachIndexed { index, device ->
+            if (index > 0) {
+                ArcaduneRowDivider(startIndent = 68.dp)
+            }
             LemuroidSettingsSwitch(
+                icon = { ArcaduneIconBadge(icon = Icons.Filled.SportsEsports) },
                 state = booleanPreferenceState(key = device.key, default = device.enabledByDefault),
                 title = { Text(text = device.name) },
             )
@@ -112,6 +130,7 @@ private fun EnabledDeviceCategory(state: InputDevicesSettingsViewModel.State) {
 private fun GeneralOptionsCategory(viewModel: InputDevicesSettingsViewModel) {
     LemuroidCardSettingsGroup(title = { Text(text = stringResource(R.string.settings_gamepad_category_general)) }) {
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Refresh) },
             title = { Text(text = stringResource(R.string.settings_gamepad_title_reset_bindings)) },
             onClick = { viewModel.resetAllBindings() },
         )

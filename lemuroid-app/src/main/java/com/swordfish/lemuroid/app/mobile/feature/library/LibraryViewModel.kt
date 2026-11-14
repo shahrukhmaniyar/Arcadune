@@ -10,6 +10,7 @@ import com.swordfish.lemuroid.common.paging.buildFlowPaging
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.dao.GameListQuery
+import com.swordfish.lemuroid.lib.library.db.dao.GameSearchDao
 import com.swordfish.lemuroid.lib.library.db.dao.GameSortOrder
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.library.metaSystemID
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlin.time.Duration.Companion.milliseconds
@@ -96,11 +98,19 @@ class LibraryViewModel(
         val effectiveOrder = if (page is Page.System) order else GameSortOrder.NAME
         return pagedGames.getOrPut(page.id to effectiveOrder) {
             when (page) {
-                Page.Favorites -> buildFlowPaging(PAGE_SIZE, viewModelScope) { retrogradeDb.gameDao().selectFavorites() }
+                Page.Favorites ->
+                    buildFlowPaging(
+                        PAGE_SIZE,
+                        viewModelScope,
+                    ) { retrogradeDb.gameDao().selectFavorites() }
                 Page.RecentlyPlayed ->
                     buildFlowPaging(PAGE_SIZE, viewModelScope) { retrogradeDb.gameDao().selectRecentlyPlayed() }
                 is Page.System -> {
-                    val query = GameListQuery.bySystems(page.info.metaSystem.systemIDs.map { it.dbname }, effectiveOrder)
+                    val query =
+                        GameListQuery.bySystems(
+                            page.info.metaSystem.systemIDs.map { it.dbname },
+                            effectiveOrder,
+                        )
                     buildFlowPaging(PAGE_SIZE, viewModelScope) { retrogradeDb.gameDao().selectPaged(query) }
                 }
             }
@@ -111,9 +121,13 @@ class LibraryViewModel(
 
     val searchResults: Flow<PagingData<Game>> =
         searchQuery
-            .debounce(250.milliseconds)
+            .debounce(150.milliseconds)
             .flatMapLatest { query ->
-                buildFlowPaging(PAGE_SIZE, viewModelScope) { retrogradeDb.gameSearchDao().search(query.trim()) }
+                if (GameSearchDao.sanitizeFtsQuery(query).isEmpty()) {
+                    flowOf(PagingData.empty())
+                } else {
+                    buildFlowPaging(PAGE_SIZE, viewModelScope) { retrogradeDb.gameSearchDao().search(query) }
+                }
             }
 
     companion object {

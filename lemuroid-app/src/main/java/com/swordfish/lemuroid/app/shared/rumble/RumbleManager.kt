@@ -10,7 +10,7 @@ import com.swordfish.lemuroid.app.shared.input.InputDeviceManager
 import com.swordfish.lemuroid.common.coroutines.safeCollect
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.libretrodroid.RumbleEvent
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -19,17 +19,16 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.newSingleThreadContext
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class RumbleManager(
     applicationContext: Context,
     private val settingsManager: SettingsManager,
     private val inputDeviceManager: InputDeviceManager,
 ) {
     private val deviceVibrator = applicationContext.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-    private val rumbleContext = newSingleThreadContext("Rumble")
+    private val rumbleContext = Dispatchers.Default.limitedParallelism(1)
 
     suspend fun collectAndProcessRumbleEvents(
         systemCoreConfig: SystemCoreConfig,
@@ -38,7 +37,7 @@ class RumbleManager(
         val enableRumble = settingsManager.enableRumble()
         val rumbleSupported = systemCoreConfig.rumbleSupported
 
-        if (!enableRumble && rumbleSupported) {
+        if (!enableRumble || !rumbleSupported) {
             return
         }
 
@@ -46,7 +45,7 @@ class RumbleManager(
             .map { getVibrators(it) }
             .flatMapLatest { vibrators ->
                 rumbleEventsObservable
-                    .onEach { kotlin.runCatching { vibrate(vibrators[it.port], it) } }
+                    .onEach { kotlin.runCatching { vibrate(vibrators.getOrNull(it.port), it) } }
                     .onStart { stopAllVibrators(vibrators) }
                     .onCompletion { stopAllVibrators(vibrators) }
                     .flowOn(rumbleContext)
@@ -91,7 +90,7 @@ class RumbleManager(
 
     private fun computeAmplitude(rumbleEvent: RumbleEvent): Int {
         val strength = rumbleEvent.strengthStrong * 0.66f + rumbleEvent.strengthWeak * 0.33f
-        return (DEFAULT_RUMBLE_STRENGTH * (strength) * 255).roundToInt()
+        return (DEFAULT_RUMBLE_STRENGTH * (strength) * 255).roundToInt().coerceIn(0, 255)
     }
 
     companion object {

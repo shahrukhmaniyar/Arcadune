@@ -42,6 +42,7 @@
         android:theme="@style/LemuroidMaterialTheme">
         <activity
             android:name="com.swordfish.lemuroid.app.mobile.feature.main.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>
@@ -58,6 +59,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data
+                    android:host="${applicationId}"
+                    android:pathPattern="/play-game/id/.*"
+                    android:scheme="arcadune" />
                 <data
                     android:host="${applicationId}"
                     android:pathPattern="/play-game/id/.*"
@@ -114,6 +119,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data
+                    android:host="${applicationId}"
+                    android:pathPattern="/open-leanback"
+                    android:scheme="arcadune" />
                 <data
                     android:host="${applicationId}"
                     android:pathPattern="/open-leanback"

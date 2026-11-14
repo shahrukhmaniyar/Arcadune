@@ -11,10 +11,13 @@ import com.swordfish.lemuroid.lib.cheats.CheatsDownloader
 import com.swordfish.lemuroid.lib.cheats.CheatsStore
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.File
@@ -39,11 +42,18 @@ class GameMenuCheatsViewModel(
     )
 
     private val store = CheatsStore(File(appContext.filesDir, "cheats"))
-    private val downloader = CheatsDownloader(OkHttpClient(), appContext.cacheDir)
+    private val downloader = CheatsDownloader(sharedHttpClient, appContext.cacheDir)
     private val key = CheatsStore.keyFor(game.systemId, game.fileName)
 
-    private val mutableState = MutableStateFlow(UiState(cheats = store.load(key)))
+    private val mutableState = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = mutableState
+
+    init {
+        viewModelScope.launch {
+            val loaded = withContext(Dispatchers.IO) { store.load(key) }
+            mutableState.update { if (it.cheats.isEmpty()) it.copy(cheats = loaded) else it }
+        }
+    }
 
     fun setEnabled(
         index: Int,
@@ -102,6 +112,8 @@ class GameMenuCheatsViewModel(
                     val result = downloader.download(systemFolder(), titles)
                     val added = addMissing(result.cheats)
                     appContext.getString(R.string.cheats_found, added)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: CheatsDownloader.NotFoundException) {
                     appContext.getString(R.string.cheats_not_found)
                 } catch (e: IOException) {
@@ -139,5 +151,9 @@ class GameMenuCheatsViewModel(
 
     private fun systemFolder(): String {
         return GameSystem.findById(game.systemId).libretroFullName
+    }
+
+    companion object {
+        private val sharedHttpClient = OkHttpClient()
     }
 }

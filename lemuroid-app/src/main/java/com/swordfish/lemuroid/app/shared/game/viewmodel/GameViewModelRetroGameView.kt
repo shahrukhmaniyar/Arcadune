@@ -25,6 +25,7 @@ import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.storage.RomFiles
+import com.swordfish.libretrodroid.AchievementsConfig
 import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroViewData
 import com.swordfish.libretrodroid.ImmersiveMode
@@ -90,11 +91,13 @@ class GameViewModelRetroGameView(
         systemCoreConfig: SystemCoreConfig,
         gameLoader: GameLoader,
         requestLoadSave: Boolean,
+        achievementsConfig: AchievementsConfig? = null,
     ) {
         val currentState = gameState.value
         if (currentState != GameState.Uninitialized) return
 
         val autoSaveEnabled = settingsManager.autoSave()
+        val hardcoreDisablesAutoLoad = achievementsConfig?.enabled == true && achievementsConfig.hardcoreEnabled
         val filter = settingsManager.screenFilter(game)
         currentGame = game
         currentScreenFilter = filter
@@ -118,7 +121,7 @@ class GameViewModelRetroGameView(
             gameLoader.load(
                 applicationContext,
                 game,
-                requestLoadSave && autoSaveEnabled,
+                requestLoadSave && autoSaveEnabled && !hardcoreDisablesAutoLoad,
                 systemCoreConfig,
                 directLoad,
             )
@@ -152,6 +155,7 @@ class GameViewModelRetroGameView(
                                 enableRumble,
                                 enableMicrophone,
                                 enableImmersiveMode,
+                                achievementsConfig,
                             )
                         GameState.Loaded(
                             gameData = loadingState.gameData,
@@ -223,8 +227,10 @@ class GameViewModelRetroGameView(
         requestRumble: Boolean,
         requestMicrophone: Boolean,
         enableImmersiveMode: Boolean,
+        achievementsConfig: AchievementsConfig?,
     ): GLRetroViewData {
         return GLRetroViewData(appContext).apply {
+            this.achievementsConfig = achievementsConfig
             coreFilePath = gameData.coreLibrary
 
             when (val gameFiles = gameData.gameFiles) {
@@ -370,7 +376,10 @@ class GameViewModelRetroGameView(
         if (isLandscape == landscape) return
         landscape = isLandscape
         val layouts =
-            SIDEWAYS_LAYOUTS.keys.mapNotNull { key -> currentValues[key]?.let { Variable(key, sidewaysAware(key, it)) } }
+            SIDEWAYS_LAYOUTS.keys.mapNotNull {
+                    key ->
+                currentValues[key]?.let { Variable(key, sidewaysAware(key, it)) }
+            }
         if (layouts.isNotEmpty()) retroGameView?.updateVariables(*layouts.toTypedArray())
         publishScreenLayout()
     }

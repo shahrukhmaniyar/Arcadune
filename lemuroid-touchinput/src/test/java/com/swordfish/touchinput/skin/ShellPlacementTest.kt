@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import com.swordfish.touchinput.radial.settings.TouchControllerID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -178,9 +179,39 @@ class ShellPlacementTest {
     }
 
     @Test
+    fun uprightFoldableAndSplitScreenPreserveControllerAspectRatioAndGameSpace() {
+        val compactUpright = listOf(700f to 720f, 680f to 700f, 360f to 480f, 412f to 420f)
+        for ((id, skin) in skins) {
+            for ((w, h) in compactUpright) {
+                val p = place(id, skin, w, h, landscape = false)
+                val ratio = p.panel.width / p.panel.height
+                assertEquals("$id ${w}x$h aspect", skin.portrait.width / skin.portrait.height, ratio, 0.01f)
+                assertTrue("$id ${w}x$h capped height", p.panel.height <= h * dp * 0.56f + 0.5f)
+                assertTrue("$id ${w}x$h game visible (${p.picture.height / dp} dp)", p.picture.height >= 80f * dp)
+                assertEquals("$id ${w}x$h centred", w * dp / 2, p.panel.center.x, 0.5f)
+            }
+        }
+    }
+
+    @Test
     fun changesSurviveSavingAndLoading() {
-        val changed = SkinCustomization(size = 1.2f, offsets = mapOf(0 to Offset(10f, -4f), 3 to Offset(-2.5f, 7f)), opacity = 0.6f)
+        val changed =
+            SkinCustomization(
+                size = 1.2f,
+                offsets = mapOf(0 to Offset(10f, -4f), 3 to Offset(-2.5f, 7f)),
+                opacity = 0.6f,
+                scales = mapOf(1 to 1.35f, 3 to 0.75f),
+                hidden = setOf(2, 4),
+            )
         assertEquals(changed, SkinCustomization.decode(changed.encode()))
+        val resetThree = changed.resetControl(3)
+        assertFalse(resetThree.hasControlChanges(3))
+        assertTrue(resetThree.hasControlChanges(1))
+        val menu = SkinControl.Menu(SkinRect(0f, 0f, 40f, 18f))
+        val button = SkinControl.Button(1, "A", ButtonShape.ROUND, SkinRect(0f, 0f, 40f, 40f))
+        val hiddenAttempt = SkinCustomization(hidden = setOf(0, 1))
+        assertFalse("Menu can never be hidden", hiddenAttempt.isHidden(0, menu))
+        assertTrue(hiddenAttempt.isHidden(1, button))
         assertEquals(SkinCustomization(), SkinCustomization.decode(SkinCustomization().encode()))
         assertEquals(SkinCustomization(), SkinCustomization.decode(null))
         assertEquals(SkinCustomization(), SkinCustomization.decode("garbage;;"))

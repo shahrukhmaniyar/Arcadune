@@ -1,7 +1,6 @@
 package com.swordfish.lemuroid.app.shared.game.viewmodel
 
 import android.content.Context
-import android.graphics.PointF
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -37,7 +36,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onCompletion
@@ -60,9 +58,28 @@ class GameViewModelInput(
 ) : DefaultLifecycleObserver {
     private data class SingleAxisEvent(val axis: Int, val action: Int, val keyCode: Int, val port: Int)
 
+    private data class KeySnapshot(
+        val device: InputDevice,
+        val action: Int,
+        val keyCode: Int,
+        val repeatCount: Int,
+    )
+
+    private data class MotionSnapshot(
+        val device: InputDevice,
+        val source: Int,
+        val hatX: Float,
+        val hatY: Float,
+        val x: Float,
+        val y: Float,
+        val z: Float,
+        val rz: Float,
+        val extraAxes: Map<Int, Float>,
+    )
+
     private val controllerConfigsState = MutableStateFlow<Map<Int, ControllerConfig>>(mapOf())
-    private val keyEventsFlow: MutableSharedFlow<KeyEvent?> = MutableSharedFlow()
-    private val motionEventsFlow: MutableSharedFlow<MotionEvent> = MutableSharedFlow()
+    private val keyEventsFlow: MutableSharedFlow<KeySnapshot> = MutableSharedFlow(extraBufferCapacity = 64)
+    private val motionEventsFlow: MutableSharedFlow<MotionSnapshot> = MutableSharedFlow(extraBufferCapacity = 64)
 
     fun getAllTiltConfigurations(): List<TiltConfiguration> {
         return controllerConfigsState.value[0]
@@ -75,114 +92,49 @@ class GameViewModelInput(
     }
 
     private fun sendStickMotions(
-        event: MotionEvent,
+        event: MotionSnapshot,
         port: Int,
     ) {
         if (port < 0) return
-        when (event.source) {
-            InputDevice.SOURCE_JOYSTICK -> {
-                if (controllerConfigsState.value[port]?.mergeDPADAndLeftStickEvents == true) {
-                    sendMergedMotionEvents(event, port)
-                } else {
-                    sendSeparateMotionEvents(event, port)
-                }
+        if ((event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) {
+            if (controllerConfigsState.value[port]?.mergeDPADAndLeftStickEvents == true) {
+                sendMergedMotionEvents(event, port)
+            } else {
+                sendSeparateMotionEvents(event, port)
             }
         }
     }
 
     private fun sendMergedMotionEvents(
-        event: MotionEvent,
+        event: MotionSnapshot,
         port: Int,
     ) {
-        val events =
-            listOf(
-                retrieveCoordinates(event, MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y),
-                retrieveCoordinates(event, MotionEvent.AXIS_X, MotionEvent.AXIS_Y),
-            )
-
-        val xVal = events.maxByOrNull { abs(it.x) }?.x ?: 0f
-        val yVal = events.maxByOrNull { abs(it.y) }?.y ?: 0f
+        val xVal = if (abs(event.hatX) >= abs(event.x)) event.hatX else event.x
+        val yVal = if (abs(event.hatY) >= abs(event.y)) event.hatY else event.y
 
         retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_DPAD, xVal, yVal, port)
         retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_ANALOG_LEFT, xVal, yVal, port)
-
-        sendStickMotion(
-            event,
-            MOTION_SOURCE_ANALOG_RIGHT,
-            MotionEvent.AXIS_Z,
-            MotionEvent.AXIS_RZ,
-            port,
-        )
-    }
-
-    private fun sendStickMotion(
-        event: MotionEvent,
-        source: Int,
-        xAxis: Int,
-        yAxis: Int,
-        port: Int,
-    ) {
-        val coords = retrieveCoordinates(event, xAxis, yAxis)
-        retroGameView.retroGameView?.sendMotionEvent(source, coords.x, coords.y, port)
-    }
-
-    private fun sendDPADMotion(
-        event: MotionEvent,
-        source: Int,
-        xAxis: Int,
-        yAxis: Int,
-        port: Int,
-    ) {
-        retroGameView.retroGameView?.sendMotionEvent(
-            source,
-            event.getAxisValue(xAxis),
-            event.getAxisValue(yAxis),
-            port,
-        )
+        retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_ANALOG_RIGHT, event.z, event.rz, port)
     }
 
     private fun sendSeparateMotionEvents(
-        event: MotionEvent,
+        event: MotionSnapshot,
         port: Int,
     ) {
-        sendDPADMotion(
-            event,
-            MOTION_SOURCE_DPAD,
-            MotionEvent.AXIS_HAT_X,
-            MotionEvent.AXIS_HAT_Y,
-            port,
-        )
-        sendStickMotion(
-            event,
-            MOTION_SOURCE_ANALOG_LEFT,
-            MotionEvent.AXIS_X,
-            MotionEvent.AXIS_Y,
-            port,
-        )
-        sendStickMotion(
-            event,
-            MOTION_SOURCE_ANALOG_RIGHT,
-            MotionEvent.AXIS_Z,
-            MotionEvent.AXIS_RZ,
-            port,
-        )
-    }
-
-    private fun retrieveCoordinates(
-        event: MotionEvent,
-        xAxis: Int,
-        yAxis: Int,
-    ): PointF {
-        return PointF(event.getAxisValue(xAxis), event.getAxisValue(yAxis))
+        retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_DPAD, event.hatX, event.hatY, port)
+        retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_ANALOG_LEFT, event.x, event.y, port)
+        retroGameView.retroGameView?.sendMotionEvent(MOTION_SOURCE_ANALOG_RIGHT, event.z, event.rz, port)
     }
 
     fun sendKeyEvent(
         keyCode: Int,
         event: KeyEvent,
     ): Boolean {
-        if (InputKey(keyCode) in event.device.getInputClass().getInputKeys()) {
-            scope.launch {
-                keyEventsFlow.emit(event)
+        val device = event.device ?: return false
+        if (InputKey(keyCode) in device.getInputClass().getInputKeys()) {
+            val snapshot = KeySnapshot(device, event.action, keyCode, event.repeatCount)
+            if (!keyEventsFlow.tryEmit(snapshot)) {
+                scope.launch { keyEventsFlow.emit(snapshot) }
             }
             return true
         }
@@ -190,8 +142,25 @@ class GameViewModelInput(
     }
 
     fun sendMotionEvent(event: MotionEvent): Boolean {
-        scope.launch {
-            motionEventsFlow.emit(event)
+        val isJoystick = (event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+        val isGamepad = (event.source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        if (!isJoystick && !isGamepad) return false
+        val device = event.device ?: return false
+        val extraAxes = device.getInputClass().getAxesMap().keys.associateWith { event.getAxisValue(it) }
+        val snapshot =
+            MotionSnapshot(
+                device = device,
+                source = event.source,
+                hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X),
+                hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y),
+                x = event.getAxisValue(MotionEvent.AXIS_X),
+                y = event.getAxisValue(MotionEvent.AXIS_Y),
+                z = event.getAxisValue(MotionEvent.AXIS_Z),
+                rz = event.getAxisValue(MotionEvent.AXIS_RZ),
+                extraAxes = extraAxes,
+            )
+        if (!motionEventsFlow.tryEmit(snapshot)) {
+            scope.launch { motionEventsFlow.emit(snapshot) }
         }
         return true
     }
@@ -283,7 +252,6 @@ class GameViewModelInput(
 
         val filteredKeyEvents =
             keyEventsFlow
-                .filterNotNull()
                 .filter { it.repeatCount == 0 }
                 .map { Triple(it.device, it.action, it.keyCode) }
                 .distinctUntilChanged()
@@ -353,7 +321,7 @@ class GameViewModelInput(
 
                 axes.map { (axis, button) ->
                     val action =
-                        if (event.getAxisValue(axis) > 0.5) {
+                        if ((event.extraAxes[axis] ?: 0f) > 0.5f) {
                             KeyEvent.ACTION_DOWN
                         } else {
                             KeyEvent.ACTION_UP

@@ -1,41 +1,44 @@
 package com.swordfish.touchinput.skin
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -43,30 +46,71 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
- * The player's changes to a skin: one size for every control, and how far each control was
- * dragged from its place (in skin units, by the control's position in the layout).
+ * The player's changes to a skin: global size & opacity, plus optional per-control scale,
+ * offset (in skin units), and hidden state.
  */
 data class SkinCustomization(
     val size: Float = 1f,
     val offsets: Map<Int, Offset> = emptyMap(),
     /** How see-through the controls are: 1 is solid. */
     val opacity: Float = 1f,
+    /** Individual scale multiplier for specific controls (1f = follows global [size]). */
+    val scales: Map<Int, Float> = emptyMap(),
+    /** Controls hidden by the player ([SkinControl.Menu] can never be hidden). */
+    val hidden: Set<Int> = emptySet(),
 ) {
+    fun controlScale(index: Int): Float = scales[index] ?: 1f
+
+    fun effectiveScale(index: Int): Float = (size * controlScale(index)).coerceIn(0.45f, 2.0f)
+
+    fun isHidden(
+        index: Int,
+        control: SkinControl,
+    ): Boolean = control !is SkinControl.Menu && index in hidden
+
+    fun hasControlChanges(index: Int): Boolean =
+        index in offsets || index in scales || index in hidden
+
+    val isCustomized: Boolean
+        get() =
+            abs(size - 1f) > 0.005f ||
+                abs(opacity - 1f) > 0.005f ||
+                offsets.any { (_, off) -> abs(off.x) > 0.05f || abs(off.y) > 0.05f } ||
+                scales.any { (_, s) -> abs(s - 1f) > 0.005f } ||
+                hidden.isNotEmpty()
+
+    fun resetControl(index: Int): SkinCustomization =
+        copy(
+            offsets = offsets - index,
+            scales = scales - index,
+            hidden = hidden - index,
+        )
+
     fun frameOf(
         index: Int,
         frame: SkinRect,
     ): SkinRect {
         val offset = offsets[index] ?: Offset.Zero
-        val width = frame.width * size
-        val height = frame.height * size
+        val scale = effectiveScale(index)
+        val width = frame.width * scale
+        val height = frame.height * scale
         return SkinRect(
             frame.centerX - width / 2 + offset.x,
             frame.centerY - height / 2 + offset.y,
@@ -80,33 +124,80 @@ data class SkinCustomization(
             append(size)
             if (opacity != 1f) append(";o=$opacity")
             offsets.forEach { (index, offset) -> append(";$index:${offset.x}:${offset.y}") }
+            scales.forEach { (index, s) -> if (s != 1f) append(";s$index=$s") }
+            if (hidden.isNotEmpty()) append(";h=${hidden.sorted().joinToString(",")}")
         }
 
     companion object {
         const val MIN_SIZE = 0.75f
         const val MAX_SIZE = 1.35f
         const val MIN_OPACITY = 0.2f
+        const val MIN_CONTROL_SCALE = 0.6f
+        const val MAX_CONTROL_SCALE = 1.6f
 
         fun decode(text: String?): SkinCustomization {
             if (text.isNullOrBlank()) return SkinCustomization()
             return runCatching {
                 val parts = text.split(';')
-                val (settings, moves) = parts.drop(1).partition { it.startsWith("o=") }
-                val offsets =
-                    moves.associate { part ->
-                        val (index, x, y) = part.split(':')
-                        index.toInt() to Offset(x.toFloat(), y.toFloat())
+                var opacity = 1f
+                val offsets = mutableMapOf<Int, Offset>()
+                val scales = mutableMapOf<Int, Float>()
+                val hidden = mutableSetOf<Int>()
+                for (part in parts.drop(1)) {
+                    when {
+                        part.startsWith("o=") -> {
+                            opacity = part.removePrefix("o=").toFloat()
+                        }
+                        part.startsWith("s") && '=' in part -> {
+                            val (idx, raw) = part.removePrefix("s").split('=', limit = 2)
+                            scales[idx.toInt()] = raw.toFloat().coerceIn(MIN_CONTROL_SCALE, MAX_CONTROL_SCALE)
+                        }
+                        part.startsWith("h=") -> {
+                            part.removePrefix("h=").split(',')
+                                .filter { it.isNotBlank() }
+                                .forEach { hidden += it.toInt() }
+                        }
+                        ':' in part -> {
+                            val (index, x, y) = part.split(':')
+                            offsets[index.toInt()] = Offset(x.toFloat(), y.toFloat())
+                        }
                     }
-                val opacity = settings.firstOrNull()?.removePrefix("o=")?.toFloat() ?: 1f
+                }
                 SkinCustomization(
-                    parts.first().toFloat().coerceIn(MIN_SIZE, MAX_SIZE),
-                    offsets,
-                    opacity.coerceIn(MIN_OPACITY, 1f),
+                    size = parts.first().toFloat().coerceIn(MIN_SIZE, MAX_SIZE),
+                    offsets = offsets,
+                    opacity = opacity.coerceIn(MIN_OPACITY, 1f),
+                    scales = scales,
+                    hidden = hidden,
                 )
             }.getOrDefault(SkinCustomization())
         }
     }
 }
+
+/** Human-readable label for a control in the button inspector. */
+fun SkinControl.displayName(index: Int): String =
+    when (this) {
+        is SkinControl.Dpad ->
+            when (look) {
+                DpadLook.C_BUTTONS -> "C Buttons"
+                DpadLook.BALL_TOP -> "Joystick"
+                else -> "D-Pad"
+            }
+        is SkinControl.Stick ->
+            when (source) {
+                ComposeTouchLayouts.MOTION_SOURCE_LEFT_STICK -> "Left Stick"
+                ComposeTouchLayouts.MOTION_SOURCE_RIGHT_STICK -> "Right Stick"
+                else -> "Stick"
+            }
+        is SkinControl.Menu -> "Menu"
+        is SkinControl.Rewind -> "Rewind"
+        is SkinControl.Button ->
+            when {
+                label.isNotBlank() -> label
+                else -> "Button ${index + 1}"
+            }
+    }
 
 /**
  * Plays the game: draws [layout] and tells [input] where each control is, so it can turn the
@@ -128,25 +219,29 @@ fun ArcaduneSkinView(
     val origin = remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(modifier.onGloballyPositioned { origin.value = it.boundsInRoot().topLeft }) {
         val density = LocalDensity.current.density
-        val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
-        val rects = geometry.touchRects(customization, rewindAvailable)
+        val geometry =
+            remember(layout, pinToEdges, maxWidth, maxHeight) {
+                SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+            }
         val topLeft = origin.value
         // Where each control takes touches, in root pixels, for the touch tracker.
         val targets =
-            rects.map { (index, rect) ->
-                val control = layout.controls[index]
-                SkinInput.Target(
-                    index = index,
-                    control = control,
-                    area =
-                        androidx.compose.ui.geometry.Rect(
-                            topLeft.x + rect.left * density,
-                            topLeft.y + rect.top * density,
-                            topLeft.x + rect.right * density,
-                            topLeft.y + rect.bottom * density,
-                        ),
-                    round = control.takesRoundTouches(),
-                )
+            remember(geometry, customization, rewindAvailable, topLeft, density) {
+                geometry.touchRects(customization, rewindAvailable).map { (index, rect) ->
+                    val control = layout.controls[index]
+                    SkinInput.Target(
+                        index = index,
+                        control = control,
+                        area =
+                            androidx.compose.ui.geometry.Rect(
+                                topLeft.x + rect.left * density,
+                                topLeft.y + rect.top * density,
+                                topLeft.x + rect.right * density,
+                                topLeft.y + rect.bottom * density,
+                            ),
+                        round = control.takesRoundTouches(),
+                    )
+                }
             }
         SideEffect { input.targets = targets }
         DisposableEffect(input) {
@@ -211,13 +306,61 @@ private fun SkinControl.takesRoundTouches(): Boolean =
         is SkinControl.Menu, is SkinControl.Rewind -> false
     }
 
+/** Result of snapping a dragged control to default origin, screen centerlines, or sibling axes. */
+data class ControlSnapResult(
+    val offset: Offset,
+    val verticalGuideDp: Float? = null,
+    val horizontalGuideDp: Float? = null,
+    val snappedToDefault: Boolean = false,
+    val alignedPeerCentersDp: List<Offset> = emptyList(),
+)
+
+private fun SkinControl.selectionCornerFraction(): Float =
+    when (this) {
+        is SkinControl.Button -> if (shape == ButtonShape.SHOULDER) 0.30f else 0.50f
+        is SkinControl.Dpad ->
+            if (look == DpadLook.CROSS || look == DpadLook.SEPARATE) 0.24f else 0.50f
+        is SkinControl.Stick, is SkinControl.Menu, is SkinControl.Rewind -> 0.50f
+    }
+
+private fun computeResizeKnobDp(
+    haloRect: Rect,
+    cornerFrac: Float,
+    surfaceWidthDp: Float,
+    surfaceHeightDp: Float,
+    topExtraDp: Float,
+): Offset {
+    val cx = haloRect.center.x
+    val cy = haloRect.center.y
+    val hw = haloRect.width / 2f
+    val hh = haloRect.height / 2f
+    val r = (haloRect.minDimension * cornerFrac).coerceIn(0f, minOf(hw, hh))
+    val offsetX = (hw - r) + r * 0.70710677f
+    val offsetY = (hh - r) + r * 0.70710677f
+    val edgeMargin = 16f
+    val dirX =
+        if (cx + offsetX > surfaceWidthDp - edgeMargin && cx - offsetX >= edgeMargin) -1f else 1f
+    val dirY =
+        if (cy + offsetY > surfaceHeightDp - edgeMargin && cy - offsetY >= -topExtraDp + edgeMargin) {
+            -1f
+        } else {
+            1f
+        }
+    val rawX = cx + dirX * offsetX
+    val rawY = cy + dirY * offsetY
+    val minY = -topExtraDp + edgeMargin
+    val maxY = (surfaceHeightDp - edgeMargin).coerceAtLeast(minY)
+    val minX = edgeMargin
+    val maxX = (surfaceWidthDp - edgeMargin).coerceAtLeast(minX)
+    return Offset(rawX.coerceIn(minX, maxX), rawY.coerceIn(minY, maxY))
+}
+
 /**
- * Edits the layout: every control can be dragged, nothing is sent to the game. [onMove] gets the
- * control's index and how far it moved, in skin units.
- *
- * The drag is followed by the whole editor area, which never moves: it finds the control under
- * the finger when the drag starts and keeps moving that one. (A control listening to its own drag
- * loses the finger as soon as it moves under it.)
+ * Direct-manipulation controller layout studio canvas:
+ * - Renders artwork cleanly at rest (no permanent wireframe boxes cluttering unselected controls).
+ * - Tap any control to select it (showing a dual-contrast shape-matched halo + corner resize knob).
+ * - Drag any control to move it with magnetic smart-snap alignment guides, or pinch with two fingers
+ *   anywhere on the canvas to resize the selected control (or all controls when none is selected).
  */
 @Composable
 fun ArcaduneSkinEditor(
@@ -226,7 +369,10 @@ fun ArcaduneSkinEditor(
     pinToEdges: Boolean,
     rewindAvailable: Boolean,
     customization: SkinCustomization,
-    onMove: (Int, Offset) -> Unit,
+    onMove: ((Int, Offset) -> Unit)? = null,
+    onCustomizationChange: ((SkinCustomization) -> Unit)? = null,
+    onGestureStart: (() -> Unit)? = null,
+    snapEnabled: Boolean = true,
     /** True when a [ConsoleShell] is drawn behind: the panel then has no background of its own. */
     shell: Boolean = false,
     art: SkinArt? = null,
@@ -236,72 +382,532 @@ fun ArcaduneSkinEditor(
      * this they could not be dragged. The caller makes the area this much taller and higher.
      */
     topExtra: androidx.compose.ui.unit.Dp = 0.dp,
+    selectedIndex: Int? = null,
+    onSelect: ((Int?) -> Unit)? = null,
+    accentColor: Color = Color(0xFFBB9CFF),
+    onAccentColor: Color = Color(0xFF1E0F3D),
+    onCanvasBusyChange: ((Boolean) -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
+    val currentHaptics by rememberUpdatedState(haptics)
     val currentOnMove by rememberUpdatedState(onMove)
+    val currentOnCustomizationChange by rememberUpdatedState(onCustomizationChange)
+    val currentOnGestureStart by rememberUpdatedState(onGestureStart)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnBusyChange by rememberUpdatedState(onCanvasBusyChange)
+    val currentCustomization by rememberUpdatedState(customization)
+    val currentSelectedIndex by rememberUpdatedState(selectedIndex)
+    val currentSnapEnabled by rememberUpdatedState(snapEnabled)
+
     val notPressed = remember { mutableStateOf(false) }
-    val dragging = remember { mutableStateOf<Int?>(null) }
+    val activeDragIndex = remember { mutableStateOf<Int?>(null) }
+    val activeSnap = remember { mutableStateOf<ControlSnapResult?>(null) }
+    val liveBadge = remember { mutableStateOf<Pair<Int?, String>?>(null) }
 
     BoxWithConstraints(modifier = modifier) {
-        val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, (maxHeight - topExtra).value)
-        val rects by rememberUpdatedState(geometry.touchRects(customization, rewindAvailable))
+        val totalHeightDp = maxHeight.value
+        val surfaceWidthDp = maxWidth.value
+        val surfaceHeightDp = (maxHeight - topExtra).value.coerceAtLeast(1f)
+        val geometry =
+            remember(layout, pinToEdges, surfaceWidthDp, surfaceHeightDp) {
+                SkinGeometry(layout, pinToEdges, surfaceWidthDp, surfaceHeightDp)
+            }
+        val currentGeometry by rememberUpdatedState(geometry)
+        val rememberedRects =
+            remember(geometry, customization, rewindAvailable) {
+                geometry.touchRects(customization, rewindAvailable, includeHidden = false)
+            }
+        val rects by rememberUpdatedState(rememberedRects)
         val scale by rememberUpdatedState(geometry.scale)
 
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(layout, pinToEdges) {
-                        // Handled by hand and before anything else (Initial pass), so no other
-                        // part of the game screen can take the touch first.
+                    .pointerInput(layout, pinToEdges, rewindAvailable, topExtra) {
+                        val dragSlopPx = 3.5.dp.toPx()
                         awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                            val start = Offset(down.position.x / density, down.position.y / density - topExtra.value)
-                            // The smallest control under the finger wins (a button inside the d-pad's reach).
-                            val index =
-                                rects
-                                    .filter { (_, rect) -> rect.contains(start) }
-                                    .minByOrNull { (_, rect) -> rect.width * rect.height }
-                                    ?.first
-                                    ?: return@awaitEachGesture
+                            val down = awaitFirstDown(requireUnconsumed = true, pass = PointerEventPass.Main)
                             down.consume()
-                            dragging.value = index
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!change.pressed) break
-                                val delta = change.position - change.previousPosition
-                                change.consume()
-                                if (delta != Offset.Zero) {
-                                    currentOnMove(index, Offset(delta.x / density / scale, delta.y / density / scale))
+                            val startDp =
+                                Offset(
+                                    down.position.x / density,
+                                    down.position.y / density - topExtra.value,
+                                )
+                            val selIdx = currentSelectedIndex
+                            val selControl = selIdx?.let { layout.controls.getOrNull(it) }
+                            val selPlaced =
+                                if (selIdx != null && selControl != null) {
+                                    currentGeometry.placedFrame(selIdx, selControl.frame, currentCustomization)
+                                } else {
+                                    null
                                 }
+                            val selHalo = selPlaced?.inflate(4f)
+                            val knobDp =
+                                if (selHalo != null && selControl != null) {
+                                    computeResizeKnobDp(
+                                        selHalo,
+                                        selControl.selectionCornerFraction(),
+                                        surfaceWidthDp,
+                                        surfaceHeightDp,
+                                        topExtra.value,
+                                    )
+                                } else {
+                                    null
+                                }
+                            val hitResizeKnob =
+                                selIdx != null &&
+                                    selPlaced != null &&
+                                    selControl != null &&
+                                    knobDp != null &&
+                                    (startDp - knobDp).getDistance() <= 34f
+
+                            try {
+                                if (hitResizeKnob) {
+                                    currentOnGestureStart?.invoke()
+                                    currentOnBusyChange?.invoke(true)
+                                    val centerDp = selPlaced.center
+                                    val initialDist = (startDp - centerDp).getDistance().coerceAtLeast(14f)
+                                    val initialScale = currentCustomization.controlScale(selIdx)
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Main)
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+                                        change.consume()
+                                        val curDp =
+                                            Offset(
+                                                change.position.x / density,
+                                                change.position.y / density - topExtra.value,
+                                            )
+                                        val ratio = (curDp - centerDp).getDistance().coerceAtLeast(6f) / initialDist
+                                        val nextScale =
+                                            (initialScale * ratio).coerceIn(
+                                                SkinCustomization.MIN_CONTROL_SCALE,
+                                                SkinCustomization.MAX_CONTROL_SCALE,
+                                            )
+                                        val latest = currentCustomization
+                                        val scaled = latest.copy(scales = latest.scales + (selIdx to nextScale))
+                                        val curOff = scaled.offsets[selIdx] ?: Offset.Zero
+                                        val clampedOff =
+                                            currentGeometry.clampOffset(
+                                                selIdx,
+                                                scaled,
+                                                curOff,
+                                                layout.unitsAbove(),
+                                                snapToDefault = false,
+                                            )
+                                        currentOnCustomizationChange?.invoke(
+                                            scaled.copy(offsets = scaled.offsets + (selIdx to clampedOff)),
+                                        )
+                                        liveBadge.value = selIdx to "${(nextScale * 100).roundToInt()}%"
+                                    }
+                                    return@awaitEachGesture
+                                }
+
+                                val hitIndex =
+                                    rects
+                                        .filter { (_, rect) -> rect.contains(startDp) }
+                                        .minByOrNull { (idx, rect) ->
+                                            val area = rect.width * rect.height
+                                            if (idx == currentSelectedIndex) area * 0.85f else area
+                                        }
+                                        ?.first
+
+                                if (hitIndex != null && hitIndex != currentSelectedIndex) {
+                                    currentOnSelect?.invoke(hitIndex)
+                                    currentHaptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+
+                                var gestureNotified = false
+                                var pinching = false
+                                var pinchTargetIdx: Int? = null
+                                var pinchInitialSpan = 1f
+                                var pinchInitialScale = 1f
+
+                                var draggingIdx: Int? = null
+                                var dragOriginPx = down.position
+                                var dragStartOffset = Offset.Zero
+                                var prevVGuide: Float? = null
+                                var prevHGuide: Float? = null
+
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Main)
+                                    val pressed = event.changes.filter { it.pressed }
+                                    event.changes.forEach { if (!it.isConsumed) it.consume() }
+                                    if (pressed.isEmpty()) break
+
+                                    if (pressed.size >= 2 && currentOnCustomizationChange != null) {
+                                        val span =
+                                            (pressed[0].position - pressed[1].position)
+                                                .getDistance()
+                                                .coerceAtLeast(16f)
+                                        if (!pinching) {
+                                            if (!gestureNotified) {
+                                                currentOnGestureStart?.invoke()
+                                                gestureNotified = true
+                                                currentOnBusyChange?.invoke(true)
+                                            }
+                                            pinching = true
+                                            draggingIdx = null
+                                            activeDragIndex.value = null
+                                            activeSnap.value = null
+                                            pinchTargetIdx = currentSelectedIndex ?: hitIndex
+                                            if (pinchTargetIdx != null && pinchTargetIdx != currentSelectedIndex) {
+                                                currentOnSelect?.invoke(pinchTargetIdx)
+                                            }
+                                            pinchInitialSpan = span
+                                            val tIdx = pinchTargetIdx
+                                            pinchInitialScale =
+                                                if (tIdx != null) {
+                                                    currentCustomization.controlScale(tIdx)
+                                                } else {
+                                                    currentCustomization.size
+                                                }
+                                        } else {
+                                            val ratio = span / pinchInitialSpan
+                                            val latest = currentCustomization
+                                            val tIdx = pinchTargetIdx
+                                            if (tIdx != null) {
+                                                val nextScale =
+                                                    (pinchInitialScale * ratio).coerceIn(
+                                                        SkinCustomization.MIN_CONTROL_SCALE,
+                                                        SkinCustomization.MAX_CONTROL_SCALE,
+                                                    )
+                                                val scaled =
+                                                    latest.copy(scales = latest.scales + (tIdx to nextScale))
+                                                val curOff = scaled.offsets[tIdx] ?: Offset.Zero
+                                                val clamped =
+                                                    currentGeometry.clampOffset(
+                                                        tIdx,
+                                                        scaled,
+                                                        curOff,
+                                                        layout.unitsAbove(),
+                                                        snapToDefault = false,
+                                                    )
+                                                currentOnCustomizationChange?.invoke(
+                                                    scaled.copy(offsets = scaled.offsets + (tIdx to clamped)),
+                                                )
+                                                liveBadge.value = tIdx to "${(nextScale * 100).roundToInt()}%"
+                                            } else {
+                                                val nextGlobal =
+                                                    (pinchInitialScale * ratio).coerceIn(
+                                                        SkinCustomization.MIN_SIZE,
+                                                        SkinCustomization.MAX_SIZE,
+                                                    )
+                                                currentOnCustomizationChange?.invoke(latest.copy(size = nextGlobal))
+                                                liveBadge.value = null to "${(nextGlobal * 100).roundToInt()}%"
+                                            }
+                                        }
+                                    } else if (!pinching && hitIndex != null) {
+                                        val primary = pressed.firstOrNull { it.id == down.id } ?: pressed.first()
+                                        val movedDist = (primary.position - down.position).getDistance()
+                                        if (draggingIdx == null && movedDist > dragSlopPx) {
+                                            if (!gestureNotified) {
+                                                currentOnGestureStart?.invoke()
+                                                gestureNotified = true
+                                                currentOnBusyChange?.invoke(true)
+                                            }
+                                            draggingIdx = hitIndex
+                                            activeDragIndex.value = hitIndex
+                                            dragOriginPx = primary.position
+                                            dragStartOffset = currentCustomization.offsets[hitIndex] ?: Offset.Zero
+                                        }
+                                        val activeIdx = draggingIdx
+                                        if (activeIdx != null && scale > 0f) {
+                                            val rawDelta =
+                                                Offset(
+                                                    (primary.position.x - dragOriginPx.x) / density / scale,
+                                                    (primary.position.y - dragOriginPx.y) / density / scale,
+                                                )
+                                            val updater = currentOnCustomizationChange
+                                            if (updater != null) {
+                                                val latest = currentCustomization
+                                                val snap =
+                                                    currentGeometry.snapOffset(
+                                                        index = activeIdx,
+                                                        customization = latest,
+                                                        candidate = dragStartOffset + rawDelta,
+                                                        rewindAvailable = rewindAvailable,
+                                                        unitsAbove = layout.unitsAbove(),
+                                                        snapEnabled = currentSnapEnabled,
+                                                    )
+                                                val vLocked =
+                                                    snap.verticalGuideDp != null &&
+                                                        snap.verticalGuideDp != prevVGuide
+                                                val hLocked =
+                                                    snap.horizontalGuideDp != null &&
+                                                        snap.horizontalGuideDp != prevHGuide
+                                                if (vLocked || hLocked) {
+                                                    currentHaptics.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove,
+                                                    )
+                                                }
+                                                prevVGuide = snap.verticalGuideDp
+                                                prevHGuide = snap.horizontalGuideDp
+                                                activeSnap.value = snap
+                                                val updatedOffsets = latest.offsets + (activeIdx to snap.offset)
+                                                updater(latest.copy(offsets = updatedOffsets))
+                                            } else {
+                                                val frameDelta = primary.position - primary.previousPosition
+                                                if (frameDelta != Offset.Zero) {
+                                                    currentOnMove?.invoke(
+                                                        activeIdx,
+                                                        Offset(
+                                                            frameDelta.x / density / scale,
+                                                            frameDelta.y / density / scale,
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (!pinching && draggingIdx == null && hitIndex == null) {
+                                    currentOnSelect?.invoke(null)
+                                }
+                            } finally {
+                                activeDragIndex.value = null
+                                activeSnap.value = null
+                                liveBadge.value = null
+                                currentOnBusyChange?.invoke(false)
                             }
-                            dragging.value = null
                         }
                     },
         ) {
-            SkinFrame(
-                Modifier.fillMaxSize().padding(top = topExtra).graphicsLayer { alpha = customization.opacity },
-                layout,
-                pinToEdges,
-                rewindAvailable,
-                customization,
+            StaticSkinFrame(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(top = topExtra)
+                        .graphicsLayer { alpha = customization.opacity },
+                layout = layout,
+                pinToEdges = pinToEdges,
+                rewindAvailable = rewindAvailable,
+                customization = customization,
                 drawBody = !shell,
                 art = art,
-            ) { index, control, frame, placement, scale ->
-                val inset = (control.reach * scale).dp
-                val active = dragging.value == index
-                Box(
-                    modifier =
-                        placement
-                            .padding(inset / 2)
-                            .border(
-                                if (active) 2.dp else 1.dp,
-                                if (active) Color(0xFFB57BFF) else Color(0x99FFFFFF),
-                                RoundedCornerShape(10.dp),
-                            )
-                            .padding(inset / 2),
+                notPressed = notPressed,
+            )
+
+            // Precision studio overlay: dynamic drag snap lasers, selection halo & resize handle.
+            val currentDragIdx = activeDragIndex.value
+            val currentSnap = activeSnap.value
+            Canvas(Modifier.fillMaxSize()) {
+                val topOffsetPx = topExtra.toPx()
+
+                // 1. Subtle dot matrix & magnetic alignment laser guides ONLY while actively dragging.
+                if (currentDragIdx != null && snapEnabled) {
+                    val step = 24.dp.toPx()
+                    val dotRadius = 1.dp.toPx()
+                    val dotColor = Color.White.copy(alpha = 0.13f)
+                    var gx = step
+                    while (gx < size.width) {
+                        var gy = step
+                        while (gy < size.height) {
+                            drawCircle(dotColor, radius = dotRadius, center = Offset(gx, gy))
+                            gy += step
+                        }
+                        gx += step
+                    }
+                }
+
+                if (currentDragIdx != null && currentSnap != null) {
+                    val guideShadow = Color.Black.copy(alpha = 0.42f)
+                    val guideDash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+                    currentSnap.verticalGuideDp?.let { vxDp ->
+                        val vx = vxDp.dp.toPx()
+                        drawLine(
+                            guideShadow,
+                            Offset(vx, 0f),
+                            Offset(vx, size.height),
+                            strokeWidth = 2.6.dp.toPx(),
+                        )
+                        drawLine(
+                            accentColor,
+                            Offset(vx, 0f),
+                            Offset(vx, size.height),
+                            strokeWidth = 1.3.dp.toPx(),
+                            pathEffect = guideDash,
+                        )
+                    }
+                    currentSnap.horizontalGuideDp?.let { hyDp ->
+                        val hy = topOffsetPx + hyDp.dp.toPx()
+                        drawLine(
+                            guideShadow,
+                            Offset(0f, hy),
+                            Offset(size.width, hy),
+                            strokeWidth = 2.6.dp.toPx(),
+                        )
+                        drawLine(
+                            accentColor,
+                            Offset(0f, hy),
+                            Offset(size.width, hy),
+                            strokeWidth = 1.3.dp.toPx(),
+                            pathEffect = guideDash,
+                        )
+                    }
+                    for (peer in currentSnap.alignedPeerCentersDp) {
+                        val centerPx = Offset(peer.x.dp.toPx(), topOffsetPx + peer.y.dp.toPx())
+                        drawCircle(Color.Black.copy(alpha = 0.55f), radius = 4.5.dp.toPx(), center = centerPx)
+                        drawCircle(accentColor, radius = 3.dp.toPx(), center = centerPx)
+                    }
+                }
+
+                // 2. Dual-contrast precision selection halo + corner resize knob on the selected control.
+                val activeSel = selectedIndex
+                val activeCtrl = activeSel?.let { layout.controls.getOrNull(it) }
+                if (activeSel != null && activeCtrl != null &&
+                    (rewindAvailable || activeCtrl !is SkinControl.Rewind)
                 ) {
-                    StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
+                    val placed = geometry.placedFrame(activeSel, activeCtrl.frame, customization)
+                    val haloDp = placed.inflate(4f)
+                    val haloPx =
+                        Rect(
+                            haloDp.left.dp.toPx(),
+                            topOffsetPx + haloDp.top.dp.toPx(),
+                            haloDp.right.dp.toPx(),
+                            topOffsetPx + haloDp.bottom.dp.toPx(),
+                        )
+                    val cornerFrac = activeCtrl.selectionCornerFraction()
+                    val cornerPx = CornerRadius(haloPx.minDimension * cornerFrac)
+                    drawRoundRect(
+                        accentColor.copy(alpha = 0.14f),
+                        haloPx.topLeft,
+                        haloPx.size,
+                        cornerPx,
+                    )
+                    drawRoundRect(
+                        Color.Black.copy(alpha = 0.62f),
+                        haloPx.topLeft,
+                        haloPx.size,
+                        cornerPx,
+                        style = Stroke(width = 4.6.dp.toPx()),
+                    )
+                    drawRoundRect(
+                        accentColor,
+                        haloPx.topLeft,
+                        haloPx.size,
+                        cornerPx,
+                        style = Stroke(width = 2.6.dp.toPx()),
+                    )
+
+                    if (onCustomizationChange != null) {
+                        val knobDp =
+                            computeResizeKnobDp(
+                                haloDp,
+                                cornerFrac,
+                                surfaceWidthDp,
+                                surfaceHeightDp,
+                                topExtra.value,
+                            )
+                        val knobPx = Offset(knobDp.x.dp.toPx(), topOffsetPx + knobDp.y.dp.toPx())
+                        val knobRadius = 14.dp.toPx()
+                        drawCircle(
+                            Color.Black.copy(alpha = 0.68f),
+                            radius = knobRadius + 2.2.dp.toPx(),
+                            center = knobPx,
+                        )
+                        drawCircle(accentColor, radius = knobRadius, center = knobPx)
+                        val diag = 5.dp.toPx()
+                        val flipX = if (knobDp.x < haloDp.center.x) -1f else 1f
+                        val flipY = if (knobDp.y < haloDp.center.y) -1f else 1f
+                        val pA = knobPx + Offset(-diag * flipX, -diag * flipY)
+                        val pB = knobPx + Offset(diag * flipX, diag * flipY)
+                        val iconStroke = 2.dp.toPx()
+                        drawLine(
+                            onAccentColor,
+                            pA,
+                            pB,
+                            strokeWidth = iconStroke,
+                            cap = StrokeCap.Round,
+                        )
+                        val arm = 3.8.dp.toPx()
+                        drawLine(
+                            onAccentColor,
+                            pB,
+                            pB + Offset(-arm * flipX, 0f),
+                            strokeWidth = iconStroke,
+                            cap = StrokeCap.Round,
+                        )
+                        drawLine(
+                            onAccentColor,
+                            pB,
+                            pB + Offset(0f, -arm * flipY),
+                            strokeWidth = iconStroke,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+            }
+
+            // 4. Live floating readout pill right above/below the active control while moving or resizing.
+            val badge = liveBadge.value
+            if (badge != null) {
+                val (badgeIdx, badgeText) = badge
+                val badgeCtrl = badgeIdx?.let { layout.controls.getOrNull(it) }
+                val badgeShape = RoundedCornerShape(999.dp)
+                if (badgeIdx != null && badgeCtrl != null) {
+                    val placed = geometry.placedFrame(badgeIdx, badgeCtrl.frame, customization)
+                    val rawTopDp = topExtra.value + placed.top - 40f
+                    val finalTopDp =
+                        if (rawTopDp < 8f) {
+                            (topExtra.value + placed.bottom + 12f).coerceAtMost(totalHeightDp - 36f)
+                        } else {
+                            rawTopDp
+                        }
+                    val approxHalfWidthDp = 68f
+                    val centerXDp =
+                        placed.center.x.coerceIn(
+                            approxHalfWidthDp,
+                            (surfaceWidthDp - approxHalfWidthDp).coerceAtLeast(approxHalfWidthDp),
+                        )
+                    Box(
+                        modifier =
+                            Modifier
+                                .absoluteOffset {
+                                    IntOffset(
+                                        (centerXDp - approxHalfWidthDp).dp.roundToPx(),
+                                        finalTopDp.dp.roundToPx(),
+                                    )
+                                }
+                                .size(width = (approxHalfWidthDp * 2).dp, height = 32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = badgeText,
+                            color = Color(0xFFF5F2FF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            modifier =
+                                Modifier
+                                    .clip(badgeShape)
+                                    .background(Color(0xEB12101C))
+                                    .border(1.2.dp, accentColor.copy(alpha = 0.80f), badgeShape)
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.align(Alignment.Center),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = badgeText,
+                            color = Color(0xFFF5F2FF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier =
+                                Modifier
+                                    .clip(badgeShape)
+                                    .background(Color(0xEB12101C))
+                                    .border(1.2.dp, accentColor.copy(alpha = 0.80f), badgeShape)
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                        )
+                    }
                 }
             }
         }
@@ -320,19 +926,16 @@ fun ArcaduneSkinPreview(
 ) {
     val notPressed = remember { mutableStateOf(false) }
     val frameModifier = modifier.graphicsLayer { alpha = customization.opacity }
-    SkinFrame(
-        frameModifier,
-        layout,
-        pinToEdges,
+    StaticSkinFrame(
+        modifier = frameModifier,
+        layout = layout,
+        pinToEdges = pinToEdges,
         rewindAvailable = true,
         customization = customization,
         drawBody = !shell,
         art = art,
-    ) { _, control, frame, placement, scale ->
-        Box(modifier = placement.padding((control.reach * scale).dp)) {
-            StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
-        }
-    }
+        notPressed = notPressed,
+    )
 }
 
 /** A control drawn at rest, as in the editor and the gallery. */
@@ -374,6 +977,45 @@ internal const val FULL_SCREEN_MIN_WIDTH = 600f
 /** The most dp per skin unit a full-screen landscape skin grows to (on tablets). */
 internal const val FULL_SCREEN_MAX_SCALE = 1.2f
 
+/** Clamps a control's candidate offset (in skin units) to the actual surface of [surfaceWidthDp] x [surfaceHeightDp]. */
+fun SkinLayout.clampControlOffset(
+    pinToEdges: Boolean,
+    surfaceWidthDp: Float,
+    surfaceHeightDp: Float,
+    index: Int,
+    customization: SkinCustomization,
+    candidate: Offset,
+    snapToDefault: Boolean = false,
+): Offset =
+    SkinGeometry(this, pinToEdges, surfaceWidthDp, surfaceHeightDp)
+        .clampOffset(index, customization, candidate, unitsAbove(), snapToDefault)
+
+/**
+ * Clamps and optionally magnet-snaps [candidate] (in skin units) to the control's default origin,
+ * surface centerlines, or sibling visible controls' centers, returning active guide lines in dp.
+ */
+fun SkinLayout.snapControlOffset(
+    pinToEdges: Boolean,
+    surfaceWidthDp: Float,
+    surfaceHeightDp: Float,
+    index: Int,
+    customization: SkinCustomization,
+    candidate: Offset,
+    rewindAvailable: Boolean = true,
+    snapEnabled: Boolean = true,
+    snapThresholdDp: Float = 5.5f,
+): ControlSnapResult =
+    SkinGeometry(this, pinToEdges, surfaceWidthDp, surfaceHeightDp)
+        .snapOffset(
+            index = index,
+            customization = customization,
+            candidate = candidate,
+            rewindAvailable = rewindAvailable,
+            unitsAbove = unitsAbove(),
+            snapEnabled = snapEnabled,
+            snapThresholdDp = snapThresholdDp,
+        )
+
 /** Where the controls of [layout] land on a surface of [width] x [height] dp. */
 internal class SkinGeometry(
     private val layout: SkinLayout,
@@ -394,62 +1036,327 @@ internal class SkinGeometry(
             else -> minOf(height / layout.height, width / layout.width)
         }
 
-    /** Top of [frame]: in landscape the top and bottom controls stay at the screen's top and bottom edges. */
-    fun placeY(frame: SkinRect): Float {
-        // Upright the panel always has the skin's own proportions: the controls keep their designed spacing.
-        if (!pinToEdges) return frame.y * scale
-        // Full screen: the corner clusters (a whole diamond, two rows of buttons) stay in one piece.
-        if (layout.screenArea == null) {
-            val atTop = frame.centerY < layout.height / 2
-            return if (atTop) frame.y * scale else height - (layout.height - frame.y) * scale
+    /**
+     * Top of [baseFrame] before user customization: in landscape, top-bar shoulders/menu stay at
+     * the top edge, bottom-bar pills stay at the bottom edge, and entire thumb/wing clusters move
+     * together as one cohesive unit so diamonds and multi-row button grids never tear apart on
+     * tall tablets or foldables.
+     */
+    fun placeBaseY(baseFrame: SkinRect): Float {
+        if (!pinToEdges) return baseFrame.y * scale
+        val cornerClusterLayout = layout.screenArea == null || layout.screenArea.x >= 195f
+        if (cornerClusterLayout) {
+            val atTop = baseFrame.centerY < layout.height * 0.18f
+            return if (atTop) baseFrame.y * scale else height - (layout.height - baseFrame.y) * scale
         }
         return when {
-            frame.centerY < layout.height * 0.37f -> frame.y * scale
-            frame.centerY > layout.height * 0.63f -> height - (layout.height - frame.y) * scale
-            else -> height / 2 + (frame.y - layout.height / 2) * scale
+            baseFrame.centerY < layout.height * 0.16f -> baseFrame.y * scale
+            baseFrame.centerY > layout.height * 0.86f -> height - (layout.height - baseFrame.y) * scale
+            else -> height / 2 + (baseFrame.y - layout.height / 2) * scale
         }
     }
 
-    fun placeX(frame: SkinRect): Float {
-        if (!pinToEdges) return frame.x * scale
+    fun placeBaseX(baseFrame: SkinRect): Float {
+        if (!pinToEdges) return baseFrame.x * scale
         return when {
-            frame.centerX < layout.width * 0.37f -> frame.x * scale
-            frame.centerX > layout.width * 0.63f -> width - (layout.width - frame.x) * scale
-            else -> width / 2 + (frame.x - layout.width / 2) * scale
+            baseFrame.centerX < layout.width * 0.37f -> baseFrame.x * scale
+            baseFrame.centerX > layout.width * 0.63f -> width - (layout.width - baseFrame.x) * scale
+            else -> width / 2 + (baseFrame.x - layout.width / 2) * scale
         }
+    }
+
+    /**
+     * Screen-space bounds (in dp) of control [index] after anchoring [baseFrame] and applying
+     * per-control/global scale and drag offset, so dragging across screen zones never teleports.
+     */
+    fun placedFrame(
+        index: Int,
+        baseFrame: SkinRect,
+        customization: SkinCustomization,
+    ): androidx.compose.ui.geometry.Rect {
+        val controlScale = customization.effectiveScale(index)
+        val offset = customization.offsets[index] ?: Offset.Zero
+        val baseCenterX = placeBaseX(baseFrame) + baseFrame.width * scale / 2f
+        val baseCenterY = placeBaseY(baseFrame) + baseFrame.height * scale / 2f
+        val w = baseFrame.width * controlScale * scale
+        val h = baseFrame.height * controlScale * scale
+        val cx = baseCenterX + offset.x * scale
+        val cy = baseCenterY + offset.y * scale
+        return androidx.compose.ui.geometry.Rect(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+    }
+
+    /** Clamps a candidate offset (in skin units) to the actual screen/panel bounds of this geometry. */
+    fun clampOffset(
+        index: Int,
+        customization: SkinCustomization,
+        candidate: Offset,
+        unitsAbove: Float = 0f,
+        snapToDefault: Boolean = false,
+    ): Offset {
+        val baseFrame = layout.controls.getOrNull(index)?.frame ?: return candidate
+        if (scale <= 0f) return candidate
+        val controlScale = customization.effectiveScale(index)
+        val baseCenterX = placeBaseX(baseFrame) + baseFrame.width * scale / 2f
+        val baseCenterY = placeBaseY(baseFrame) + baseFrame.height * scale / 2f
+        val marginX = baseFrame.width * controlScale * scale * 0.25f
+        val marginY = baseFrame.height * controlScale * scale * 0.25f
+        val minCx = minOf(marginX, width - marginX)
+        val maxCx = maxOf(marginX, width - marginX)
+        val topBound = -unitsAbove * scale + marginY
+        val bottomBound = height - marginY
+        val minCy = minOf(topBound, bottomBound)
+        val maxCy = maxOf(topBound, bottomBound)
+        val clampedCx = (baseCenterX + candidate.x * scale).coerceIn(minCx, maxCx)
+        val clampedCy = (baseCenterY + candidate.y * scale).coerceIn(minCy, maxCy)
+        val rawX = (clampedCx - baseCenterX) / scale
+        val rawY = (clampedCy - baseCenterY) / scale
+        if (!snapToDefault) return Offset(rawX, rawY)
+        return Offset(
+            if (abs(rawX) < 1.2f) 0f else rawX,
+            if (abs(rawY) < 1.2f) 0f else rawY,
+        )
+    }
+
+    /** Magnetic smart-snap to default origin, surface centerlines, and sibling visible controls' axes. */
+    fun snapOffset(
+        index: Int,
+        customization: SkinCustomization,
+        candidate: Offset,
+        rewindAvailable: Boolean = true,
+        unitsAbove: Float = 0f,
+        snapEnabled: Boolean = true,
+        snapThresholdDp: Float = 5.5f,
+    ): ControlSnapResult {
+        val clamped = clampOffset(index, customization, candidate, unitsAbove, snapToDefault = false)
+        val baseFrame = layout.controls.getOrNull(index)?.frame ?: return ControlSnapResult(clamped)
+        if (!snapEnabled || scale <= 0f) return ControlSnapResult(clamped)
+
+        val baseCenterX = placeBaseX(baseFrame) + baseFrame.width * scale / 2f
+        val baseCenterY = placeBaseY(baseFrame) + baseFrame.height * scale / 2f
+        val candCx = baseCenterX + clamped.x * scale
+        val candCy = baseCenterY + clamped.y * scale
+
+        if (abs(candCx - baseCenterX) <= snapThresholdDp && abs(candCy - baseCenterY) <= snapThresholdDp) {
+            return ControlSnapResult(
+                offset = Offset.Zero,
+                verticalGuideDp = baseCenterX,
+                horizontalGuideDp = baseCenterY,
+                snappedToDefault = true,
+            )
+        }
+
+        val peers =
+            layout.controls.mapIndexedNotNull { peerIdx, peerCtrl ->
+                if (peerIdx == index) return@mapIndexedNotNull null
+                if (peerCtrl is SkinControl.Rewind && !rewindAvailable) return@mapIndexedNotNull null
+                if (customization.isHidden(peerIdx, peerCtrl)) return@mapIndexedNotNull null
+                placedFrame(peerIdx, peerCtrl.frame, customization).center
+            }
+
+        val xCandidates = buildList {
+            add(width / 2f)
+            add(baseCenterX)
+            peers.forEach { add(it.x) }
+        }
+        val yCandidates = buildList {
+            add(height / 2f)
+            add(baseCenterY)
+            peers.forEach { add(it.y) }
+        }
+
+        val bestX = xCandidates.minByOrNull { abs(it - candCx) }?.takeIf { abs(it - candCx) <= snapThresholdDp }
+        val bestY = yCandidates.minByOrNull { abs(it - candCy) }?.takeIf { abs(it - candCy) <= snapThresholdDp }
+
+        val targetUnits =
+            Offset(
+                if (bestX != null) (bestX - baseCenterX) / scale else clamped.x,
+                if (bestY != null) (bestY - baseCenterY) / scale else clamped.y,
+            )
+        val finalOffset = clampOffset(index, customization, targetUnits, unitsAbove, snapToDefault = false)
+        val finalCx = baseCenterX + finalOffset.x * scale
+        val finalCy = baseCenterY + finalOffset.y * scale
+        val vGuide = bestX?.takeIf { abs(finalCx - it) <= 0.5f }
+        val hGuide = bestY?.takeIf { abs(finalCy - it) <= 0.5f }
+        val alignedPeers =
+            peers.filter { peer ->
+                (vGuide != null && abs(peer.x - vGuide) <= 0.6f) ||
+                    (hGuide != null && abs(peer.y - hGuide) <= 0.6f)
+            }
+        return ControlSnapResult(
+            offset = finalOffset,
+            verticalGuideDp = vGuide,
+            horizontalGuideDp = hGuide,
+            snappedToDefault = abs(finalOffset.x) < 0.05f && abs(finalOffset.y) < 0.05f,
+            alignedPeerCentersDp = alignedPeers,
+        )
     }
 
     /** Each control's touch area (with its reach), in dp, by index. */
     fun touchRects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
-    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> = rects(customization, rewindAvailable, withReach = true)
+        includeHidden: Boolean = false,
+    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
+        rects(customization, rewindAvailable, withReach = true, includeHidden = includeHidden)
 
     /** Each control as drawn (without its reach), in dp, by index. */
     fun frameRects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
-    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> = rects(customization, rewindAvailable, withReach = false)
+        includeHidden: Boolean = false,
+    ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
+        rects(customization, rewindAvailable, withReach = false, includeHidden = includeHidden)
 
     private fun rects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
         withReach: Boolean,
+        includeHidden: Boolean,
     ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
         layout.controls.mapIndexedNotNull { index, item ->
             if (item is SkinControl.Rewind && !rewindAvailable) return@mapIndexedNotNull null
-            val frame = customization.frameOf(index, item.frame)
-            val reach = if (withReach) item.reach else 0f
-            val left = placeX(frame) - reach * scale
-            val top = placeY(frame) - reach * scale
+            if (!includeHidden && customization.isHidden(index, item)) return@mapIndexedNotNull null
+            val placed = placedFrame(index, item.frame, customization)
+            val reach = if (withReach) item.reach * scale else 0f
             index to
                 androidx.compose.ui.geometry.Rect(
-                    left,
-                    top,
-                    left + (frame.width + 2 * reach) * scale,
-                    top + (frame.height + 2 * reach) * scale,
+                    placed.left - reach,
+                    placed.top - reach,
+                    placed.right + reach,
+                    placed.bottom + reach,
                 )
         }
+}
+
+/** Places the background and every static control (with per-control recomposition skipping). */
+@Composable
+private fun StaticSkinFrame(
+    modifier: Modifier,
+    layout: SkinLayout,
+    pinToEdges: Boolean,
+    rewindAvailable: Boolean,
+    customization: SkinCustomization,
+    drawBody: Boolean,
+    art: SkinArt?,
+    notPressed: State<Boolean>,
+) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalSkinArt provides art) {
+        BoxWithConstraints(modifier = modifier) {
+            val geometry =
+                remember(layout, pinToEdges, maxWidth, maxHeight) {
+                    SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+                }
+            val scale = geometry.scale
+
+            SkinBodyBackdrop(
+                layout = layout,
+                pinToEdges = pinToEdges,
+                drawBody = drawBody,
+                scale = scale,
+                art = art,
+            )
+
+            layout.controls.forEachIndexed { index, item ->
+                if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
+                if (customization.isHidden(index, item)) return@forEachIndexed
+                androidx.compose.runtime.key(index) {
+                    val frame = customization.frameOf(index, item.frame)
+                    val placed = geometry.placedFrame(index, item.frame, customization)
+                    StaticSkinControlItem(
+                        layout = layout,
+                        control = item,
+                        frameX = frame.x,
+                        frameY = frame.y,
+                        frameWidth = frame.width,
+                        frameHeight = frame.height,
+                        placedLeft = placed.left,
+                        placedTop = placed.top,
+                        placedWidth = placed.width,
+                        placedHeight = placed.height,
+                        scale = scale,
+                        pinToEdges = pinToEdges,
+                        notPressed = notPressed,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StaticSkinControlItem(
+    layout: SkinLayout,
+    control: SkinControl,
+    frameX: Float,
+    frameY: Float,
+    frameWidth: Float,
+    frameHeight: Float,
+    placedLeft: Float,
+    placedTop: Float,
+    placedWidth: Float,
+    placedHeight: Float,
+    scale: Float,
+    pinToEdges: Boolean,
+    notPressed: State<Boolean>,
+) {
+    val frame =
+        remember(frameX, frameY, frameWidth, frameHeight) {
+            SkinRect(frameX, frameY, frameWidth, frameHeight)
+        }
+    val reach = control.reach
+    val x = placedLeft - reach * scale
+    val y = placedTop - reach * scale
+    val boxW = placedWidth + 2f * reach * scale
+    val boxH = placedHeight + 2f * reach * scale
+    Box(
+        modifier =
+            Modifier
+                .absoluteOffset { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) }
+                .size(boxW.dp, boxH.dp)
+                .padding((reach * scale).dp),
+    ) {
+        StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
+    }
+    if (!pinToEdges) {
+        Caption(layout, control, frame, placedLeft, placedTop, scale)
+    }
+}
+
+@Composable
+private fun SkinBodyBackdrop(
+    layout: SkinLayout,
+    pinToEdges: Boolean,
+    drawBody: Boolean,
+    scale: Float,
+    art: SkinArt?,
+) {
+    // The NES pad keeps its own black face even inside a shell.
+    if (!pinToEdges && (drawBody || layout.style == SkinStyle.NES_CLASSIC)) {
+        Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
+    }
+    // The body's designed overlay over the panel: the plastic's grain, then sheen, wordmark, grille.
+    val bodyArt = art?.body
+    if (bodyArt != null && !pinToEdges) {
+        val grain = art.grain
+        val grainTile =
+            remember(grain) {
+                grain?.let {
+                    androidx.compose.ui.graphics.ShaderBrush(
+                        androidx.compose.ui.graphics.ImageShader(
+                            it,
+                            androidx.compose.ui.graphics.TileMode.Repeated,
+                            androidx.compose.ui.graphics.TileMode.Repeated,
+                        ),
+                    )
+                }
+            }
+        Canvas(Modifier.fillMaxSize()) {
+            if (grainTile != null) {
+                drawRect(grainTile, alpha = 0.06f, blendMode = androidx.compose.ui.graphics.BlendMode.Overlay)
+            }
+            drawArtPart(bodyArt, 0f)
+        }
+    }
 }
 
 /** Places the background and every control (and the names under them) of [layout]. */
@@ -462,55 +1369,50 @@ private fun SkinFrame(
     customization: SkinCustomization,
     drawBody: Boolean = true,
     art: SkinArt? = null,
-    control: @Composable BoxWithConstraintsScope.(index: Int, control: SkinControl, frame: SkinRect, placement: Modifier, scale: Float) -> Unit,
+    control: @Composable BoxWithConstraintsScope.(
+        index: Int,
+        control: SkinControl,
+        frame: SkinRect,
+        placement: Modifier,
+        scale: Float,
+    ) -> Unit,
 ) {
     androidx.compose.runtime.CompositionLocalProvider(LocalSkinArt provides art) {
         BoxWithConstraints(modifier = modifier) {
-            val geometry = SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+            val geometry =
+                remember(layout, pinToEdges, maxWidth, maxHeight) {
+                    SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+                }
             val scale = geometry.scale
 
-            fun placeX(frame: SkinRect): Float = geometry.placeX(frame)
-
-            // The NES pad keeps its own black face even inside a shell.
-            if (!pinToEdges && (drawBody || layout.style == SkinStyle.NES_CLASSIC)) {
-                Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
-            }
-            // The body's designed overlay over the panel: the plastic's grain, then sheen, wordmark, grille.
-            val bodyArt = art?.body
-            if (bodyArt != null && !pinToEdges) {
-                val grain = art.grain
-                Canvas(Modifier.fillMaxSize()) {
-                    if (grain != null) {
-                        val tile =
-                            androidx.compose.ui.graphics.ShaderBrush(
-                                androidx.compose.ui.graphics.ImageShader(
-                                    grain,
-                                    androidx.compose.ui.graphics.TileMode.Repeated,
-                                    androidx.compose.ui.graphics.TileMode.Repeated,
-                                ),
-                            )
-                        drawRect(tile, alpha = 0.06f, blendMode = androidx.compose.ui.graphics.BlendMode.Overlay)
-                    }
-                    drawArtPart(bodyArt, 0f)
-                }
-            }
+            SkinBodyBackdrop(
+                layout = layout,
+                pinToEdges = pinToEdges,
+                drawBody = drawBody,
+                scale = scale,
+                art = art,
+            )
 
             layout.controls.forEachIndexed { index, item ->
                 if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
+                if (customization.isHidden(index, item)) return@forEachIndexed
                 // Each control keeps its identity by index, so a control that comes or goes (rewind)
                 // never makes the ones after it start over.
                 androidx.compose.runtime.key(index) {
                     val frame = customization.frameOf(index, item.frame)
+                    val placed = geometry.placedFrame(index, item.frame, customization)
                     val reach = item.reach
-                    val x = placeX(frame) - reach * scale
-                    val y = geometry.placeY(frame) - reach * scale
+                    val x = placed.left - reach * scale
+                    val y = placed.top - reach * scale
                     val placement =
                         Modifier
                             .absoluteOffset { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) }
-                            .size(((frame.width + 2 * reach) * scale).dp, ((frame.height + 2 * reach) * scale).dp)
+                            .size((placed.width + 2 * reach * scale).dp, (placed.height + 2 * reach * scale).dp)
                     control(index, item, frame, placement, scale)
                     // Sideways there is no room under the controls: names go on them instead.
-                    if (!pinToEdges) Caption(layout, item, frame, placeX(frame), geometry.placeY(frame), scale)
+                    if (!pinToEdges) {
+                        Caption(layout, item, frame, placed.left, placed.top, scale)
+                    }
                 }
             }
         }
@@ -1584,7 +2486,11 @@ private fun Caption(
                 .size((width * scale).dp, (fontUnits * 1.6f * scale).dp),
     ) {
         Text(
-            modifier = Modifier.fillMaxSize(),
+            // Wide but not height-bound: a large system font makes the line taller, and a fixed box clipped it.
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(Alignment.Top, unbounded = true),
             text = text,
             color = color,
             fontSize = fontSize,
@@ -1593,6 +2499,7 @@ private fun Caption(
             textAlign = align,
             maxLines = 1,
             softWrap = false,
+            style = androidx.compose.ui.text.TextStyle(lineHeight = fontSize * 1.2f),
         )
     }
 }

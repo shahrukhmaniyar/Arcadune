@@ -2,9 +2,11 @@ package com.swordfish.lemuroid.app.mobile.shared.compose.ui
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -13,8 +15,9 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.unit.IntOffset
 
 /**
- * One set of motions for the whole app, in the spirit of iOS: springs instead of fixed-time
- * curves, so things settle naturally and can be interrupted without a jump.
+ * Shared motion specs across Arcadune. Interactive presses use responsive springs, while
+ * full-screen page navigation uses 100%-opaque horizontal slides (no alpha fade) to eliminate
+ * translucent ghosting and avoid full-screen SkiaGL SaveLayer FBO allocations on Android GPUs.
  */
 object ArcaduneMotion {
     /** Buttons and tiles sinking under the finger and popping back. */
@@ -23,20 +26,26 @@ object ArcaduneMotion {
     /** Colours and small state changes. */
     fun <T> quick(): FiniteAnimationSpec<T> = spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow)
 
-    private val slide = spring<IntOffset>(dampingRatio = 1f, stiffness = 1500f)
-    private val fade = spring<Float>(dampingRatio = 1f, stiffness = 1800f)
+    private val slideEasing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+    private val pushSlide = tween<IntOffset>(durationMillis = 220, easing = slideEasing)
+    private val popSlide = tween<IntOffset>(durationMillis = 200, easing = slideEasing)
 
-    /** A screen pushed on top slides in from the right... */
-    val pushEnter: EnterTransition = slideInHorizontally(slide) { it } + fadeIn(fade, initialAlpha = 0.6f)
+    val pushEnter: EnterTransition = slideInHorizontally(pushSlide) { it }
 
-    /** ...while the one below drifts a little to the left and dims. */
-    val pushExit: ExitTransition = slideOutHorizontally(slide) { -it / 4 } + fadeOut(fade, targetAlpha = 0.4f)
+    val pushExit: ExitTransition = slideOutHorizontally(pushSlide) { -it / 4 }
 
-    /** Going back: the screen below comes back from the left... */
-    val popEnter: EnterTransition = slideInHorizontally(slide) { -it / 4 } + fadeIn(fade, initialAlpha = 0.4f)
+    val popEnter: EnterTransition = slideInHorizontally(popSlide) { -it / 4 }
 
-    /** ...and the top one slides away to the right. */
-    val popExit: ExitTransition = slideOutHorizontally(slide) { it } + fadeOut(fade, targetAlpha = 0.6f)
+    val popExit: ExitTransition = slideOutHorizontally(popSlide) { it }
+
+    /**
+     * Pause-menu pages are translucent. Sliding two of them over one another makes the outgoing
+     * tiles remain visible as a ghost, so this fade is deliberately sequential: the old page is
+     * gone before the new one appears.
+     */
+    val menuEnter: EnterTransition = fadeIn(tween(durationMillis = 140, delayMillis = 80))
+
+    val menuExit: ExitTransition = fadeOut(tween(durationMillis = 80))
 
     /** Something appearing in place, like the pause menu or search results. */
     val appear: EnterTransition =

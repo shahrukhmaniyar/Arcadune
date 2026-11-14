@@ -23,7 +23,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -183,10 +182,11 @@ class GameViewModelTouchControls(
         if (held >= MIN_PRESS_MS) {
             view.sendKeyEvent(KeyEvent.ACTION_UP, key)
         } else {
-            val release = Runnable {
-                pendingReleases.remove(key)
-                retroGameView.retroGameView?.sendKeyEvent(KeyEvent.ACTION_UP, key)
-            }
+            val release =
+                Runnable {
+                    pendingReleases.remove(key)
+                    retroGameView.retroGameView?.sendKeyEvent(KeyEvent.ACTION_UP, key)
+                }
             pendingReleases[key] = release
             mainHandler.postDelayed(release, MIN_PRESS_MS - held)
         }
@@ -206,11 +206,12 @@ class GameViewModelTouchControls(
         val now = android.os.SystemClock.uptimeMillis()
         val centred = xAxis == 0f && yAxis == 0f
         if (centred && dpadNonZero && now - dpadSince < MIN_PRESS_MS) {
-            val release = Runnable {
-                pendingDpadRelease = null
-                dpadNonZero = false
-                retroGameView.retroGameView?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, 0f, 0f)
-            }
+            val release =
+                Runnable {
+                    pendingDpadRelease = null
+                    dpadNonZero = false
+                    retroGameView.retroGameView?.sendMotionEvent(GLRetroView.MOTION_SOURCE_DPAD, 0f, 0f)
+                }
             pendingDpadRelease = release
             mainHandler.postDelayed(release, MIN_PRESS_MS - (now - dpadSince))
             return

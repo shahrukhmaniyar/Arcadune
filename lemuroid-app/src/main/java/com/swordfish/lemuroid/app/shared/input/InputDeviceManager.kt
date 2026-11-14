@@ -192,7 +192,12 @@ class InputDeviceManager(
             }
 
         return result
-            .onSubscription { inputManager.registerInputDeviceListener(listener, null) }
+            .onSubscription {
+                inputManager.registerInputDeviceListener(
+                    listener,
+                    android.os.Handler(android.os.Looper.getMainLooper()),
+                )
+            }
             .onCompletion { inputManager.unregisterInputDeviceListener(listener) }
     }
 

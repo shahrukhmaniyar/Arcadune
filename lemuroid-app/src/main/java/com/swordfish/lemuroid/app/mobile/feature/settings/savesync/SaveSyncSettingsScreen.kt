@@ -8,8 +8,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneRowDivider
 import com.swordfish.lemuroid.app.shared.savesync.SaveSyncWork
+import com.swordfish.lemuroid.app.utils.android.ComposableLifecycle
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidCardSettingsGroup
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsListMultiSelect
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsMenuLink
@@ -25,6 +28,12 @@ fun SaveSyncSettingsScreen(
 ) {
     val context = LocalContext.current
 
+    ComposableLifecycle { _, event ->
+        if (event == Lifecycle.Event.ON_RESUME) {
+            viewModel.refresh()
+        }
+    }
+
     val saveSyncState =
         viewModel.uiState
             .collectAsState()
@@ -34,6 +43,8 @@ fun SaveSyncSettingsScreen(
         viewModel.saveSyncInProgress
             .collectAsState(true)
             .value
+
+    val settingsActivity = saveSyncState.settingsActivity
 
     LemuroidSettingsPage(modifier = modifier.fillMaxSize()) {
         LemuroidCardSettingsGroup {
@@ -48,11 +59,16 @@ fun SaveSyncSettingsScreen(
                     )
                 },
                 subtitle = { Text(text = saveSyncState.configInfo) },
-                enabled = !isSyncInProgress,
-                onClick = { context.startActivity(Intent(context, saveSyncState.settingsActivity)) },
+                enabled = !isSyncInProgress && settingsActivity != null,
+                onClick = {
+                    if (settingsActivity != null) {
+                        context.startActivity(Intent(context, settingsActivity))
+                    }
+                },
             )
+            ArcaduneRowDivider()
             LemuroidSettingsSwitch(
-                state = booleanPreferenceState(R.string.pref_key_save_sync_enable, default = false),
+                state = booleanPreferenceState(R.string.pref_key_save_sync_enable, default = true),
                 title = { Text(text = stringResource(id = R.string.settings_save_sync_include_saves)) },
                 subtitle = {
                     Text(
@@ -65,6 +81,7 @@ fun SaveSyncSettingsScreen(
                 },
                 enabled = saveSyncState.isConfigured && !isSyncInProgress,
             )
+            ArcaduneRowDivider()
             LemuroidSettingsListMultiSelect(
                 state =
                     stringsSetPreferenceState(
@@ -78,12 +95,14 @@ fun SaveSyncSettingsScreen(
                 enabled = saveSyncState.isConfigured && !isSyncInProgress,
                 confirmButton = stringResource(id = R.string.ok),
             )
+            ArcaduneRowDivider()
             LemuroidSettingsSwitch(
                 state = booleanPreferenceState(R.string.pref_key_save_sync_auto, default = false),
                 title = { Text(text = stringResource(id = R.string.settings_save_sync_enable_auto)) },
                 subtitle = { Text(text = stringResource(id = R.string.settings_save_sync_enable_auto_description)) },
                 enabled = saveSyncState.isConfigured && !isSyncInProgress,
             )
+            ArcaduneRowDivider()
             LemuroidSettingsMenuLink(
                 title = { Text(text = stringResource(id = R.string.settings_save_sync_refresh)) },
                 subtitle = {

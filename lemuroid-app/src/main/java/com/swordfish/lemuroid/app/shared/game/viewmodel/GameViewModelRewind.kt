@@ -32,6 +32,7 @@ class GameViewModelRewind(
     private val settingsManager: SettingsManager,
     private val retroGameView: GameViewModelRetroGameView,
     private val scope: CoroutineScope,
+    private val isHardcoreActive: () -> Boolean = { false },
 ) : DefaultLifecycleObserver {
     private val snapshots = ArrayDeque<ByteArray>()
     private var snapshotsBytes = 0L
@@ -52,8 +53,15 @@ class GameViewModelRewind(
 
         // Only while the game is in front: no snapshots while the game menu is open.
         owner.launchOnState(Lifecycle.State.RESUMED) {
-            if (!settingsManager.rewindEnabled()) return@launchOnState
+            if (isHardcoreActive() || !settingsManager.rewindEnabled()) {
+                mutableAvailable.value = false
+                return@launchOnState
+            }
             retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>()
+            if (isHardcoreActive()) {
+                mutableAvailable.value = false
+                return@launchOnState
+            }
             mutableAvailable.value = true
             takeSnapshots()
         }

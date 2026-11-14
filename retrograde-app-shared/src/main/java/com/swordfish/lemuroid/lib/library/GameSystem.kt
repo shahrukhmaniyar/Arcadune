@@ -37,6 +37,7 @@ data class GameSystem(
     val supportedExtensions: List<String> = uniqueExtensions,
     val hasMultiDiskSupport: Boolean = false,
     val fastForwardSupport: Boolean = true,
+    val maxFrameSpeed: Int = 8,
     val hasTouchScreen: Boolean = false,
 ) {
     companion object {
@@ -729,6 +730,8 @@ data class GameSystem(
                         ),
                     ),
                     uniqueExtensions = listOf("n64", "z64"),
+                    // 8X crashes the N64 core (a native crash in its graphics code); 2X to 6X were tried and run.
+                    maxFrameSpeed = 6,
                 ),
                 GameSystem(
                     SystemID.PSX,
@@ -778,9 +781,15 @@ data class GameSystem(
                             defaultSettings =
                                 listOf(
                                     CoreVariable("pcsx_rearmed_drc", "disabled"),
+                                    // Upstream R26+ defaults pcsx_rearmed_memcard2 to "shared" (pcsx-card2.mcd),
+                                    // which would share Card 2 outside per-game .srm files; keep Card 2 disabled by default.
+                                    CoreVariable("pcsx_rearmed_memcard2", "none"),
                                 ),
                             rumbleSupported = true,
-                            supportsLibretroVFS = true,
+                            // LibretroDroid's VFS virtualOpen() duplicates FDs via dup(), sharing kernel f_pos;
+                            // pcsx_rearmed's ISOopen() -> parsetoc() advances that shared offset before parsecue() reads,
+                            // breaking SAF .cue/.bin loading when Direct game load is enabled.
+                            supportsLibretroVFS = false,
                             skipDuplicateFrames = false,
                         ),
                     ),
@@ -851,6 +860,8 @@ data class GameSystem(
                         ),
                     ),
                     uniqueExtensions = listOf(),
+                    // Untested above 4X: the 3D renderer of the PSP core, like the N64 one, can crash at high speeds.
+                    maxFrameSpeed = 4,
                     supportedExtensions = listOf("iso", "cso", "pbp"),
                     scanOptions =
                         ScanOptions(
@@ -985,8 +996,7 @@ data class GameSystem(
                     ),
                     uniqueExtensions = listOf("nds"),
                     hasTouchScreen = true,
-                    // Phones run it at full speed at best: double speed gets no faster, so it is not offered.
-                    fastForwardSupport = false,
+                    // Fast-forward steps 2X to 8X; how fast it really goes depends on the phone.
                 ),
                 GameSystem(
                     SystemID.ATARI7800,
@@ -1308,7 +1318,7 @@ data class GameSystem(
                                         R.string.setting_citra_use_acc_geo_shaders,
                                     ),
                                 ),
-                            statesSupported = false,
+                            statesSupported = true,
                             supportsLibretroVFS = true,
                             supportedOnlyArchitectures = setOf("arm64-v8a"),
                         ),

@@ -10,7 +10,7 @@ class PreviouslyFailedThumbnailException(code: Int) :
     IOException("Thumbnail previously failed with code: $code")
 
 object ThrottleFailedThumbnailsInterceptor : Interceptor {
-    private val failedThumbnailsStatusCode = LruCache<String, Int>(256 * 1024)
+    private val failedThumbnailsStatusCode = LruCache<String, Int>(4096)
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val requestUrl = chain.request().url.toString()
@@ -20,8 +20,8 @@ object ThrottleFailedThumbnailsInterceptor : Interceptor {
         }
 
         val response = chain.proceed(chain.request())
-        if (!response.isSuccessful) {
-            failedThumbnailsStatusCode.put(chain.request().url.toString(), response.code)
+        if (response.code == 404 || response.code == 410) {
+            failedThumbnailsStatusCode.put(requestUrl, response.code)
         }
 
         return response

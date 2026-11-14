@@ -60,5 +60,4 @@ class MainViewModel(appContext: Context, private val saveSyncManager: SaveSyncMa
 
         currentRouteFlow.value = currentRoute
     }
-
 }

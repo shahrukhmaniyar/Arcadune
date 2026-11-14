@@ -35,12 +35,23 @@ class GameService : DaggerService() {
     }
 
     override fun onStartCommand(
-        intent: Intent,
+        intent: Intent?,
         flags: Int,
         startId: Int,
     ): Int {
-        displayNotification(intent)
+        if (intent != null) {
+            displayNotification(intent)
+        }
         return START_NOT_STICKY
+    }
+
+    override fun onTimeout(
+        startId: Int,
+        fgsType: Int,
+    ) {
+        Timber.w("GameService foreground timeout reached (fgsType=%d), stopping foreground", fgsType)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf(startId)
     }
 
     private fun displayNotification(intent: Intent) {
@@ -48,12 +59,16 @@ class GameService : DaggerService() {
             intent.getParcelableExtra<Intent>(EXTRA_GAME_ACTIVITY_INTENT)
                 ?: return
         val notification = NotificationsManager(applicationContext).gameRunningNotification(gameIntent)
-        ServiceCompat.startForeground(
-            this,
-            NotificationsManager.GAME_RUNNING_NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-        )
+        runCatching {
+            ServiceCompat.startForeground(
+                this,
+                NotificationsManager.GAME_RUNNING_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        }.onFailure {
+            Timber.w(it, "Unable to promote GameService to foreground")
+        }
     }
 
     private fun hideNotification() {

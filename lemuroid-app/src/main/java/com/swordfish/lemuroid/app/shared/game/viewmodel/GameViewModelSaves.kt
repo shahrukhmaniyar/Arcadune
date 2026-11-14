@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.shared.game.viewmodel
 
 import android.content.Context
+import android.graphics.Bitmap
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.common.graphics.GraphicsUtils
@@ -17,6 +18,7 @@ import com.swordfish.libretrodroid.GLRetroView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import kotlin.math.roundToInt
 
@@ -31,6 +33,7 @@ class GameViewModelSaves(
     private val statesManager: StatesManager,
     private val statesPreviewManager: StatesPreviewManager,
     private val sideEffects: GameViewModelSideEffects,
+    private val isHardcoreActive: () -> Boolean = { false },
 ) {
     private var currentQuickSave: SaveState? = null
 
@@ -49,6 +52,10 @@ class GameViewModelSaves(
     }
 
     suspend fun loadSlot(index: Int) {
+        if (isHardcoreActive()) {
+            sideEffects.showToast(appContext.getString(R.string.ra_hardcore_load_disabled_toast))
+            return
+        }
         try {
             statesManager.getSlotSave(game, systemCoreConfig.coreID, index)?.let {
                 val loaded =
@@ -94,7 +101,7 @@ class GameViewModelSaves(
     suspend fun restoreAutoSaveAsync(saveState: SaveState) {
         // PPSSPP and Mupen64 initialize some state while rendering the first frame, so we have to wait before restoring
         // the autosave. Do not change thread here. Stick to the GL one to avoid issues with PPSSPP.
-        if (!isAutoSaveEnabled()) return
+        if (isHardcoreActive() || !isAutoSaveEnabled()) return
 
         try {
             retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>()
@@ -124,10 +131,37 @@ class GameViewModelSaves(
 
     private suspend fun takeScreenshotPreview(index: Int) {
         val sizeInDp = StatesPreviewManager.PREVIEW_SIZE_DP
-        val previewSize = GraphicsUtils.convertDpToPixel(sizeInDp, appContext).roundToInt()
-        val preview = retroGameView.retroGameView?.takeScreenshot(previewSize, 3)
-        if (preview != null) {
+        val previewSize = GraphicsUtils.convertDpToPixel(sizeInDp, appContext).roundToInt().coerceAtLeast(1)
+        val gameView = retroGameView.retroGameView ?: return
+        // Ensure a fresh frame has been drawn onto the GL surface after returning from the pause menu.
+        withTimeoutOrNull(400L) {
+            retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>()
+        }
+        val viewport = gameView.viewport
+        val vpLeft = if (viewport.left.isFinite()) viewport.left.coerceIn(0f, 1f) else 0f
+        val vpTop = if (viewport.top.isFinite()) viewport.top.coerceIn(0f, 1f) else 0f
+        val vpRight = if (viewport.right.isFinite()) viewport.right.coerceIn(vpLeft, 1f) else 1f
+        val vpBottom = if (viewport.bottom.isFinite()) viewport.bottom.coerceIn(vpTop, 1f) else 1f
+        val vpWidth = (vpRight - vpLeft).takeIf { it > 0.01f } ?: 1f
+        val vpHeight = (vpBottom - vpTop).takeIf { it > 0.01f } ?: 1f
+        val captureMaxResolution =
+            (previewSize / maxOf(vpWidth, vpHeight).coerceAtLeast(0.25f)).roundToInt().coerceAtMost(
+                2048,
+            )
+
+        val fullPreview = gameView.takeScreenshot(captureMaxResolution, 3) ?: return
+        val left = (fullPreview.width * vpLeft).roundToInt().coerceIn(0, fullPreview.width - 1)
+        val top = (fullPreview.height * vpTop).roundToInt().coerceIn(0, fullPreview.height - 1)
+        val right = (fullPreview.width * vpRight).roundToInt().coerceIn(left + 1, fullPreview.width)
+        val bottom = (fullPreview.height * vpBottom).roundToInt().coerceIn(top + 1, fullPreview.height)
+        val preview = Bitmap.createBitmap(fullPreview, left, top, right - left, bottom - top)
+        try {
             statesPreviewManager.setPreviewForSlot(game, preview, systemCoreConfig.coreID, index)
+        } finally {
+            if (preview !== fullPreview) {
+                fullPreview.recycle()
+            }
+            preview.recycle()
         }
     }
 
@@ -169,6 +203,10 @@ class GameViewModelSaves(
 
     /** Loads the quick save (from disk when this session has none), the way a slot is loaded. */
     suspend fun loadQuickSave() {
+        if (isHardcoreActive()) {
+            sideEffects.showToast(appContext.getString(R.string.ra_hardcore_load_disabled_toast))
+            return
+        }
         try {
             val state = currentQuickSave ?: statesManager.getQuickSave(game, systemCoreConfig.coreID) ?: return
             val loaded = withContext(Dispatchers.IO) { loadSaveState(state) }

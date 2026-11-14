@@ -44,6 +44,10 @@ class BiosManager(private val directoriesManager: DirectoriesManager) {
             .filter { !File(directoriesManager.getSystemDirectory(), it).exists() }
     }
 
+    @Volatile
+    var cachedBiosInfo: BiosInfo? = null
+        private set
+
     fun deleteBiosBefore(timestampMs: Long) {
         Timber.i("Pruning old bios files")
         SUPPORTED_BIOS
@@ -53,16 +57,16 @@ class BiosManager(private val directoriesManager: DirectoriesManager) {
                 Timber.d("Pruning old bios file: ${it.path}")
                 it.safeDelete()
             }
+        cachedBiosInfo = null
     }
 
-    @Deprecated("Use the suspend variant")
     fun getBiosInfo(): BiosInfo {
         val bios =
             SUPPORTED_BIOS.groupBy {
                 File(directoriesManager.getSystemDirectory(), it.libretroFileName).exists()
             }.withDefault { listOf() }
 
-        return BiosInfo(bios.getValue(true), bios.getValue(false))
+        return BiosInfo(bios.getValue(true), bios.getValue(false)).also { cachedBiosInfo = it }
     }
 
     suspend fun getBiosInfoAsync(): BiosInfo =
@@ -86,6 +90,7 @@ class BiosManager(private val directoriesManager: DirectoriesManager) {
             Timber.d("Bios file not available. Copying new file.")
             inputStream.writeToFile(biosFile)
         }
+        cachedBiosInfo = null
         return true
     }
 

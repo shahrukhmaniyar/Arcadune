@@ -88,6 +88,10 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     private val startGameTime = System.currentTimeMillis()
     private var finishTriggered = false
+    private var isOpeningMenu = false
+
+    @Volatile
+    private var handlingUncaughtException = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -159,8 +163,17 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     private fun setUpExceptionsHandler() {
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
-            performUnexpectedErrorFinish(exception)
+            if (handlingUncaughtException) {
+                previousHandler?.uncaughtException(thread, exception)
+                return@setDefaultUncaughtExceptionHandler
+            }
+            handlingUncaughtException = true
+            runOnUiThread {
+                runCatching { performUnexpectedErrorFinish(exception) }
+                    .onFailure { previousHandler?.uncaughtException(thread, exception) }
+            }
         }
     }
 
@@ -176,6 +189,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     private fun displayOptionsDialog(
         currentTiltConfiguration: TiltConfiguration,
         tiltConfigurations: List<TiltConfiguration>,
+        startRoute: String? = null,
     ) {
         if (baseGameScreenViewModel.loadingState.value) {
             return
@@ -210,14 +224,21 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                     baseGameScreenViewModel.retroGameView.retroGameView?.audioEnabled,
                 )
                 this.putExtra(GameMenuContract.EXTRA_FAST_FORWARD_SUPPORTED, system.fastForwardSupport)
+                this.putExtra(GameMenuContract.EXTRA_MAX_FRAME_SPEED, system.maxFrameSpeed)
                 this.putExtra(
                     GameMenuContract.EXTRA_FAST_FORWARD,
                     (baseGameScreenViewModel.retroGameView.retroGameView?.frameSpeed ?: 1) > 1,
                 )
+                this.putExtra(
+                    GameMenuContract.EXTRA_FRAME_SPEED,
+                    baseGameScreenViewModel.retroGameView.retroGameView?.frameSpeed ?: 1,
+                )
                 this.putExtra(GameMenuContract.EXTRA_CURRENT_TILT_CONFIG, currentTiltConfiguration)
+                startRoute?.let { this.putExtra(GameMenuContract.EXTRA_START_ROUTE, it) }
                 // TODO PADS... Make sure to avoid passing this if a physical pad is connected.
                 this.putExtra(GameMenuContract.EXTRA_TILT_ALL_CONFIGS, tiltConfigurations.toTypedArray())
             }
+        isOpeningMenu = true
         startActivityForResult(intent, DIALOG_REQUEST)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
@@ -243,6 +264,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                         displayOptionsDialog(
                             it.currentTiltConfiguration,
                             it.tiltConfigurations,
+                            it.startRoute,
                         )
                     is GameViewModelSideEffects.UiEffect.ShowToast -> displayToast(it.message)
                     is GameViewModelSideEffects.UiEffect.SuccessfulFinish -> performSuccessfulActivityFinish()
@@ -343,8 +365,13 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         finishTriggered = true
     }
 
+    override fun onResume() {
+        super.onResume()
+        isOpeningMenu = false
+    }
+
     override fun onStop() {
-        if (!finishTriggered && !isFinishing && !isChangingConfigurations) {
+        if (!finishTriggered && !isFinishing && !isChangingConfigurations && !isOpeningMenu) {
             baseGameScreenViewModel.requestBackgroundSave()
         }
         super.onStop()
@@ -365,24 +392,27 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == DIALOG_REQUEST) {
+            isOpeningMenu = false
             Timber.i("Game menu dialog response: ${data?.extras.dump()}")
             // Cheats are applied in the background, and not at all when the player is quitting.
             if (data?.getBooleanExtra(GameMenuContract.RESULT_QUIT, false) != true) {
                 baseGameScreenViewModel.applyCheats()
             }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_RESET, false) == true) {
-                GlobalScope.launch {
+                lifecycleScope.launch {
                     baseGameScreenViewModel.reset()
                 }
             }
             if (data?.hasExtra(GameMenuContract.RESULT_SAVE) == true) {
-                GlobalScope.launch {
-                    baseGameScreenViewModel.saveSlot(data.getIntExtra(GameMenuContract.RESULT_SAVE, 0))
+                val saveIndex = data.getIntExtra(GameMenuContract.RESULT_SAVE, 0)
+                lifecycleScope.launch {
+                    baseGameScreenViewModel.saveSlot(saveIndex)
                 }
             }
             if (data?.hasExtra(GameMenuContract.RESULT_LOAD) == true) {
-                GlobalScope.launch {
-                    baseGameScreenViewModel.loadSlot(data.getIntExtra(GameMenuContract.RESULT_LOAD, 0))
+                val loadIndex = data.getIntExtra(GameMenuContract.RESULT_LOAD, 0)
+                lifecycleScope.launch {
+                    baseGameScreenViewModel.loadSlot(loadIndex)
                 }
             }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_QUIT, false) == true) {
@@ -411,12 +441,19 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                     this.frameSpeed = if (fastForwardEnabled) 2 else 1
                 }
             }
+            if (data?.hasExtra(GameMenuContract.RESULT_FRAME_SPEED) == true) {
+                baseGameScreenViewModel.retroGameView.retroGameView?.apply {
+                    baseGameScreenViewModel.setFrameSpeed(data.getIntExtra(GameMenuContract.RESULT_FRAME_SPEED, 1))
+                }
+            }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_EDIT_TOUCH_CONTROLS, false) == true) {
                 baseGameScreenViewModel.showEditControls(true)
             }
             if (data?.hasExtra(GameMenuContract.RESULT_CHANGE_TILT_CONFIG) == true) {
                 val tiltConfig = data.serializable<TiltConfiguration>(GameMenuContract.RESULT_CHANGE_TILT_CONFIG)
-                baseGameScreenViewModel.changeTiltConfiguration(tiltConfig!!)
+                if (tiltConfig != null) {
+                    baseGameScreenViewModel.changeTiltConfiguration(tiltConfig)
+                }
             }
         }
     }

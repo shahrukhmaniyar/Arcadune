@@ -10,11 +10,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.app.shared.library.PendingOperationsMonitor
 import com.swordfish.lemuroid.app.shared.settings.StorageFrameworkPickerLauncher
-import com.swordfish.lemuroid.common.coroutines.combine
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
-import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -51,9 +49,6 @@ class HomeViewModel(
     }
 
     data class UIState(
-        val favoritesGames: List<Game> = emptyList(),
-        val recentGames: List<Game> = emptyList(),
-        val discoveryGames: List<Game> = emptyList(),
         val indexInProgress: Boolean = true,
         val showNoNotificationPermissionCard: Boolean = false,
         val showNoMicrophonePermissionCard: Boolean = false,
@@ -102,23 +97,16 @@ class HomeViewModel(
     }
 
     private fun buildViewState(
-        favoritesGames: List<Game>,
-        recentGames: List<Game>,
-        discoveryGames: List<Game>,
+        totalGamesCount: Int,
         indexInProgress: Boolean,
         notificationsPermissionEnabled: Boolean,
         showMicrophoneCard: Boolean,
     ): UIState {
-        val noGames = recentGames.isEmpty() && favoritesGames.isEmpty() && discoveryGames.isEmpty()
-
         return UIState(
-            favoritesGames = favoritesGames,
-            recentGames = recentGames,
-            discoveryGames = discoveryGames,
             indexInProgress = indexInProgress,
             showNoNotificationPermissionCard = !notificationsPermissionEnabled,
             showNoMicrophonePermissionCard = showMicrophoneCard,
-            showNoGamesCard = noGames,
+            showNoGamesCard = totalGamesCount == 0,
         )
     }
 
@@ -126,9 +114,7 @@ class HomeViewModel(
         viewModelScope.launch {
             val uiStatesFlow =
                 combine(
-                    favoritesGames(retrogradeDb),
-                    recentGames(retrogradeDb),
-                    discoveryGames(retrogradeDb),
+                    retrogradeDb.gameDao().countGames().distinctUntilChanged(),
                     indexingInProgress(appContext),
                     notificationsPermissionEnabledState,
                     microphoneNotification(retrogradeDb),
@@ -144,15 +130,6 @@ class HomeViewModel(
 
     private fun indexingInProgress(appContext: Context) =
         PendingOperationsMonitor(appContext).anyLibraryOperationInProgress()
-
-    private fun discoveryGames(retrogradeDb: RetrogradeDatabase) =
-        retrogradeDb.gameDao().selectFirstNotPlayed(CAROUSEL_MAX_ITEMS)
-
-    private fun recentGames(retrogradeDb: RetrogradeDatabase) =
-        retrogradeDb.gameDao().selectFirstUnfavoriteRecents(CAROUSEL_MAX_ITEMS)
-
-    private fun favoritesGames(retrogradeDb: RetrogradeDatabase) =
-        retrogradeDb.gameDao().selectFirstFavorites(CAROUSEL_MAX_ITEMS)
 
     private fun dsGamesCount(retrogradeDb: RetrogradeDatabase): Flow<Int> {
         return retrogradeDb.gameDao().selectSystemsWithCount()

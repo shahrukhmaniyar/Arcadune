@@ -1,38 +1,70 @@
 package com.swordfish.lemuroid.app.mobile.feature.settings.general
 
-import android.net.Uri
-import androidx.compose.material3.Text
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.documentfile.provider.DocumentFile
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.main.MainRoute
 import com.swordfish.lemuroid.app.mobile.feature.main.navigateToRoute
+import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RaGoldColor
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconBadge
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneRowDivider
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.arcadunePressable
 import com.swordfish.lemuroid.app.shared.library.LibraryIndexScheduler
 import com.swordfish.lemuroid.app.shared.update.AppUpdater
 import com.swordfish.lemuroid.app.shared.update.UpdateSettingsContent
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidCardSettingsGroup
+import com.swordfish.lemuroid.app.utils.android.settings.LemuroidLazySettingsPage
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsList
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsMenuLink
-import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsPage
-import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsSlider
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsSwitch
 import com.swordfish.lemuroid.app.utils.android.settings.booleanPreferenceState
 import com.swordfish.lemuroid.app.utils.android.settings.indexPreferenceState
-import com.swordfish.lemuroid.app.utils.android.settings.intPreferenceState
 import com.swordfish.lemuroid.app.utils.android.stringListResource
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsSettingsState
 
 @Composable
 fun SettingsScreen(
@@ -40,10 +72,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     navController: NavController,
 ) {
-    val state =
-        viewModel.uiState
-            .collectAsState(SettingsViewModel.State())
-            .value
+    val state = viewModel.uiState.collectAsState().value
 
     val scanInProgress =
         viewModel.directoryScanInProgress
@@ -55,36 +84,87 @@ fun SettingsScreen(
             .collectAsState(false)
             .value
 
-    LemuroidSettingsPage(modifier = modifier) {
-        RomsSettings(
-            state = state,
-            onChangeFolder = { viewModel.changeLocalStorageFolder() },
-            indexingInProgress = indexingInProgress,
-            scanInProgress = scanInProgress,
-        )
-        AppearanceSettings()
-        UpdateSettings()
-        GeneralSettings()
-        InputSettings(navController = navController)
-        MiscSettings(
-            indexingInProgress = indexingInProgress,
-            isSaveSyncSupported = state.isSaveSyncSupported,
-            navController = navController,
-        )
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var skippedInitialResume = false
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    if (skippedInitialResume) {
+                        viewModel.refreshSavesSummary()
+                    } else {
+                        skippedInitialResume = true
+                    }
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LemuroidLazySettingsPage(modifier = modifier) {
+        item(key = "roms") {
+            RomsSettings(
+                state = state,
+                onChangeFolder = { viewModel.changeLocalStorageFolder() },
+                indexingInProgress = indexingInProgress,
+                scanInProgress = scanInProgress,
+            )
+        }
+        item(key = "saves") {
+            SavesSettings(
+                savesSummary = state.savesSummary,
+                isSaveSyncSupported = state.isSaveSyncSupported,
+                navController = navController,
+            )
+        }
+        item(key = "achievements") {
+            RetroAchievementsSettings(
+                achievementsState = state.achievementsState,
+                navController = navController,
+            )
+        }
+        item(key = "appearance") {
+            AppearanceSettings()
+        }
+        if (AppUpdater.isSupported) {
+            item(key = "updates") {
+                UpdateSettings()
+            }
+        }
+        item(key = "general") {
+            GeneralSettings()
+        }
+        item(key = "input") {
+            InputSettings(navController = navController)
+        }
+        item(key = "misc") {
+            MiscSettings(
+                indexingInProgress = indexingInProgress,
+                navController = navController,
+            )
+        }
     }
 }
 
 @Composable
-private fun MiscSettings(
-    indexingInProgress: Boolean,
+private fun SavesSettings(
+    savesSummary: String,
     isSaveSyncSupported: Boolean,
     navController: NavController,
 ) {
     LemuroidCardSettingsGroup(
-        title = { Text(text = stringResource(id = R.string.settings_category_misc)) },
+        title = { Text(text = stringResource(id = R.string.settings_category_saves)) },
     ) {
+        LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Save) },
+            title = { Text(text = stringResource(id = R.string.settings_title_saves)) },
+            subtitle = { Text(text = savesSummary) },
+            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_SAVES) },
+        )
         if (isSaveSyncSupported) {
+            ArcaduneRowDivider(startIndent = 68.dp)
             LemuroidSettingsMenuLink(
+                icon = { ArcaduneIconBadge(icon = Icons.Outlined.CloudSync) },
                 title = { Text(text = stringResource(id = R.string.settings_title_save_sync)) },
                 subtitle = {
                     Text(text = stringResource(id = R.string.settings_description_save_sync))
@@ -92,7 +172,75 @@ private fun MiscSettings(
                 onClick = { navController.navigateToRoute(MainRoute.SETTINGS_SAVE_SYNC) },
             )
         }
+    }
+}
+
+@Composable
+private fun RetroAchievementsSettings(
+    achievementsState: RetroAchievementsSettingsState,
+    navController: NavController,
+) {
+    val account = achievementsState.account
+    val subtitle =
+        when {
+            account == null -> stringResource(R.string.settings_ra_signed_out_subtitle)
+            !achievementsState.enabled ->
+                stringResource(R.string.settings_ra_signed_in_disabled_subtitle, account.displayName)
+            !RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED ->
+                stringResource(
+                    R.string.settings_ra_signed_in_active_subtitle,
+                    account.displayName,
+                    account.totalPoints,
+                )
+            achievementsState.hardcoreEnabled ->
+                stringResource(R.string.settings_ra_signed_in_hardcore_subtitle, account.displayName, account.score)
+            else ->
+                stringResource(
+                    R.string.settings_ra_signed_in_softcore_subtitle,
+                    account.displayName,
+                    account.softcoreScore.takeIf { it > 0 } ?: account.score,
+                )
+        }
+
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.settings_category_achievements)) },
+    ) {
         LemuroidSettingsMenuLink(
+            icon = {
+                ArcaduneIconBadge(
+                    icon = Icons.Filled.EmojiEvents,
+                    tint = if (achievementsState.isSignedIn) RaGoldColor else ArcaduneColors.OnSurface,
+                    containerColor =
+                        if (achievementsState.isSignedIn) {
+                            RaGoldColor.copy(alpha = 0.16f)
+                        } else {
+                            ArcaduneColors.SurfaceHigh
+                        },
+                    borderColor =
+                        if (achievementsState.isSignedIn) {
+                            RaGoldColor.copy(alpha = 0.45f)
+                        } else {
+                            ArcaduneColors.GlassEdge
+                        },
+                )
+            },
+            title = { Text(text = stringResource(id = R.string.settings_title_retro_achievements)) },
+            subtitle = { Text(text = subtitle) },
+            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_RETRO_ACHIEVEMENTS) },
+        )
+    }
+}
+
+@Composable
+private fun MiscSettings(
+    indexingInProgress: Boolean,
+    navController: NavController,
+) {
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.settings_category_misc)) },
+    ) {
+        LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Memory) },
             title = { Text(text = stringResource(id = R.string.settings_title_display_bios_info)) },
             subtitle = {
                 Text(text = stringResource(id = R.string.settings_description_display_bios_info))
@@ -100,14 +248,18 @@ private fun MiscSettings(
             enabled = !indexingInProgress,
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_BIOS) },
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Tune) },
             title = { Text(text = stringResource(id = R.string.settings_title_advanced_settings)) },
             subtitle = {
                 Text(text = stringResource(id = R.string.settings_description_advanced_settings))
             },
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_ADVANCED) },
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Image) },
             title = { Text(text = stringResource(id = R.string.cover_manager_title)) },
             subtitle = { Text(text = stringResource(id = R.string.cover_manager_description)) },
             enabled = !indexingInProgress,
@@ -122,6 +274,7 @@ private fun InputSettings(navController: NavController) {
         title = { Text(text = stringResource(id = R.string.settings_category_input)) },
     ) {
         LemuroidSettingsList(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Vibration) },
             state =
                 indexPreferenceState(
                     R.string.pref_key_haptic_feedback_mode,
@@ -133,12 +286,16 @@ private fun InputSettings(navController: NavController) {
             },
             items = stringListResource(R.array.pref_key_haptic_feedback_mode_display_names),
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Palette) },
             title = { Text(text = stringResource(id = R.string.skin_gallery_title)) },
             subtitle = { Text(text = stringResource(id = R.string.skin_gallery_description)) },
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_SKINS) },
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.SportsEsports) },
             title = { Text(text = stringResource(id = R.string.settings_title_gamepad_settings)) },
             subtitle = {
                 Text(text = stringResource(id = R.string.settings_description_gamepad_settings))
@@ -154,16 +311,21 @@ private fun GeneralSettings() {
         title = { Text(text = stringResource(id = R.string.settings_category_general)) },
     ) {
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Save) },
             state = booleanPreferenceState(R.string.pref_key_autosave, true),
             title = { Text(text = stringResource(id = R.string.settings_title_enable_autosave)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_autosave)) },
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.History) },
             state = booleanPreferenceState(R.string.pref_key_rewind, true),
             title = { Text(text = stringResource(id = R.string.settings_title_rewind)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_rewind)) },
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsList(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Tv) },
             state =
                 indexPreferenceState(
                     R.string.pref_key_shader_filter,
@@ -173,7 +335,9 @@ private fun GeneralSettings() {
             title = { Text(text = stringResource(id = R.string.display_filter)) },
             items = stringListResource(R.array.pref_key_shader_filter_display_names),
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsList(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.AspectRatio) },
             state =
                 indexPreferenceState(
                     R.string.pref_key_viewport_alignment,
@@ -194,31 +358,26 @@ private fun RomsSettings(
     scanInProgress: Boolean,
 ) {
     val context = LocalContext.current
-
-    val currentDirectory = state.currentDirectory
-    val emptyDirectory = stringResource(R.string.none)
-
-    val currentDirectoryName =
-        remember(state.currentDirectory) {
-            runCatching {
-                DocumentFile.fromTreeUri(context, Uri.parse(currentDirectory))?.name
-            }.getOrNull() ?: emptyDirectory
-        }
+    val currentDirectoryName = state.currentDirectoryName.ifBlank { stringResource(R.string.none) }
 
     LemuroidCardSettingsGroup(title = { Text(text = stringResource(id = R.string.roms)) }) {
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Outlined.FolderOpen) },
             title = { Text(text = stringResource(id = R.string.directory)) },
             subtitle = { Text(text = currentDirectoryName) },
             onClick = { onChangeFolder() },
             enabled = !indexingInProgress,
         )
+        ArcaduneRowDivider(startIndent = 68.dp)
         if (scanInProgress) {
             LemuroidSettingsMenuLink(
+                icon = { ArcaduneIconBadge(icon = Icons.Filled.Clear) },
                 title = { Text(text = stringResource(id = R.string.stop)) },
                 onClick = { LibraryIndexScheduler.cancelLibrarySync(context) },
             )
         } else {
             LemuroidSettingsMenuLink(
+                icon = { ArcaduneIconBadge(icon = Icons.Filled.Refresh) },
                 title = { Text(text = stringResource(id = R.string.rescan)) },
                 onClick = { LibraryIndexScheduler.scheduleLibrarySync(context) },
                 enabled = !indexingInProgress,
@@ -239,43 +398,55 @@ private fun UpdateSettings() {
 /** The accent colour of the whole app: five soft colours, shown as dots to tap. */
 @Composable
 private fun AppearanceSettings() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val current = com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.current.value
+    val context = LocalContext.current
+    val current = ArcaduneAccent.current.value
     LemuroidCardSettingsGroup(title = { Text(text = stringResource(id = R.string.theme_color_title)) }) {
-        androidx.compose.foundation.layout.Row(
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .then(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)),
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            for (accent in com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.entries) {
+            for (accent in ArcaduneAccent.entries) {
                 val selected = accent == current
-                androidx.compose.foundation.layout.Column(
-                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier =
-                        Modifier.clickable(
-                            interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                        ) {
-                            com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent.choose(context, accent)
-                        },
+                        Modifier.arcadunePressable(
+                            scaleDown = 0.90f,
+                            onClick = { ArcaduneAccent.choose(context, accent) },
+                        ),
                 ) {
-                    androidx.compose.foundation.layout.Box(
+                    Box(
                         modifier =
                             Modifier
-                                .size(44.dp)
+                                .size(46.dp)
                                 .border(
-                                    width = if (selected) 2.dp else 0.dp,
-                                    color = if (selected) accent.color else androidx.compose.ui.graphics.Color.Transparent,
-                                    shape = androidx.compose.foundation.shape.CircleShape,
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) accent.color else ArcaduneColors.GlassEdge,
+                                    shape = CircleShape,
                                 )
                                 .padding(5.dp)
-                                .background(accent.color, androidx.compose.foundation.shape.CircleShape),
-                    )
+                                .background(accent.color, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = accent.onColor,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
                     Text(
                         text = stringResource(accent.titleRes),
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        style =
+                            MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            ),
+                        color = if (selected) ArcaduneColors.OnSurface else ArcaduneColors.OnSurfaceDim,
                         modifier = Modifier.padding(top = 6.dp),
                     )
                 }

@@ -20,10 +20,11 @@ object CoverCompression {
     const val MAX_SIDE = 600
     private const val QUALITY = 82
     private const val MIN_BYTES_WORTH_COMPRESSING = 40 * 1024
+    internal const val MAX_BYTES_TO_BUFFER = 20L * 1024 * 1024
 
     /** Returns [bytes] as a small WebP, or null when they are already small or not an image. */
     fun compress(bytes: ByteArray): ByteArray? {
-        if (bytes.size < MIN_BYTES_WORTH_COMPRESSING) return null
+        if (bytes.size < MIN_BYTES_WORTH_COMPRESSING || bytes.size > MAX_BYTES_TO_BUFFER) return null
 
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -39,13 +40,16 @@ object CoverCompression {
         val bitmap =
             if (largest > MAX_SIDE) {
                 val factor = MAX_SIDE.toFloat() / largest
-                Bitmap.createScaledBitmap(decoded, (decoded.width * factor).toInt(), (decoded.height * factor).toInt(), true)
+                val targetWidth = (decoded.width * factor).toInt().coerceAtLeast(1)
+                val targetHeight = (decoded.height * factor).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(decoded, targetWidth, targetHeight, true)
                     .also { if (it != decoded) decoded.recycle() }
             } else {
                 decoded
             }
 
         val output = ByteArrayOutputStream()
+
         @Suppress("DEPRECATION")
         val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
         bitmap.compress(format, QUALITY, output)
@@ -56,6 +60,7 @@ object CoverCompression {
     /** Shrinks a cover file in place (used for covers the player picks). */
     fun compressFile(file: File) {
         runCatching {
+            if (!file.exists() || file.length() > MAX_BYTES_TO_BUFFER) return
             val smaller = compress(file.readBytes()) ?: return
             file.writeBytes(smaller)
         }.onFailure { Timber.w(it, "Could not shrink cover ${file.name}") }
@@ -69,7 +74,8 @@ class CoverCompressionInterceptor : Interceptor {
         val body = response.body ?: return response
         val type = body.contentType()
         val isImage = type?.type == "image" || chain.request().url.encodedPath.endsWith(".png", ignoreCase = true)
-        if (!response.isSuccessful || !isImage) return response
+        val contentLength = body.contentLength()
+        if (!response.isSuccessful || !isImage || contentLength > CoverCompression.MAX_BYTES_TO_BUFFER) return response
 
         val bytes = body.bytes()
         val smaller = runCatching { CoverCompression.compress(bytes) }.getOrNull()

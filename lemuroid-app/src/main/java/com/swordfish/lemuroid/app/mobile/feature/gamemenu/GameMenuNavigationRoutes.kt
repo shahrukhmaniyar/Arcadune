@@ -44,9 +44,29 @@ enum class GameMenuRoute(
         titleId = R.string.game_menu_settings,
         parent = HOME,
     ),
+    FAST_FORWARD(
+        route = "fast_forward",
+        titleId = R.string.game_menu_fast_forward,
+        parent = HOME,
+    ),
+    TILT(
+        route = "tilt",
+        titleId = R.string.game_menu_tilt_sensor,
+        parent = HOME,
+    ),
+    DISKS(
+        route = "disks",
+        titleId = R.string.game_menu_change_disk_button,
+        parent = HOME,
+    ),
     CHEATS(
         route = "cheats",
         titleId = R.string.game_menu_cheats,
+        parent = HOME,
+    ),
+    ACHIEVEMENTS(
+        route = "achievements",
+        titleId = R.string.game_menu_achievements,
         parent = HOME,
     ),
     ;

@@ -17,6 +17,7 @@ import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.saves.SaveInfo
 import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
+import java.text.DateFormat
 import java.text.SimpleDateFormat
 import kotlin.math.roundToInt
 
@@ -30,13 +31,30 @@ object GameMenuHelper {
     }
 
     fun setupFastForwardOption(
+        activity: Activity?,
         screen: PreferenceScreen,
-        fastForwardEnabled: Boolean,
+        frameSpeed: Int,
         fastForwardSupported: Boolean,
     ) {
-        val preference = screen.findPreference<SwitchPreference>(FAST_FORWARD)
-        preference?.isChecked = fastForwardEnabled
-        preference?.isVisible = fastForwardSupported
+        val preference = screen.findPreference<ListPreference>(FAST_FORWARD) ?: return
+        preference.isVisible = fastForwardSupported
+        val speeds = listOf(1, 2, 4, 6, 8)
+        preference.entries =
+            speeds.map { if (it == 1) screen.context.getString(R.string.game_menu_fast_forward_off) else "${it}X" }.toTypedArray()
+        preference.entryValues = speeds.map { it.toString() }.toTypedArray()
+        preference.setValue(frameSpeed.toString())
+        preference.summary = if (frameSpeed > 1) "${frameSpeed}X" else null
+        preference.setOnPreferenceChangeListener { _, newValue ->
+            val resultIntent =
+                Intent().apply {
+                    putExtra(
+                        GameMenuContract.RESULT_FRAME_SPEED,
+                        (newValue as String).toInt(),
+                    )
+                }
+            setResultAndFinish(activity, resultIntent)
+            true
+        }
     }
 
     fun setupSaveOption(
@@ -152,15 +170,6 @@ object GameMenuHelper {
                 setResultAndFinish(activity, resultIntent)
                 true
             }
-            "pref_game_fast_forward" -> {
-                val currentValue = (preference as SwitchPreference).isChecked
-                val resultIntent =
-                    Intent().apply {
-                        putExtra(GameMenuContract.RESULT_ENABLE_FAST_FORWARD, currentValue)
-                    }
-                setResultAndFinish(activity, resultIntent)
-                true
-            }
             "pref_game_reset" -> {
                 val resultIntent =
                     Intent().apply {
@@ -221,8 +230,10 @@ object GameMenuHelper {
         activity?.finish()
     }
 
-    fun getSaveStateDescription(saveInfo: SaveInfo): String {
-        val formatter = SimpleDateFormat.getDateTimeInstance()
+    fun getSaveStateDescription(
+        saveInfo: SaveInfo,
+        formatter: DateFormat = SimpleDateFormat.getDateTimeInstance(),
+    ): String {
         return if (saveInfo.exists) {
             formatter.format(saveInfo.date)
         } else {
@@ -239,7 +250,7 @@ object GameMenuHelper {
         index: Int,
     ): Bitmap? {
         if (!saveStateInfo.exists) return null
-        val imageSize = GraphicsUtils.convertDpToPixel(96f, context).roundToInt()
+        val imageSize = GraphicsUtils.convertDpToPixel(StatesPreviewManager.PREVIEW_SIZE_DP, context).roundToInt()
         return statesPreviewManager.getPreviewForSlot(game, coreID, index, imageSize)
     }
 

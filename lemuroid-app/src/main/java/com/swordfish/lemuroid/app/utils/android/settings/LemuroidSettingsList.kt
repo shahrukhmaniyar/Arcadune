@@ -1,18 +1,22 @@
 package com.swordfish.lemuroid.app.utils.android.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,9 +28,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.alorma.compose.settings.storage.base.SettingValueState
+import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -77,53 +87,82 @@ fun LemuroidSettingsList(
         }
     }
 
-    AlertDialog(
+    ArcaduneDialog(
+        onDismissRequest = { showDialog = false },
         title = title,
-        text = {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(scrollState)
-                        .selectableGroup(),
-            ) {
-                if (subtitle != null) {
+        dismissButton = {
+            ArcadunePillButton(
+                label = stringResource(id = R.string.cancel),
+                onClick = { showDialog = false },
+            )
+        },
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (subtitle != null) {
+                ProvideTextStyle(
+                    value = MaterialTheme.typography.bodySmall.copy(color = ArcaduneColors.OnSurfaceDim),
+                ) {
                     subtitle()
-                    Spacer(modifier = Modifier.size(8.dp))
                 }
+                Spacer(modifier = Modifier.size(4.dp))
+            }
 
-                items.forEachIndexed { index, item ->
-                    val isSelected by rememberUpdatedState(newValue = state.value == index)
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .selectable(
-                                    role = Role.RadioButton,
-                                    selected = isSelected,
-                                    onClick = {
-                                        onSelected(index, !isSelected)
-                                        onItemSelected?.invoke(index, items[index])
+            items.forEachIndexed { index, item ->
+                val isSelected by rememberUpdatedState(newValue = state.value == index)
+                val rowShape = RoundedCornerShape(14.dp)
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 50.dp)
+                            .clip(rowShape)
+                            .background(
+                                if (isSelected) {
+                                    ArcaduneColors.Purple.copy(alpha = 0.16f)
+                                } else {
+                                    ArcaduneColors.SurfaceHigh.copy(alpha = 0.65f)
+                                },
+                            )
+                            .border(
+                                width = 1.dp,
+                                color =
+                                    if (isSelected) {
+                                        ArcaduneColors.Purple.copy(alpha = 0.55f)
+                                    } else {
+                                        ArcaduneColors.GlassEdge
                                     },
-                                ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = null,
-                        )
-                        Text(
-                            text = item,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 16.dp),
-                        )
-                    }
+                                shape = rowShape,
+                            )
+                            .selectable(
+                                role = Role.RadioButton,
+                                selected = isSelected,
+                                onClick = {
+                                    onSelected(index, !isSelected)
+                                    onItemSelected?.invoke(index, items[index])
+                                },
+                            )
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = null,
+                    )
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = ArcaduneColors.OnSurface,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
                 }
             }
-        },
-        onDismissRequest = { showDialog = false },
-        confirmButton = {},
-        dismissButton = {},
-    )
+        }
+    }
 }

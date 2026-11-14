@@ -30,13 +30,17 @@ private suspend fun GLSurfaceView.takeScreenshot(maxResolution: Int): Bitmap? =
 
         queueEvent {
             try {
+                if (width <= 0 || height <= 0 || maxResolution <= 0) {
+                    cont.resume(null)
+                    return@queueEvent
+                }
                 val outputScaling = maxResolution / maxOf(width, height).toFloat()
                 val inputScaling = outputScaling * 2
 
                 val inputBitmap =
                     Bitmap.createBitmap(
-                        (width * inputScaling).roundToInt(),
-                        (height * inputScaling).roundToInt(),
+                        (width * inputScaling).roundToInt().coerceAtLeast(1),
+                        (height * inputScaling).roundToInt().coerceAtLeast(1),
                         Bitmap.Config.ARGB_8888,
                     )
 
@@ -46,13 +50,17 @@ private suspend fun GLSurfaceView.takeScreenshot(maxResolution: Int): Bitmap? =
                         val outputBitmap =
                             Bitmap.createScaledBitmap(
                                 inputBitmap,
-                                (width * outputScaling).roundToInt(),
-                                (height * outputScaling).roundToInt(),
+                                (width * outputScaling).roundToInt().coerceAtLeast(1),
+                                (height * outputScaling).roundToInt().coerceAtLeast(1),
                                 true,
                             )
+                        if (outputBitmap !== inputBitmap) {
+                            inputBitmap.recycle()
+                        }
 
                         cont.resume(outputBitmap)
                     } else {
+                        inputBitmap.recycle()
                         cont.resumeWithException(RuntimeException("Cannot take screenshot. Error code: $result"))
                     }
                 }

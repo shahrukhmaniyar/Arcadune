@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.utils.android.settings
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.swordfish.lemuroid.app.utils.settings.rememberSafePreferenceBooleanSettingState
@@ -8,6 +9,12 @@ import com.swordfish.lemuroid.app.utils.settings.rememberSafePreferenceIndexSett
 import com.swordfish.lemuroid.app.utils.settings.rememberSafePreferenceIntSettingState
 import com.swordfish.lemuroid.app.utils.settings.rememberSafePreferenceStringsSetSettingState
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
+
+@Composable
+private fun rememberHarmonyPreferences() =
+    LocalContext.current.applicationContext.let { appContext ->
+        remember(appContext) { SharedPreferencesHelper.getSharedPreferences(appContext) }
+    }
 
 @Composable
 fun booleanPreferenceState(
@@ -22,7 +29,7 @@ fun booleanPreferenceState(
 ) = rememberSafePreferenceBooleanSettingState(
     key = key,
     defaultValue = default,
-    preferences = SharedPreferencesHelper.getSharedPreferences(LocalContext.current),
+    preferences = rememberHarmonyPreferences(),
 )
 
 @Composable
@@ -41,7 +48,7 @@ fun indexPreferenceState(
     key = key,
     values = values,
     defaultValue = default,
-    preferences = SharedPreferencesHelper.getSharedPreferences(LocalContext.current),
+    preferences = rememberHarmonyPreferences(),
 )
 
 @Composable
@@ -51,7 +58,7 @@ fun stringsSetPreferenceState(
 ) = rememberSafePreferenceStringsSetSettingState(
     key = key,
     defaultValue = default,
-    preferences = SharedPreferencesHelper.getSharedPreferences(LocalContext.current),
+    preferences = rememberHarmonyPreferences(),
 )
 
 @Composable
@@ -61,5 +68,5 @@ fun intPreferenceState(
 ) = rememberSafePreferenceIntSettingState(
     key = key,
     defaultValue = default,
-    preferences = SharedPreferencesHelper.getSharedPreferences(LocalContext.current),
+    preferences = rememberHarmonyPreferences(),
 )

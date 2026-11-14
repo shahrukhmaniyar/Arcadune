@@ -3,6 +3,7 @@ package com.swordfish.touchinput.skin
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.absoluteOffset
@@ -157,50 +158,61 @@ fun ConsoleShell(
         PanelBody(modifier, palette, screens, screenPanel)
         return
     }
-    Canvas(modifier) {
-        val bezelWidth = SCREEN_BEZEL_DP.dp.toPx()
-        val windowCorner = 4.dp.toPx()
-        val bezelCorner = 16.dp.toPx()
-        val darkBody = palette.body.luminance() < 0.3f
-        val bezel = if (darkBody) Color(0xFF0D0E11) else Color(0xFF1C1D22)
+    androidx.compose.foundation.layout.Spacer(
+        modifier.drawWithCache {
+            val bezelWidth = SCREEN_BEZEL_DP.dp.toPx()
+            val windowCorner = 4.dp.toPx()
+            val bezelCorner = 16.dp.toPx()
+            val darkBody = palette.body.luminance() < 0.3f
+            val bezel = if (darkBody) Color(0xFF0D0E11) else Color(0xFF1C1D22)
 
-        fun rounded(
-            rect: Rect,
-            corner: Float,
-        ) = Path().apply { addRoundRect(RoundRect(rect, CornerRadius(corner))) }
+            fun rounded(
+                rect: Rect,
+                corner: Float,
+            ) = Path().apply { addRoundRect(RoundRect(rect, CornerRadius(corner))) }
 
-        val windows = screens.fold(Path()) { path, screen -> Path.combine(PathOperation.Union, path, rounded(screen, windowCorner)) }
-        val bezels =
-            screens.fold(Path()) { path, screen ->
-                Path.combine(PathOperation.Union, path, rounded(screen.inflate(bezelWidth), bezelCorner))
+            val windows = screens.fold(Path()) { path, screen -> Path.combine(PathOperation.Union, path, rounded(screen, windowCorner)) }
+            val bezels =
+                screens.fold(Path()) { path, screen ->
+                    Path.combine(PathOperation.Union, path, rounded(screen.inflate(bezelWidth), bezelCorner))
+                }
+
+            // The body: everything but the bezels.
+            val body = Path.combine(PathOperation.Difference, Path().apply { addRect(Rect(Offset.Zero, size)) }, bezels)
+            val bezelRing = Path.combine(PathOperation.Difference, bezels, windows)
+            val bodyBrush = Brush.verticalGradient(listOf(palette.body, palette.bodyShade))
+            val bezelHighlight = Color.White.copy(alpha = if (darkBody) 0.05f else 0.35f)
+            val stroke1 = Stroke(1.dp.toPx())
+            val stroke2 = Stroke(2.dp.toPx())
+            val hinge = hingeBetween(screens)
+
+            onDrawBehind {
+                drawPath(body, bodyBrush)
+
+                // The bezels around the windows, then a soft shadow inside each window's edge.
+                drawPath(bezelRing, bezel)
+                drawPath(bezels, bezelHighlight, style = stroke1)
+                for (screen in screens) {
+                    drawRoundRect(Color.Black.copy(alpha = 0.55f), screen.topLeft, screen.size, CornerRadius(windowCorner), style = stroke2)
+                }
+
+                // A hinge between two screens stacked one above the other (the DS and 3DS held upright),
+                // only in the gap between the windows so it never covers the game.
+                hinge?.let { (y, gap) ->
+                    val height = (gap - 4.dp.toPx()).coerceAtMost(18.dp.toPx())
+                    if (height <= 0f) return@let
+                    val band = palette.body.shade(-0.08f)
+                    drawRect(band, Offset(0f, y - height / 2), Size(size.width, height))
+                    drawRect(Color.Black.copy(alpha = 0.12f), Offset(0f, y + height / 2 - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
+                    val knuckle = Size(size.width * 0.14f, height)
+                    for (x in listOf(size.width * 0.05f, size.width * 0.81f)) {
+                        drawRoundRect(palette.body.shade(-0.14f), Offset(x, y - height / 2), knuckle, CornerRadius(height / 2))
+                        drawRoundRect(Color.White.copy(alpha = 0.18f), Offset(x + height * 0.3f, y - height * 0.3f), Size(knuckle.width - height * 0.6f, 2.dp.toPx()), CornerRadius(1.dp.toPx()))
+                    }
+                }
             }
-
-        // The body: everything but the bezels.
-        val body = Path.combine(PathOperation.Difference, Path().apply { addRect(Rect(Offset.Zero, size)) }, bezels)
-        drawPath(body, Brush.verticalGradient(listOf(palette.body, palette.bodyShade)))
-
-        // The bezels around the windows, then a soft shadow inside each window's edge.
-        drawPath(Path.combine(PathOperation.Difference, bezels, windows), bezel)
-        drawPath(bezels, Color.White.copy(alpha = if (darkBody) 0.05f else 0.35f), style = Stroke(1.dp.toPx()))
-        for (screen in screens) {
-            drawRoundRect(Color.Black.copy(alpha = 0.55f), screen.topLeft, screen.size, CornerRadius(windowCorner), style = Stroke(2.dp.toPx()))
-        }
-
-        // A hinge between two screens stacked one above the other (the DS and 3DS held upright),
-        // only in the gap between the windows so it never covers the game.
-        hingeBetween(screens)?.let { (y, gap) ->
-            val height = (gap - 4.dp.toPx()).coerceAtMost(18.dp.toPx())
-            if (height <= 0f) return@let
-            val band = palette.body.shade(-0.08f)
-            drawRect(band, Offset(0f, y - height / 2), Size(size.width, height))
-            drawRect(Color.Black.copy(alpha = 0.12f), Offset(0f, y + height / 2 - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
-            val knuckle = Size(size.width * 0.14f, height)
-            for (x in listOf(size.width * 0.05f, size.width * 0.81f)) {
-                drawRoundRect(palette.body.shade(-0.14f), Offset(x, y - height / 2), knuckle, CornerRadius(height / 2))
-                drawRoundRect(Color.White.copy(alpha = 0.18f), Offset(x + height * 0.3f, y - height * 0.3f), Size(knuckle.width - height * 0.6f, 2.dp.toPx()), CornerRadius(1.dp.toPx()))
-            }
-        }
-    }
+        },
+    )
 }
 
 /**
@@ -214,24 +226,29 @@ private fun UprightBody(
     palette: SkinPalette,
     bodyTop: Float,
 ) {
-    Canvas(modifier) {
-        val corner = UPRIGHT_BODY_CORNER.dp.toPx()
-        val below = Path().apply { addRect(Rect(0f, bodyTop - corner, size.width, size.height)) }
+    androidx.compose.foundation.layout.Spacer(
+        modifier.drawWithCache {
+            val corner = UPRIGHT_BODY_CORNER.dp.toPx()
+            val below = Path().apply { addRect(Rect(0f, bodyTop - corner, size.width, size.height)) }
 
-        // The black above, with rounded bottom corners, cut out of the body ([lift] lower edge).
-        fun above(lift: Float): Path {
-            val black = RoundRect(Rect(0f, -corner, size.width, bodyTop + lift), CornerRadius(corner))
-            return Path().apply { addRoundRect(black) }
-        }
+            // The black above, with rounded bottom corners, cut out of the body ([lift] lower edge).
+            fun above(lift: Float): Path {
+                val black = RoundRect(Rect(0f, -corner, size.width, bodyTop + lift), CornerRadius(corner))
+                return Path().apply { addRoundRect(black) }
+            }
 
-        drawPath(
-            Path.combine(PathOperation.Difference, below, above(0f)),
-            Brush.verticalGradient(listOf(palette.body, palette.bodyShade), bodyTop - corner, size.height),
-        )
-        // A soft light along the body's top edge.
-        val edge = Path.combine(PathOperation.Difference, above(1.5f.dp.toPx()), above(0f))
-        drawPath(edge, Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.1f else 0.45f))
-    }
+            val bodyPath = Path.combine(PathOperation.Difference, below, above(0f))
+            val bodyBrush = Brush.verticalGradient(listOf(palette.body, palette.bodyShade), bodyTop - corner, size.height)
+            // A soft light along the body's top edge.
+            val edge = Path.combine(PathOperation.Difference, above(1.5f.dp.toPx()), above(0f))
+            val edgeColor = Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.1f else 0.45f)
+
+            onDrawBehind {
+                drawPath(bodyPath, bodyBrush)
+                drawPath(edge, edgeColor)
+            }
+        },
+    )
 }
 
 /**
@@ -246,35 +263,42 @@ private fun PanelBody(
     screens: List<Rect>,
     panel: Rect,
 ) {
-    Canvas(modifier) {
-        val outline = SCREEN_OUTLINE_DP.dp.toPx()
-        val windows =
-            screens.fold(Path()) { path, screen ->
-                Path.combine(PathOperation.Union, path, Path().apply { addRect(screen) })
+    androidx.compose.foundation.layout.Spacer(
+        modifier.drawWithCache {
+            val outline = SCREEN_OUTLINE_DP.dp.toPx()
+            val windows =
+                screens.fold(Path()) { path, screen ->
+                    Path.combine(PathOperation.Union, path, Path().apply { addRect(screen) })
+                }
+            val everything = Path().apply { addRect(Rect(Offset.Zero, size)) }
+            val bodyPath = Path.combine(PathOperation.Difference, everything, windows)
+            val bodyBrush = Brush.verticalGradient(listOf(palette.body.shade(0.06f), palette.bodyShade))
+            // The sunken panel: a little darker, shaded on its upper edge, lit on its lower one.
+            val corner = CornerRadius(18.dp.toPx())
+            val sunken = Path().apply { addRoundRect(RoundRect(panel, corner)) }
+            val sunkenPath = Path.combine(PathOperation.Difference, sunken, windows)
+            val edge = Stroke(1.5f.dp.toPx())
+            val highlightStroke = Stroke(1.dp.toPx())
+            val ringStroke = Stroke(outline)
+
+            onDrawBehind {
+                drawPath(bodyPath, bodyBrush)
+                drawPath(sunkenPath, palette.body.shade(-0.04f))
+                drawRoundRect(Color.Black.copy(alpha = 0.16f), panel.topLeft, panel.size, corner, style = edge)
+                drawRoundRect(
+                    Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.06f else 0.35f),
+                    panel.topLeft + Offset(0f, 1.5f.dp.toPx()),
+                    panel.size,
+                    corner,
+                    style = highlightStroke,
+                )
+                for (screen in screens) {
+                    val ring = screen.inflate(outline / 2)
+                    drawRect(palette.body.shade(-0.7f), ring.topLeft, ring.size, style = ringStroke)
+                }
             }
-        val everything = Path().apply { addRect(Rect(Offset.Zero, size)) }
-        drawPath(
-            Path.combine(PathOperation.Difference, everything, windows),
-            Brush.verticalGradient(listOf(palette.body.shade(0.06f), palette.bodyShade)),
-        )
-        // The sunken panel: a little darker, shaded on its upper edge, lit on its lower one.
-        val corner = CornerRadius(18.dp.toPx())
-        val sunken = Path().apply { addRoundRect(RoundRect(panel, corner)) }
-        drawPath(Path.combine(PathOperation.Difference, sunken, windows), palette.body.shade(-0.04f))
-        val edge = Stroke(1.5f.dp.toPx())
-        drawRoundRect(Color.Black.copy(alpha = 0.16f), panel.topLeft, panel.size, corner, style = edge)
-        drawRoundRect(
-            Color.White.copy(alpha = if (palette.body.luminance() < 0.3f) 0.06f else 0.35f),
-            panel.topLeft + Offset(0f, 1.5f.dp.toPx()),
-            panel.size,
-            corner,
-            style = Stroke(1.dp.toPx()),
-        )
-        for (screen in screens) {
-            val ring = screen.inflate(outline / 2)
-            drawRect(palette.body.shade(-0.7f), ring.topLeft, ring.size, style = Stroke(outline))
-        }
-    }
+        },
+    )
 }
 
 /** How round the bottom corners of the black above the upright body are, in dp. */
@@ -328,8 +352,18 @@ fun placeShell(
     dp: Float,
 ): ShellPlacement {
     val layout = if (isLandscape) skin.landscape else skin.portrait
-    val panelWidth = minOf(width, MAX_PANEL_WIDTH * dp)
-    val naturalHeight = panelWidth * skin.portrait.height / skin.portrait.width
+    val desiredWidth = minOf(width, MAX_PANEL_WIDTH * dp)
+    val desiredHeight = desiredWidth * skin.portrait.height / skin.portrait.width
+    // On square-ish unfolded foldables or split-screen windows, cap controller height to 56% of safe
+    // height while shrinking width proportionally so controller aspect ratio stays exact.
+    val maxPanelHeight = (safe.height * MAX_PORTRAIT_PANEL_HEIGHT_SHARE).coerceAtLeast(1f)
+    val naturalHeight = minOf(desiredHeight, maxPanelHeight)
+    val panelWidth =
+        if (desiredHeight > maxPanelHeight) {
+            naturalHeight * skin.portrait.width / skin.portrait.height
+        } else {
+            desiredWidth
+        }
     val panelTop = safe.bottom - naturalHeight - PANEL_BOTTOM * dp
     val panel = Rect((width - panelWidth) / 2, panelTop, (width + panelWidth) / 2, panelTop + naturalHeight)
     val bodyTop = panelTop - BODY_ABOVE_PANEL * dp
@@ -341,7 +375,7 @@ fun placeShell(
     val frame = if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP
     val sidewaysScale =
         minOf((height - 8 * dp) / skin.landscape.height, (safe.right - safe.left - 8 * dp) / skin.landscape.width)
-    val area =
+    val rawArea =
         when {
             !shell -> safe
             !isLandscape && side != null ->
@@ -354,18 +388,25 @@ fun placeShell(
             !isLandscape -> Rect(safe.left, safe.top, safe.right, bodyTop - SCREEN_TO_BODY * dp)
             else -> {
                 val screens = layout.screenArea ?: SkinRect(0f, 0f, layout.width, layout.height)
-                val usable = Rect(safe.left + 4 * dp, 4 * dp, safe.right - 4 * dp, height - 4 * dp)
+                val usable = Rect(safe.left + 4 * dp, safe.top + 4 * dp, safe.right - 4 * dp, height - 4 * dp)
                 val scale = minOf(usable.height / layout.height, usable.width / layout.width)
                 // The bezel is drawn outside the window: keep it, and a little air, off the wings.
-                val side = (frame + SCREEN_TO_WING) * dp
+                val sidePad = (frame + SCREEN_TO_WING) * dp
                 Rect(
-                    usable.left + screens.x * scale + side,
+                    usable.left + screens.x * scale + sidePad,
                     usable.top + screens.y * scale,
-                    usable.right - (layout.width - screens.x - screens.width) * scale - side,
+                    usable.right - (layout.width - screens.x - screens.width) * scale - sidePad,
                     usable.bottom - (layout.height - screens.y - screens.height) * scale,
                 )
             }
         }
+    val area =
+        Rect(
+            rawArea.left,
+            rawArea.top,
+            maxOf(rawArea.left + 1f, rawArea.right),
+            maxOf(rawArea.top + 1f, rawArea.bottom),
+        )
     val fitted = (if (shell) spec?.fitIn(area) else null) ?: listOf(area)
     // The DS upright sits its screens on the L / R tabs (the space left over goes above them).
     val drop = if (shell && !isLandscape && side != null) area.bottom - fitted.maxOf { it.bottom } else 0f
@@ -393,6 +434,7 @@ private const val SCREEN_PANEL_PAD = 12f
 // Upright, in dp: the widest the controller gets (tablets), the space under it, the body showing
 // above its first row of controls, and the least black between the screen and the body.
 private const val MAX_PANEL_WIDTH = 520f
+private const val MAX_PORTRAIT_PANEL_HEIGHT_SHARE = 0.56f
 private const val PANEL_BOTTOM = 4f
 private const val BODY_ABOVE_PANEL = 8f
 internal const val SCREEN_TO_BODY = 18f
@@ -423,6 +465,9 @@ fun ArcaduneShellPreview(
     onMove: ((Int, Offset) -> Unit)? = null,
     /** The skin's designed pictures for this orientation, when it has them (see [SkinArt]). */
     art: SkinArt? = null,
+    selectedIndex: Int? = null,
+    onSelect: ((Int?) -> Unit)? = null,
+    accentColor: Color = Color(0xFFB57BFF),
 ) {
     val corners = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.clip(corners)) {
@@ -494,6 +539,9 @@ fun ArcaduneShellPreview(
                     shell = shell,
                     art = art,
                     topExtra = with(density) { above.toDp() },
+                    selectedIndex = selectedIndex,
+                    onSelect = onSelect,
+                    accentColor = accentColor,
                 )
             } else {
                 ArcaduneSkinPreview(controls, layout, isLandscape, shell, customization, art)

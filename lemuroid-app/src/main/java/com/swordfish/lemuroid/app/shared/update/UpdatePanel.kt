@@ -7,13 +7,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -21,12 +17,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import com.swordfish.lemuroid.R
-import com.swordfish.lemuroid.app.utils.android.ComposableLifecycle
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneGlassCard
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import com.swordfish.lemuroid.app.shared.update.AppUpdater.State
+import com.swordfish.lemuroid.app.utils.android.ComposableLifecycle
 
 /** The update notice of the library: shown only while there is an update to get. */
 @Composable
@@ -40,8 +40,11 @@ fun UpdateNotice(modifier: Modifier = Modifier) {
             else -> false
         }
     if (!visible) return
-    ElevatedCard(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        UpdateContent(state = state, showNotes = false, modifier = Modifier.padding(16.dp))
+    ArcaduneGlassCard(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        cornerRadius = 22.dp,
+    ) {
+        UpdateContent(state = state, showNotes = false, modifier = Modifier.padding(18.dp))
     }
 }
 
@@ -50,7 +53,7 @@ fun UpdateNotice(modifier: Modifier = Modifier) {
 fun UpdateSettingsContent(modifier: Modifier = Modifier) {
     if (!AppUpdater.isSupported) return
     val state by AppUpdater.state.collectAsState()
-    UpdateContent(state = state, showNotes = true, modifier = modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+    UpdateContent(state = state, showNotes = true, modifier = modifier.padding(horizontal = 18.dp, vertical = 12.dp))
 }
 
 @Composable
@@ -76,7 +79,11 @@ private fun UpdateContent(
                 is State.Failed -> state.release?.let { stringResource(R.string.update_available, it.version) }
                 else -> null
             } ?: stringResource(R.string.update_current_version, AppUpdater.currentVersion)
-        Text(text = title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = ArcaduneColors.OnSurface,
+        )
 
         val message =
             when (state) {
@@ -97,7 +104,7 @@ private fun UpdateContent(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = ArcaduneColors.OnSurfaceDim,
             )
         }
 
@@ -107,7 +114,7 @@ private fun UpdateContent(
                 Text(
                     text = notes,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = ArcaduneColors.OnSurfaceDim,
                     maxLines = 8,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -115,13 +122,18 @@ private fun UpdateContent(
         }
 
         if (state is State.Downloading) {
-            LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = { state.progress },
+                modifier = Modifier.fillMaxWidth(),
+                color = ArcaduneColors.Purple,
+                trackColor = ArcaduneColors.SurfaceHigh,
+            )
         }
         if (state is State.ReadyToInstall) {
             Text(
                 text = stringResource(R.string.update_install_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = ArcaduneColors.OnSurfaceDim,
             )
         }
 
@@ -132,32 +144,38 @@ private fun UpdateContent(
         ) {
             when (state) {
                 State.Idle, State.UpToDate ->
-                    OutlinedButton(onClick = { AppUpdater.check(context) }) {
-                        Text(stringResource(R.string.update_check))
-                    }
+                    ArcadunePillButton(
+                        label = stringResource(R.string.update_check),
+                        onClick = { AppUpdater.check(context) },
+                    )
                 State.Checking, is State.Installing -> Unit
-                is State.Available ->
-                    Button(onClick = { AppUpdater.download(context, state.release) }) {
-                        val size = Formatter.formatShortFileSize(context, state.release.apkSize)
-                        Text(stringResource(R.string.update_download, size))
-                    }
+                is State.Available -> {
+                    val size = Formatter.formatShortFileSize(context, state.release.apkSize)
+                    ArcadunePillButton(
+                        label = stringResource(R.string.update_download, size),
+                        highlighted = true,
+                        onClick = { AppUpdater.download(context, state.release) },
+                    )
+                }
                 is State.Downloading ->
-                    TextButton(onClick = { AppUpdater.cancelDownload() }) {
-                        Text(stringResource(R.string.update_cancel))
-                    }
+                    ArcadunePillButton(
+                        label = stringResource(R.string.update_cancel),
+                        onClick = { AppUpdater.cancelDownload() },
+                    )
                 is State.ReadyToInstall ->
-                    Button(onClick = { AppUpdater.install(context, state) }) {
-                        Text(stringResource(R.string.update_install))
-                    }
+                    ArcadunePillButton(
+                        label = stringResource(R.string.update_install),
+                        highlighted = true,
+                        onClick = { AppUpdater.install(context, state) },
+                    )
                 is State.Failed ->
-                    OutlinedButton(
+                    ArcadunePillButton(
+                        label = stringResource(R.string.update_try_again),
                         onClick = {
                             val release = state.release
                             if (release != null) AppUpdater.download(context, release) else AppUpdater.check(context)
                         },
-                    ) {
-                        Text(stringResource(R.string.update_try_again))
-                    }
+                    )
             }
         }
     }

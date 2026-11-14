@@ -8,13 +8,10 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,19 +19,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.fredporciuncula.flow.preferences.FlowSharedPreferences
-import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.covermanager.CoverManagerScreen
 import com.swordfish.lemuroid.app.mobile.feature.covermanager.CoverManagerViewModel
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeNotices
+import com.swordfish.lemuroid.app.mobile.feature.home.HomeViewModel
 import com.swordfish.lemuroid.app.mobile.feature.library.LibraryScreen
 import com.swordfish.lemuroid.app.mobile.feature.library.LibraryViewModel
-import com.swordfish.lemuroid.app.mobile.feature.home.HomeViewModel
+import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RetroAchievementsSettingsScreen
+import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RetroAchievementsSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosScreen
@@ -43,6 +42,8 @@ import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.inputdevices.InputDevicesSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.inputdevices.InputDevicesSettingsViewModel
+import com.swordfish.lemuroid.app.mobile.feature.settings.saves.SavesSettingsScreen
+import com.swordfish.lemuroid.app.mobile.feature.settings.saves.SavesSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.savesync.SaveSyncSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.savesync.SaveSyncSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
@@ -65,14 +66,12 @@ import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
+import com.swordfish.lemuroid.lib.saves.SavesManager
 import com.swordfish.lemuroid.lib.savesync.SaveSyncManager
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import dagger.Provides
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
 import javax.inject.Inject
 
-@OptIn(DelicateCoroutinesApi::class)
 class MainActivity : RetrogradeComponentActivity(), BusyActivity {
     @Inject
     lateinit var gameLaunchTaskHandler: GameLaunchTaskHandler
@@ -98,6 +97,12 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
     @Inject
     lateinit var inputDeviceManager: InputDeviceManager
 
+    @Inject
+    lateinit var directoriesManager: DirectoriesManager
+
+    @Inject
+    lateinit var savesManager: SavesManager
+
     private val reviewManager = ReviewManager()
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -111,7 +116,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         )
         super.onCreate(savedInstanceState)
 
-        GlobalScope.safeLaunch {
+        lifecycleScope.safeLaunch {
             reviewManager.initialize(applicationContext)
         }
 
@@ -121,7 +126,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun MainScreen(navController: NavHostController) {
         AppTheme {
@@ -158,29 +162,29 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 infoDialogDisplayed.value = true
             }
 
-
             val mainUIState =
                 mainViewModel.state
                     .collectAsState(MainViewModel.UiState())
                     .value
 
-            // The library draws its own bars, like Delta; the other screens keep the usual top bar.
-            val isLibrary = currentRoute == MainRoute.HOME
-            Scaffold(
-                topBar = {
-                    if (!isLibrary) MainTopBar(
-                        currentRoute = currentRoute,
-                        navController = navController,
-                        onHelpPressed = onHelpPressed,
-                        mainUIState = mainUIState,
+            val legacyFlowPreferences =
+                remember {
+                    FlowSharedPreferences(
+                        SharedPreferencesHelper.getLegacySharedPreferences(applicationContext),
                     )
-                },
-            ) { padding ->
+                }
+
+            // Each Settings / utility route hosts its own MainTopBar inside its composable sheet,
+            // so headers and content glide together without top-bar jumps or padding mutations.
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onBackground,
+            ) {
                 NavHost(
                     modifier = Modifier.fillMaxSize(),
                     navController = navController,
                     startDestination = MainRoute.HOME.route,
-                    // iOS-like pushes: the new screen slides in from the right on a spring.
                     enterTransition = { ArcaduneMotion.pushEnter },
                     exitTransition = { ArcaduneMotion.pushExit },
                     popEnterTransition = { ArcaduneMotion.popEnter },
@@ -203,16 +207,26 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             },
                         )
                     }
-                    composable(MainRoute.COVER_MANAGER) {
+                    composable(
+                        route = MainRoute.COVER_MANAGER,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         CoverManagerScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel = viewModel(factory = CoverManagerViewModel.Factory(application, retrogradeDb)),
                             onGameClick = onGameLongClick,
                         )
                     }
-                    composable(MainRoute.SETTINGS) {
+                    composable(
+                        route = MainRoute.SETTINGS,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         SettingsScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel =
                                 viewModel(
                                     factory =
@@ -220,19 +234,24 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                             applicationContext,
                                             settingsInteractor,
                                             saveSyncManager,
-                                            FlowSharedPreferences(
-                                                SharedPreferencesHelper.getLegacySharedPreferences(
-                                                    applicationContext,
-                                                ),
-                                            ),
+                                            legacyFlowPreferences,
+                                            biosManager,
+                                            directoriesManager,
+                                            savesManager,
+                                            retrogradeDb,
                                         ),
                                 ),
                             navController = navController,
                         )
                     }
-                    composable(MainRoute.SETTINGS_ADVANCED) {
+                    composable(
+                        route = MainRoute.SETTINGS_ADVANCED,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         AdvancedSettingsScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel =
                                 viewModel(
                                     factory =
@@ -244,31 +263,51 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             navController = navController,
                         )
                     }
-                    composable(MainRoute.SETTINGS_SKINS) {
+                    composable(
+                        route = MainRoute.SETTINGS_SKINS,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         com.swordfish.lemuroid.app.mobile.feature.settings.skins.SkinGalleryScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             navController = navController,
                         )
                     }
                     composable(MainRoute.SETTINGS_SKIN_LAYOUT) { entry ->
                         com.swordfish.lemuroid.app.mobile.feature.settings.skins.SkinLayoutEditorScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             controller = entry.arguments?.getString("controller") ?: "",
-                            onDone = { navController.popBackStack() },
+                            initialLandscape = entry.arguments?.getBoolean("landscape") ?: false,
+                            onDone = {
+                                if (navController.previousBackStackEntry != null) {
+                                    navController.popBackStack()
+                                }
+                            },
                         )
                     }
-                    composable(MainRoute.SETTINGS_BIOS) {
+                    composable(
+                        route = MainRoute.SETTINGS_BIOS,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         BiosScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel =
                                 viewModel(
                                     factory = BiosSettingsViewModel.Factory(biosManager),
                                 ),
                         )
                     }
-                    composable(MainRoute.SETTINGS_INPUT_DEVICES) {
+                    composable(
+                        route = MainRoute.SETTINGS_INPUT_DEVICES,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         InputDevicesSettingsScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel =
                                 viewModel(
                                     factory =
@@ -279,9 +318,14 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 ),
                         )
                     }
-                    composable(MainRoute.SETTINGS_SAVE_SYNC) {
+                    composable(
+                        route = MainRoute.SETTINGS_SAVE_SYNC,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
                         SaveSyncSettingsScreen(
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier.fillMaxSize(),
                             viewModel =
                                 viewModel(
                                     factory =
@@ -289,6 +333,40 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                             application,
                                             saveSyncManager,
                                         ),
+                                ),
+                        )
+                    }
+                    composable(
+                        route = MainRoute.SETTINGS_SAVES,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
+                        SavesSettingsScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            viewModel =
+                                viewModel(
+                                    factory =
+                                        SavesSettingsViewModel.Factory(
+                                            applicationContext,
+                                            directoriesManager,
+                                            savesManager,
+                                            retrogradeDb,
+                                        ),
+                                ),
+                        )
+                    }
+                    composable(
+                        route = MainRoute.SETTINGS_RETRO_ACHIEVEMENTS,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
+                        RetroAchievementsSettingsScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            viewModel =
+                                viewModel(
+                                    factory = RetroAchievementsSettingsViewModel.Factory(applicationContext),
                                 ),
                         )
                     }
@@ -307,7 +385,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 onSetCustomName = { game, name -> gameInteractor.onSetCustomName(game, name) },
                 onClearCustomName = { game -> gameInteractor.onClearCustomName(game) },
                 onSetCustomCoverUri = { game, uri -> gameInteractor.onSetCustomCoverUri(game, uri) },
-                onClearCustomCoverUri = { game -> gameInteractor.onClearCustomCoverUri(game) },            )
+                onClearCustomCoverUri = { game -> gameInteractor.onClearCustomCoverUri(game) },
+            )
 
             if (infoDialogDisplayed.value) {
                 AboutDialog(onDismiss = { infoDialogDisplayed.value = false })
@@ -328,7 +407,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
 
         when (requestCode) {
             BaseGameActivity.REQUEST_PLAY_GAME -> {
-                GlobalScope.safeLaunch {
+                lifecycleScope.safeLaunch {
                     gameLaunchTaskHandler.handleGameFinish(
                         true,
                         this@MainActivity,

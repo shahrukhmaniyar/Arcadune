@@ -1,20 +1,25 @@
 package com.swordfish.lemuroid.app.mobile.feature.settings.skins
 
-import androidx.compose.foundation.layout.Arrangement
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.os.Build
+import android.view.WindowManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,179 +27,416 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.swordfish.lemuroid.R
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.swordfish.lemuroid.app.mobile.feature.game.ArcaduneControllerStudio
 import com.swordfish.lemuroid.app.mobile.feature.game.SkinCustomizationStore
-import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.touchinput.radial.settings.TouchControllerID
-import com.swordfish.touchinput.skin.ArcaduneShellPreview
+import com.swordfish.touchinput.skin.ArcaduneSkin
 import com.swordfish.touchinput.skin.ArcaduneSkins
+import com.swordfish.touchinput.skin.ConsoleShell
+import com.swordfish.touchinput.skin.ScreenSpecs
+import com.swordfish.touchinput.skin.SkinArt
+import com.swordfish.touchinput.skin.SkinArtLoader
 import com.swordfish.touchinput.skin.SkinCustomization
+import com.swordfish.touchinput.skin.SkinPalettes
+import com.swordfish.touchinput.skin.SkinVariant
+import com.swordfish.touchinput.skin.placeShell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The route of [id]'s layout editor (see [SkinLayoutEditorScreen]). */
-fun skinLayoutRoute(id: TouchControllerID) = "settings/skins/layout/${id.name}"
+fun skinLayoutRoute(
+    id: TouchControllerID,
+    landscape: Boolean = false,
+) = "settings/skins/layout/${id.name}?landscape=$landscape"
 
 /**
- * Arranges a console's controller outside a game, like the in-game Edit controls: its skin
- * (Console or Minimal), and for the upright and the sideways layout each, every button dragged
- * where the player wants it, one size for all of them and their opacity. Laid out on this phone's
- * own screen shape, so it looks exactly as in a game, and saved under the same key the game reads.
+ * Full-screen 1:1 immersive controller layout studio outside a game.
+ * Hides system bars, rotates the window between Upright and Sideways so thumb scale matches real
+ * gameplay pixel-for-pixel, and shares [ArcaduneControllerStudio] with in-game Edit Controls.
  */
 @Composable
 fun SkinLayoutEditorScreen(
     modifier: Modifier = Modifier,
     controller: String,
+    initialLandscape: Boolean = false,
     onDone: () -> Unit,
 ) {
     val id = TouchControllerID.values().firstOrNull { it.name == controller } ?: return
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
     val store = remember { SkinCustomizationStore(context) }
+
     var variant by remember { mutableStateOf(store.variant(id.name)) }
-    var landscape by rememberSaveable { mutableStateOf(false) }
-    val skin = remember(variant) { ArcaduneSkins.forController(id, variant) } ?: return
+    var landscape by rememberSaveable { mutableStateOf(initialLandscape) }
+    val skin = remember(id, variant) { ArcaduneSkins.forController(id, variant) } ?: return
     val layout = if (landscape) skin.landscape else skin.portrait
     val key = SkinCustomizationStore.keyOf(id.name, landscape, layout)
     val customization = remember(key) { mutableStateOf(store.load(key)) }
     val art = rememberSkinArt(id, variant, landscape)
-    // Kept in memory while dragging (saving every move makes dragging stutter), saved when the
-    // other layout is picked or the screen is left.
-    DisposableEffect(key) { onDispose { store.save(key, customization.value) } }
+    val consoleName = Controllers.firstOrNull { it.first == id }?.second ?: id.name
 
-    // Several moves can arrive between two frames: each builds on the newest value.
-    fun move(
-        index: Int,
-        delta: Offset,
-    ) {
-        val latest = customization.value
-        val current = latest.offsets[index] ?: Offset.Zero
-        customization.value = latest.copy(offsets = latest.offsets + (index to current + delta))
+    // Pre-warm both orientations' artwork in memory so flipping Upright <-> Sideways renders in 0ms.
+    LaunchedEffect(id, variant) {
+        if (variant == SkinVariant.CONSOLE) {
+            withContext(Dispatchers.IO) {
+                SkinArtLoader.load(context, id.name, false)
+                SkinArtLoader.load(context, id.name, true)
+            }
+        }
     }
 
-    // This phone, held upright or sideways.
+    val entryWasLandscape =
+        remember {
+            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        }
+    val previousOrientation =
+        remember(activity) {
+            activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    val previousCutoutMode =
+        remember(activity) {
+            val win = activity?.window
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && win != null) {
+                win.attributes.layoutInDisplayCutoutMode
+            } else {
+                0
+            }
+        }
+    val windowRestored = remember(activity) { booleanArrayOf(false) }
+
+    val restoreSystemWindow =
+        remember(activity, previousOrientation, previousCutoutMode, entryWasLandscape) {
+            {
+                if (!windowRestored[0]) {
+                    windowRestored[0] = true
+                    val window = activity?.window
+                    val insetsController =
+                        window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+                    insetsController?.show(WindowInsetsCompat.Type.systemBars())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && window != null) {
+                        val attrs = window.attributes
+                        attrs.layoutInDisplayCutoutMode = previousCutoutMode
+                        window.attributes = attrs
+                    }
+                    if (activity != null) {
+                        if (previousOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+                            activity.requestedOrientation = previousOrientation
+                        } else {
+                            val snapBack =
+                                if (entryWasLandscape) {
+                                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                } else {
+                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                }
+                            activity.requestedOrientation = snapBack
+                            window?.decorView?.postDelayed(
+                                {
+                                    if (activity.requestedOrientation == snapBack) {
+                                        activity.requestedOrientation =
+                                            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                    }
+                                },
+                                350L,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+    DisposableEffect(activity) {
+        windowRestored[0] = false
+        val window = activity?.window
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && window != null) {
+            val attrs = window.attributes
+            attrs.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = attrs
+        }
+        val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        insetsController?.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController?.hide(WindowInsetsCompat.Type.systemBars())
+        applyEditorOrientation(activity, landscape)
+
+        onDispose { restoreSystemWindow() }
+    }
+
+    LaunchedEffect(activity, landscape) {
+        if (!windowRestored[0]) {
+            applyEditorOrientation(activity, landscape)
+        }
+    }
+
+    DisposableEffect(key) {
+        onDispose { store.save(key, customization.value) }
+    }
+
+    val saveCurrentAndFinish = {
+        store.save(key, customization.value)
+        restoreSystemWindow()
+        onDone()
+    }
+    BackHandler { saveCurrentAndFinish() }
+
     val configuration = LocalConfiguration.current
-    val short = minOf(configuration.screenWidthDp, configuration.screenHeightDp).dp
-    val long = maxOf(configuration.screenWidthDp, configuration.screenHeightDp).dp
-    val name = Controllers.firstOrNull { it.first == id }?.second ?: id.name
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val cutout = WindowInsets.displayCutout
 
-    // A wide, short screen (a phone held sideways, a tablet) has no height to spare: there the
-    // preview takes all the room, with its buttons all in view to drag, and the settings and the
-    // Reset and Done buttons form one compact row under it. A tall screen keeps them stacked.
-    BoxWithConstraints(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        val compact = maxWidth > maxHeight
-        val sizeSlider: @Composable (Modifier) -> Unit = { slider ->
-            Column(slider) {
-                Text(
-                    text = stringResource(R.string.skin_editor_size, (customization.value.size * 100).toInt()),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Slider(
-                    value = customization.value.size,
-                    valueRange = SkinCustomization.MIN_SIZE..SkinCustomization.MAX_SIZE,
-                    onValueChange = { customization.value = customization.value.copy(size = it) },
-                )
-            }
-        }
-        val opacitySlider: @Composable (Modifier) -> Unit = { slider ->
-            Column(slider) {
-                Text(
-                    text = stringResource(R.string.skin_editor_opacity, (customization.value.opacity * 100).toInt()),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Slider(
-                    value = customization.value.opacity,
-                    valueRange = SkinCustomization.MIN_OPACITY..1f,
-                    onValueChange = { customization.value = customization.value.copy(opacity = it) },
-                )
-            }
-        }
-        val buttons: @Composable () -> Unit = {
-            TextButton(onClick = { customization.value = SkinCustomization() }) {
-                Text(stringResource(R.string.skin_editor_reset))
-            }
-            Button(onClick = onDone) { Text(stringResource(R.string.skin_editor_done)) }
-        }
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        val windowMatchesTarget = (constraints.maxWidth > constraints.maxHeight) == landscape
+        val stageModifier: Modifier
+        val widthPx: Float
+        val heightPx: Float
+        val safeRect: Rect
 
-        Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp)) {
-            if (compact) {
-                // The name, the layout and the skin on one line.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    PillSwitch(
-                        options = listOf(false to R.string.skin_layout_upright, true to R.string.skin_layout_sideways),
-                        selected = landscape,
-                        onChange = { landscape = it },
-                    )
-                    VariantSwitch(
-                        variant = variant,
-                        onChange = {
-                            variant = it
-                            store.setVariant(id.name, it)
-                        },
+        if (windowMatchesTarget) {
+            widthPx = constraints.maxWidth.toFloat()
+            heightPx = constraints.maxHeight.toFloat()
+            val left = cutout.getLeft(density, layoutDirection).toFloat()
+            val top = cutout.getTop(density).toFloat()
+            val right = widthPx - cutout.getRight(density, layoutDirection)
+            safeRect =
+                if (landscape) {
+                    Rect(left, top, right, heightPx)
+                } else {
+                    Rect(0f, top, widthPx, heightPx)
+                }
+            stageModifier = Modifier.fillMaxSize()
+        } else {
+            val (winW, winH) =
+                remember(configuration, density.density) {
+                    fullWindowSizeDp(
+                        context,
+                        density.density,
+                        configuration.screenWidthDp,
+                        configuration.screenHeightDp,
                     )
                 }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    VariantSwitch(
-                        variant = variant,
-                        onChange = {
-                            variant = it
-                            store.setVariant(id.name, it)
-                        },
-                    )
-                }
-                PillSwitch(
-                    options = listOf(false to R.string.skin_layout_upright, true to R.string.skin_layout_sideways),
-                    selected = landscape,
-                    onChange = { landscape = it },
-                )
-            }
-
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                ArcaduneShellPreview(
-                    modifier = Modifier.fillMaxSize(),
-                    id = id,
-                    skin = skin,
-                    isLandscape = landscape,
-                    phoneWidth = if (landscape) long else short,
-                    phoneHeight = if (landscape) short else long,
-                    customization = customization.value,
-                    onMove = ::move,
-                    art = art,
-                )
-            }
-
-            if (compact) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    sizeSlider(Modifier.weight(1f))
-                    opacitySlider(Modifier.weight(1f))
-                    buttons()
-                }
-            } else {
-                Text(
-                    text = stringResource(R.string.skin_editor_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ArcaduneColors.OnSurfaceDim,
-                )
-                sizeSlider(Modifier)
-                opacitySlider(Modifier)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { buttons() }
-            }
+            val shortSide = minOf(winW, winH)
+            val longSide = maxOf(winW, winH)
+            val targetW = if (landscape) longSide else shortSide
+            val targetH = if (landscape) shortSide else longSide
+            val fit = minOf(maxWidth / targetW, maxHeight / targetH)
+            widthPx = with(density) { targetW.toPx() }
+            heightPx = with(density) { targetH.toPx() }
+            safeRect = Rect(0f, 0f, widthPx, heightPx)
+            stageModifier =
+                Modifier
+                    .requiredSize(targetW, targetH)
+                    .graphicsLayer {
+                        scaleX = fit
+                        scaleY = fit
+                    }
         }
+
+        StudioShellStage(
+            modifier = stageModifier,
+            id = id,
+            title = consoleName,
+            skin = skin,
+            isLandscape = landscape,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            safeRect = safeRect,
+            customizationState = customization,
+            variant = variant,
+            art = art,
+            onLandscapeChange = { nextLandscape ->
+                if (nextLandscape != landscape) {
+                    store.save(key, customization.value)
+                    applyEditorOrientation(activity, nextLandscape)
+                    landscape = nextLandscape
+                }
+            },
+            onVariantChange = { nextVariant ->
+                store.save(key, customization.value)
+                variant = nextVariant
+                store.setVariant(id.name, nextVariant)
+            },
+            onResetAll = {
+                customization.value = SkinCustomization()
+                store.save(key, SkinCustomization())
+            },
+            onDone = saveCurrentAndFinish,
+        )
+    }
+}
+
+private fun applyEditorOrientation(
+    activity: Activity?,
+    landscape: Boolean,
+) {
+    activity ?: return
+    val desired =
+        if (landscape) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+    if (activity.requestedOrientation != desired) {
+        activity.requestedOrientation = desired
+    }
+    activity.window?.let { win ->
+        WindowCompat.getInsetsController(win, win.decorView)
+            .hide(WindowInsetsCompat.Type.systemBars())
+    }
+}
+
+@Composable
+private fun StudioShellStage(
+    modifier: Modifier,
+    id: TouchControllerID,
+    title: String,
+    skin: ArcaduneSkin,
+    isLandscape: Boolean,
+    widthPx: Float,
+    heightPx: Float,
+    safeRect: Rect,
+    customizationState: MutableState<SkinCustomization>,
+    variant: SkinVariant,
+    art: SkinArt?,
+    onLandscapeChange: (Boolean) -> Unit,
+    onVariantChange: (SkinVariant) -> Unit,
+    onResetAll: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val dpPx = with(density) { 1.dp.toPx() }
+    val layout = if (isLandscape) skin.landscape else skin.portrait
+    val shell = !isLandscape || layout.screenArea != null
+    val placement =
+        remember(id, skin, isLandscape, shell, widthPx, heightPx, safeRect, dpPx) {
+            val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
+            placeShell(
+                skin = skin,
+                isLandscape = isLandscape,
+                shell = shell,
+                spec = spec,
+                width = widthPx,
+                height = heightPx,
+                safe = safeRect,
+                dp = dpPx,
+            )
+        }
+    val gameWindows =
+        remember(id, isLandscape, shell, placement) {
+            val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
+            if (shell) placement.windows else spec?.fitIn(placement.picture) ?: placement.windows
+        }
+
+    Box(modifier = modifier) {
+        Spacer(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .drawWithCache {
+                        val scanStep = 3.dp.toPx()
+                        val scanColor = Color.Black.copy(alpha = 0.14f)
+                        val windowBrushes =
+                            gameWindows.map { win ->
+                                win to
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF283452), Color(0xFF13192B)),
+                                        win.topLeft,
+                                        win.bottomRight,
+                                    )
+                            }
+                        onDrawBehind {
+                            drawRect(Color.Black)
+                            for ((win, brush) in windowBrushes) {
+                                drawRect(
+                                    brush = brush,
+                                    topLeft = win.topLeft,
+                                    size = win.size,
+                                )
+                                var sy = win.top + scanStep
+                                while (sy < win.bottom) {
+                                    drawLine(
+                                        color = scanColor,
+                                        start = Offset(win.left, sy),
+                                        end = Offset(win.right, sy),
+                                        strokeWidth = 1f,
+                                    )
+                                    sy += scanStep
+                                }
+                            }
+                        }
+                    },
+        )
+
+        if (shell) {
+            ConsoleShell(
+                modifier = Modifier.fillMaxSize(),
+                palette = layout.palette ?: SkinPalettes.MONO,
+                screens = placement.windows,
+                bodyTop = placement.bodyTop,
+                screenPanel = placement.screenPanel,
+            )
+        }
+
+        ArcaduneControllerStudio(
+            modifier = Modifier.fillMaxSize(),
+            title = title,
+            isLandscape = isLandscape,
+            onLandscapeChange = onLandscapeChange,
+            skin = skin,
+            rewindAvailable = true,
+            customizationState = customizationState,
+            panel = placement.panel,
+            shell = shell,
+            variant = variant,
+            onVariantChange = onVariantChange,
+            onResetAll = onResetAll,
+            onDone = onDone,
+            art = art,
+        )
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+private fun fullWindowSizeDp(
+    context: Context,
+    density: Float,
+    fallbackWidthDp: Int,
+    fallbackHeightDp: Int,
+): Pair<Dp, Dp> {
+    val wm =
+        context.getSystemService(WindowManager::class.java)
+            ?: return fallbackWidthDp.dp to fallbackHeightDp.dp
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val bounds = wm.currentWindowMetrics.bounds
+        (bounds.width() / density).dp to (bounds.height() / density).dp
+    } else {
+        val dm = context.resources.displayMetrics
+        (dm.widthPixels / density).dp to (dm.heightPixels / density).dp
     }
 }

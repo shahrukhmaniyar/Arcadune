@@ -73,6 +73,15 @@ class LibretroThumbnailsMirrorInterceptor(cacheDir: File) : Interceptor {
         request: Request,
         parts: ThumbnailParts,
     ): Response? {
+        indexes[parts.repository]?.let { cachedIndex ->
+            val exactBase = parts.fileName.removeSuffix(".png")
+            if (cachedIndex.any { it.name == exactBase }) {
+                tryMirror(chain, request, parts, parts.fileName)?.let { return it }
+            }
+            val closest = closestFromIndex(parts.fileName, cachedIndex) ?: return null
+            return tryMirror(chain, request, parts, closest)
+        }
+
         for (fileName in candidateFileNames(parts.fileName)) {
             tryMirror(chain, request, parts, fileName)?.let { return it }
         }
@@ -113,11 +122,17 @@ class LibretroThumbnailsMirrorInterceptor(cacheDir: File) : Interceptor {
     }
 
     /** Looks the title up in the repository's list of covers, ignoring tags, case and numerals. */
-    private fun closestFileName(parts: ThumbnailParts): String? {
-        val wanted = normalize(parts.fileName.removeSuffix(".png"))
+    private fun closestFileName(parts: ThumbnailParts): String? =
+        closestFromIndex(parts.fileName, loadIndex(parts.repository))
+
+    private fun closestFromIndex(
+        fileName: String,
+        index: List<IndexedName>,
+    ): String? {
+        val wanted = normalize(fileName.removeSuffix(".png"))
         if (wanted.isEmpty()) return null
 
-        return loadIndex(parts.repository)
+        return index
             .filter { it.normalized == wanted }
             .minWithOrNull(compareBy({ it.isBadDump }, { it.regionRank }, { it.name.length }))
             ?.name
@@ -184,12 +199,13 @@ class LibretroThumbnailsMirrorInterceptor(cacheDir: File) : Interceptor {
                 .header("User-Agent", "Arcadune")
                 .build()
 
-        return indexClient.newCall(request).execute().use {
-            if (!it.isSuccessful) {
-                Timber.w("Could not load cover index for $repository: ${it.code}")
+        return indexClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                Timber.w("Could not load cover index for $repository: ${response.code}")
                 return@use null
             }
-            parseTreeNames(JsonReader(it.body!!.charStream()))
+            val body = response.body ?: return@use null
+            parseTreeNames(JsonReader(body.charStream()))
         }
     }
 
@@ -243,7 +259,7 @@ class LibretroThumbnailsMirrorInterceptor(cacheDir: File) : Interceptor {
                 .build()
 
         fun originalUrl(): HttpUrl =
-            "http://$THUMBNAILS_HOST/".toHttpUrl().newBuilder()
+            "https://$THUMBNAILS_HOST/".toHttpUrl().newBuilder()
                 .addPathSegment(system)
                 .addPathSegment(imageType)
                 .addPathSegment(fileName)

@@ -8,16 +8,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
-import androidx.preference.PreferenceManager
 import com.alorma.compose.settings.storage.base.SettingValueState
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 
 @Composable
 fun rememberSafePreferenceBooleanSettingState(
     key: String,
     defaultValue: Boolean,
-    preferences: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(LocalContext.current),
+    preferences: SharedPreferences =
+        SharedPreferencesHelper.getSharedPreferences(
+            LocalContext.current.applicationContext,
+        ),
 ): SafeBooleanPreferenceSettingValueState {
-    return remember {
+    return remember(key, preferences) {
         SafeBooleanPreferenceSettingValueState(
             preferences = preferences,
             key = key,

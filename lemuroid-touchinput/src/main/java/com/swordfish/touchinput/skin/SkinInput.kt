@@ -97,6 +97,28 @@ class SkinInput(
         id: Long,
         position: Offset,
     ) {
+        applyDown(id, position)
+        update()
+    }
+
+    fun onMove(
+        id: Long,
+        position: Offset,
+    ) {
+        if (applyMove(id, position)) {
+            update()
+        }
+    }
+
+    fun onUp(id: Long) {
+        applyUp(id)
+        update()
+    }
+
+    internal fun applyDown(
+        id: Long,
+        position: Offset,
+    ) {
         positions[id] = position
         val target = targetAt(position)
         owners[id] =
@@ -110,38 +132,51 @@ class SkinInput(
                 // On the body, but just past a d-pad or stick: it steers that.
                 else -> steerableNear(position)?.let { Owner.Steer(it.index) } ?: Owner.Buttons()
             }
-        update()
     }
 
-    fun onMove(
+    internal fun applyMove(
         id: Long,
         position: Offset,
-    ) {
-        if (id !in owners) return
+    ): Boolean {
+        if (id !in owners) return false
         positions[id] = position
-        update()
+        return true
     }
 
-    fun onUp(id: Long) {
+    internal fun applyUp(id: Long) {
         owners.remove(id)
         positions.remove(id)
         if (screenPointer == id) {
             screenPointer = null
             onTouchScreen(null)
         }
+    }
+
+    internal fun flushUpdates() {
         update()
     }
 
     /** Lets go of everything (the skin left the screen, the game paused). */
     fun releaseAll() {
-        owners.keys.toList().forEach { onUp(it) }
+        if (owners.isEmpty() && pressedKeys.isEmpty() && sentDirections.isEmpty()) return
+        owners.keys.toList().forEach { applyUp(it) }
+        update()
     }
 
     /** The control under [position]: of those whose touch area holds it, the one whose centre is nearest. */
-    private fun targetAt(position: Offset): Target? =
-        targets
-            .filter { it.contains(position) }
-            .minByOrNull { it.normalizedDistance(position) }
+    private fun targetAt(position: Offset): Target? {
+        var best: Target? = null
+        var bestDist = Float.POSITIVE_INFINITY
+        for (target in targets) {
+            if (!target.contains(position)) continue
+            val dist = target.normalizedDistance(position)
+            if (dist < bestDist) {
+                bestDist = dist
+                best = target
+            }
+        }
+        return best
+    }
 
     /**
      * The buttons a finger at [position] presses, given the one it held so far ([owner].current).
@@ -381,18 +416,36 @@ fun androidx.compose.ui.Modifier.trackFingers(input: SkinInput): androidx.compos
         androidx.compose.ui.Modifier
             .onGloballyPositioned { origin.value = it.boundsInRoot().topLeft }
             .pointerInput(input) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        for (change in event.changes) {
-                            val id = change.id.value
-                            when {
-                                change.pressed && !change.previousPressed -> input.onDown(id, change.position + origin.value)
-                                !change.pressed && change.previousPressed -> input.onUp(id)
-                                change.pressed -> input.onMove(id, change.position + origin.value)
+                try {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            var changed = false
+                            for (change in event.changes) {
+                                val id = change.id.value
+                                when {
+                                    change.pressed && !change.previousPressed -> {
+                                        input.applyDown(id, change.position + origin.value)
+                                        changed = true
+                                    }
+                                    !change.pressed && change.previousPressed -> {
+                                        input.applyUp(id)
+                                        changed = true
+                                    }
+                                    change.pressed -> {
+                                        if (input.applyMove(id, change.position + origin.value)) {
+                                            changed = true
+                                        }
+                                    }
+                                }
+                            }
+                            if (changed) {
+                                input.flushUpdates()
                             }
                         }
                     }
+                } finally {
+                    input.releaseAll()
                 }
             }
     }

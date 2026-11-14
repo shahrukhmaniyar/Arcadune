@@ -4,52 +4,80 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.swordfish.lemuroid.R
 
 fun NavGraphBuilder.composable(
     route: MainRoute,
+    navController: NavHostController? = null,
+    onHelpPressed: (() -> Unit)? = null,
+    mainUIState: MainViewModel.UiState? = null,
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) {
     this.composable(route = route.route, arguments = route.arguments) { entry ->
-        // A solid background, so the screen sliding away never shows between the cards of this one.
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            content(entry)
+        val showInPageTopBar =
+            route != MainRoute.HOME &&
+                route != MainRoute.SETTINGS_SKIN_LAYOUT &&
+                navController != null &&
+                onHelpPressed != null &&
+                mainUIState != null
 
-            // While two screens cross-fade, the one fading out is still underneath and a tap on an
-            // empty part of the new screen would reach it (for example opening a game of the home
-            // screen). Nothing can be touched until the transition is over.
-            if (transition.currentState != transition.targetState) {
-                Box(Modifier.fillMaxSize().consumeAllTouches())
+        // A 100% opaque surface per destination so underlying screens never bleed through.
+        if (showInPageTopBar && navController != null && onHelpPressed != null && mainUIState != null) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                MainTopBar(
+                    route = route,
+                    navController = navController,
+                    onHelpPressed = onHelpPressed,
+                    mainUIState = mainUIState,
+                )
+                Box(Modifier.weight(1f).fillMaxSize()) {
+                    this@composable.content(entry)
+                }
+            }
+        } else {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                content(entry)
             }
         }
     }
 }
 
-private fun Modifier.consumeAllTouches(): Modifier =
-    pointerInput(Unit) {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                event.changes.forEach { it.consume() }
-            }
-        }
-    }
-
 fun NavController.navigateToRoute(route: MainRoute) {
-    this.navigate(route.route)
+    val currentLifecycle = currentBackStackEntry?.lifecycle?.currentState
+    if (currentLifecycle != null && !currentLifecycle.isAtLeast(Lifecycle.State.RESUMED)) {
+        return
+    }
+    this.navigate(route.route) {
+        launchSingleTop = true
+    }
+}
+
+fun NavController.popBackStackIfResumed() {
+    val currentLifecycle = currentBackStackEntry?.lifecycle?.currentState
+    if (currentLifecycle != null && !currentLifecycle.isAtLeast(Lifecycle.State.RESUMED)) {
+        return
+    }
+    if (previousBackStackEntry != null) {
+        popBackStack()
+    }
 }
 
 enum class MainRoute(
@@ -66,6 +94,7 @@ enum class MainRoute(
     SETTINGS(
         route = "settings/home",
         titleId = R.string.title_settings,
+        parent = HOME,
         showBottomNavigation = false,
     ),
     SETTINGS_ADVANCED(
@@ -89,10 +118,17 @@ enum class MainRoute(
 
     /** One console's layout editor; [skinLayoutRoute] builds the route. */
     SETTINGS_SKIN_LAYOUT(
-        route = "settings/skins/layout/{controller}",
+        route = "settings/skins/layout/{controller}?landscape={landscape}",
         titleId = R.string.skin_layout_title,
         parent = SETTINGS_SKINS,
-        arguments = listOf(navArgument("controller") { type = NavType.StringType }),
+        arguments =
+            listOf(
+                navArgument("controller") { type = NavType.StringType },
+                navArgument("landscape") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+            ),
         showBottomNavigation = false,
     ),
     SETTINGS_INPUT_DEVICES(
@@ -104,6 +140,18 @@ enum class MainRoute(
     SETTINGS_SAVE_SYNC(
         route = "settings/savesync",
         titleId = R.string.settings_title_save_sync,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
+    SETTINGS_SAVES(
+        route = "settings/saves",
+        titleId = R.string.settings_title_saves,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
+    SETTINGS_RETRO_ACHIEVEMENTS(
+        route = "settings/retroachievements",
+        titleId = R.string.settings_title_retro_achievements,
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
@@ -122,9 +170,8 @@ enum class MainRoute(
     }
 
     companion object {
-        fun findByRoute(route: String): MainRoute {
-            return values().first { it.route == route }
+        fun findByRoute(route: String): MainRoute? {
+            return entries.firstOrNull { it.route == route }
         }
     }
 }
-

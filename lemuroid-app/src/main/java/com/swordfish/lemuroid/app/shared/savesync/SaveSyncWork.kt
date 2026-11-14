@@ -23,6 +23,7 @@ import com.swordfish.lemuroid.lib.savesync.SaveSyncManager
 import dagger.Binds
 import dagger.android.AndroidInjector
 import dagger.multibindings.IntoMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import timber.log.Timber
@@ -53,6 +54,8 @@ class SaveSyncWork(context: Context, workerParams: WorkerParameters) :
 
         try {
             saveSyncManager.sync(coresToSync)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Timber.e(e, "Error in saves sync")
         }

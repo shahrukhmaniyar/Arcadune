@@ -36,7 +36,15 @@ enum class TiltConfigurationMenuEntry(val configuration: TiltConfiguration, val 
     ;
 
     companion object {
-        fun fromTiltConfiguration(tiltConfiguration: TiltConfiguration): TiltConfigurationMenuEntry {
+        fun fromTiltConfiguration(
+            tiltConfiguration: TiltConfiguration,
+            allConfigurations: List<TiltConfiguration> = emptyList(),
+        ): TiltConfigurationMenuEntry {
+            if (tiltConfiguration == TILT_CONFIGURATION_L1_R1.configuration &&
+                TILT_CONFIGURATION_L2_R2.configuration in allConfigurations
+            ) {
+                return TILT_CONFIGURATION_L1_R1
+            }
             return TiltConfigurationMenuEntry.entries
                 .firstOrNull { it.configuration == tiltConfiguration }
                 ?: TILT_CONFIGURATION_DISABLED
