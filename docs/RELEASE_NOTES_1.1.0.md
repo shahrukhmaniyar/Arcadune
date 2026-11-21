@@ -31,7 +31,6 @@ A big update: ten new systems, full RetroAchievements, a saves and backups manag
 - Every console's layout has been arranged by hand and tidied: buttons in a row share one size and one height, with the same gap between them and the same space at both ends. Small buttons show an icon or a short name inside, with no names under them (the NES keeps its own look).
 - **Nintendo DS and 3DS** have new default layouts: a bigger main screen, the second screen where your thumb can reach it, and the screens move out of the way of buttons on other phone shapes.
 - **PlayStation (standard)**, **PSP**, **NES**, **GBA** and **3DO** layouts were adjusted so the extra buttons sit where they make sense. The NES Menu and Rewind buttons were restyled to match the others.
-- Fixed: the **3DO** touch buttons did not respond because the controller was not being set up for the 3DO core. The **Dreamcast** had the same set-up problem and got the same fix.
 - Tap **Reset** in Edit Controls to return a console to its new default layout. Layouts you saved on an older version start again from the new defaults.
 
 ## Other

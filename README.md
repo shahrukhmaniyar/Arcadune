@@ -35,7 +35,7 @@ Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), 
 - **Saves & backups manager** and per-game play time.
 - **Faster fast-forward** (2x to 8x) on every console, including the DS, and a much quicker exit from a game.
 - **Rebuilt controller layouts:** Exit is always on the controller, every console's buttons were arranged by hand with equal sizes and gaps, and the DS and 3DS have new defaults that adapt to your phone's shape.
-- **Fixes:** 3DO (and Dreamcast) touch buttons now work, and gamepad shortcuts for Quick Save, Quick Load and Fast-Forward can be set in Settings.
+- **Fixes:** gamepad shortcuts for Quick Save, Quick Load and Fast-Forward can now be set in Settings.
 
 The full list is in the [1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.md).
 
