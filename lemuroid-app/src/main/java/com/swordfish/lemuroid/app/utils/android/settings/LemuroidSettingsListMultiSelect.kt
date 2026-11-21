@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -55,7 +53,6 @@ fun LemuroidSettingsListMultiSelect(
     }
 
     var showDialog by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
 
     LemuroidSettingsMenuLink(
         enabled = enabled,
@@ -101,7 +98,6 @@ fun LemuroidSettingsListMultiSelect(
         },
     ) {
         Column(
-            modifier = Modifier.verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (subtitle != null) {

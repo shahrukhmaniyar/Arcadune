@@ -28,6 +28,10 @@ Arcadune is an open-source multi-system retro game emulator for Android built on
 
 Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), so you can install either one on top of the other without losing your library, saves, or settings. All releases are available on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). Arcadune requires Android 6.0 or newer and includes built-in update checks under **Settings > Updates**.
 
+## What's New in 1.1.1
+
+- **Crash fix:** the app no longer closes when you open a choice dialog in Settings (Display filter, Viewport alignment, Vibrate on touch, Cache size limit and the like) or tap a console under Change Cores. If you are on 1.1.0, please update.
+
 ## What's New in 1.1.0
 
 - **Ten new systems** (35 in total, 52 cores): Dreamcast, Saturn, 32X, 3DO, Atari 5200, Atari 8-bit, ColecoVision, C64, Apple II and MSX.

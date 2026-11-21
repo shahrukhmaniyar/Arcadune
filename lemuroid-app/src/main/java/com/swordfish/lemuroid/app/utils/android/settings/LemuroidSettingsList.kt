@@ -10,11 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
@@ -78,7 +76,6 @@ fun LemuroidSettingsList(
     if (!showDialog) return
 
     val coroutineScope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
     val onSelected: (Int, Boolean) -> Unit = { selectedIndex, updateState ->
         coroutineScope.launch {
             if (updateState) state.value = selectedIndex
@@ -101,7 +98,6 @@ fun LemuroidSettingsList(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .verticalScroll(scrollState)
                     .selectableGroup(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
