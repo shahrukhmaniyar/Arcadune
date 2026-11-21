@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.app.shared.game.viewmodel
 import android.content.Context
 import android.widget.Toast
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
 import com.swordfish.lemuroid.lib.cheats.CheatApplier
 import com.swordfish.lemuroid.lib.cheats.CheatTarget
 import com.swordfish.lemuroid.lib.cheats.CheatsStore
@@ -31,6 +32,8 @@ class GameViewModelCheats(
     private val game: Game,
     private val retroGameView: GameViewModelRetroGameView,
     private val scope: CoroutineScope,
+    private val fence: HardcorePolicy.TransitionFence = HardcorePolicy.TransitionFence(),
+    private val isTransitionInProgress: () -> Boolean = { false },
     private val isHardcoreActive: () -> Boolean = { false },
 ) {
     private val store = CheatsStore(File(appContext.filesDir, "cheats"))
@@ -51,9 +54,10 @@ class GameViewModelCheats(
             Toast.makeText(appContext, R.string.cheats_switched_off_after_crash, Toast.LENGTH_LONG).show()
         }
 
+        val commandEpoch = fence.currentEpoch()
         scope.launch(Dispatchers.Default) {
             runCatching { retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>() }
-            applyNow()
+            applyNow(commandEpoch)
         }
     }
 
@@ -88,18 +92,39 @@ class GameViewModelCheats(
 
     /** Applies the cheats in the background. */
     fun apply() {
-        scope.launch(Dispatchers.Default) { applyNow() }
+        val commandEpoch = fence.currentEpoch()
+        scope.launch(Dispatchers.Default) { applyNow(commandEpoch) }
     }
 
-    private fun applyNow() =
+    /** Synchronously clears any active core cheats before enabling Hardcore Mode. */
+    fun clearForHardcoreNow() =
         synchronized(applyLock) {
             val view = retroGameView.retroGameView ?: return@synchronized
-            if (isHardcoreActive()) {
-                runCatching {
-                    target(view).clear()
-                    store.saveApplied(key, emptyList())
-                    store.endSession()
-                }.onFailure { Timber.e(it, "Could not clear cheats for Hardcore mode") }
+            runCatching {
+                view.resetCheat()
+                store.saveApplied(key, emptyList())
+                store.endSession()
+            }.onFailure { Timber.e(it, "Could not clear cheats for Hardcore mode") }
+        }
+
+    private fun applyNow(commandEpoch: Long) =
+        synchronized(applyLock) {
+            val view = retroGameView.retroGameView ?: return@synchronized
+            val canApply =
+                HardcorePolicy.canApplyCheats(
+                    hardcoreActive = isHardcoreActive(),
+                    transitionInProgress = isTransitionInProgress(),
+                    commandEpoch = commandEpoch,
+                    currentEpoch = fence.currentEpoch(),
+                )
+            if (!canApply) {
+                if (isHardcoreActive() || isTransitionInProgress()) {
+                    runCatching {
+                        view.resetCheat()
+                        store.saveApplied(key, emptyList())
+                        store.endSession()
+                    }.onFailure { Timber.e(it, "Could not clear cheats for Hardcore mode") }
+                }
                 return@synchronized
             }
             val cheats = store.load(key)
@@ -133,11 +158,7 @@ class GameViewModelCheats(
         object : CheatTarget {
             override fun clear(): Boolean =
                 runCatching {
-                    // The library exposes this only as a native method, and it is safe to call at any
-                    // time: the native side takes the same lock as the emulation loop.
-                    Class.forName("com.swordfish.libretrodroid.LibretroDroid")
-                        .getMethod("resetCheat")
-                        .invoke(null)
+                    view.resetCheat()
                 }.onFailure { Timber.e(it, "Could not clear the cheats") }.isSuccess
 
             override fun enable(

@@ -7,6 +7,8 @@ pluginManagement {
     }
 }
 
+rootProject.name = "Arcadune"
+
 include(
     ":libretrodroid",
     ":retrograde-util",
@@ -47,7 +49,17 @@ if (usePlayDynamicFeatures()) {
         ":lemuroid_core_prosystem",
         ":lemuroid_core_snes9x",
         ":lemuroid_core_stella",
-        ":lemuroid_core_citra"
+        ":lemuroid_core_citra",
+        ":lemuroid_core_flycast",
+        ":lemuroid_core_opera",
+        ":lemuroid_core_yabasanshiro",
+        ":lemuroid_core_picodrive",
+        ":lemuroid_core_a5200",
+        ":lemuroid_core_atari800",
+        ":lemuroid_core_gearcoleco",
+        ":lemuroid_core_vice_x64",
+        ":lemuroid_core_applewin",
+        ":lemuroid_core_fmsx"
     )
 
     project(":lemuroid_core_gambatte").projectDir = File("lemuroid-cores/lemuroid_core_gambatte")
@@ -69,4 +81,14 @@ if (usePlayDynamicFeatures()) {
     project(":lemuroid_core_mednafen_wswan").projectDir = File("lemuroid-cores/lemuroid_core_mednafen_wswan")
     project(":lemuroid_core_dosbox_pure").projectDir = File("lemuroid-cores/lemuroid_core_dosbox_pure")
     project(":lemuroid_core_citra").projectDir = File("lemuroid-cores/lemuroid_core_citra")
+    project(":lemuroid_core_flycast").projectDir = File("lemuroid-cores/lemuroid_core_flycast")
+    project(":lemuroid_core_opera").projectDir = File("lemuroid-cores/lemuroid_core_opera")
+    project(":lemuroid_core_yabasanshiro").projectDir = File("lemuroid-cores/lemuroid_core_yabasanshiro")
+    project(":lemuroid_core_picodrive").projectDir = File("lemuroid-cores/lemuroid_core_picodrive")
+    project(":lemuroid_core_a5200").projectDir = File("lemuroid-cores/lemuroid_core_a5200")
+    project(":lemuroid_core_atari800").projectDir = File("lemuroid-cores/lemuroid_core_atari800")
+    project(":lemuroid_core_gearcoleco").projectDir = File("lemuroid-cores/lemuroid_core_gearcoleco")
+    project(":lemuroid_core_vice_x64").projectDir = File("lemuroid-cores/lemuroid_core_vice_x64")
+    project(":lemuroid_core_applewin").projectDir = File("lemuroid-cores/lemuroid_core_applewin")
+    project(":lemuroid_core_fmsx").projectDir = File("lemuroid-cores/lemuroid_core_fmsx")
 }

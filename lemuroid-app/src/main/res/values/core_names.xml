@@ -19,4 +19,14 @@
     <string name="core_name_mednafen_ngp" translatable="false">mednafen_ngp</string>
     <string name="core_name_mednafen_wswan" translatable="false">mednafen_wswan</string>
     <string name="core_name_citra" translatable="false">citra</string>
+    <string name="core_name_flycast" translatable="false">flycast</string>
+    <string name="core_name_opera" translatable="false">opera</string>
+    <string name="core_name_yabasanshiro" translatable="false">yabasanshiro</string>
+    <string name="core_name_picodrive" translatable="false">picodrive</string>
+    <string name="core_name_a5200" translatable="false">a5200</string>
+    <string name="core_name_atari800" translatable="false">atari800</string>
+    <string name="core_name_gearcoleco" translatable="false">gearcoleco</string>
+    <string name="core_name_vice_x64" translatable="false">vice_x64</string>
+    <string name="core_name_applewin" translatable="false">applewin</string>
+    <string name="core_name_fmsx" translatable="false">fmsx</string>
 </resources>

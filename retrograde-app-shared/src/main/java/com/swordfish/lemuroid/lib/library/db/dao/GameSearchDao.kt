@@ -111,6 +111,7 @@ class GameSearchDao(private val internalDao: Internal) {
                 """.trimIndent(),
             )
         }
+
         private val FTS_TOKEN_SPLIT = Regex("[^\\p{L}\\p{N}]+")
 
         /**

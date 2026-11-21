@@ -23,11 +23,13 @@ object GameMenuContract {
     const val RESULT_ENABLE_FAST_FORWARD = "RESULT_ENABLE_FAST_FORWARD"
     const val RESULT_CHANGE_TILT_CONFIG = "RESULT_CHANGE_TILT_CONFIG"
     const val RESULT_FRAME_SPEED = "RESULT_FRAME_SPEED"
+    const val RESULT_SET_HARDCORE = "RESULT_SET_HARDCORE"
     const val EXTRA_FRAME_SPEED = "EXTRA_FRAME_SPEED"
     const val EXTRA_MAX_FRAME_SPEED = "EXTRA_MAX_FRAME_SPEED"
     const val EXTRA_START_ROUTE = "EXTRA_START_ROUTE"
     const val START_ROUTE_FAST_FORWARD = "fast_forward"
     const val PREF_LAST_FRAME_SPEED = "arcadune_last_frame_speed"
+    const val PREF_FAST_FORWARD_AUDIO_MODE = "arcadune_ff_audio_mode"
 
     /** The speeds fast-forward can run at: normal, then 2X, 4X, 6X and 8X. */
     val FRAME_SPEEDS = intArrayOf(1, 2, 4, 6, 8)

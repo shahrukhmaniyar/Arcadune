@@ -39,4 +39,7 @@ dependencies {
 
     implementation(deps.libs.androidx.paging.common)
     implementation(deps.libs.androidx.paging.runtime)
+    implementation(deps.libs.xz)
+
+    testImplementation("junit:junit:4.13.2")
 }

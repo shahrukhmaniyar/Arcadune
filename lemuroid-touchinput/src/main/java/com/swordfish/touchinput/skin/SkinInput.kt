@@ -6,9 +6,9 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.KeyEvent
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -227,7 +227,14 @@ class SkinInput(
                 targets.none { it.isFaceButton() && it.normalizedDistance(position) < padDistance }
             }
 
-    private fun Target.contains(position: Offset): Boolean = if (round) normalizedDistance(position) <= 1f else area.contains(position)
+    private fun Target.contains(position: Offset): Boolean =
+        if (round) {
+            normalizedDistance(position) <= 1f
+        } else {
+            area.contains(
+                position,
+            )
+        }
 
     /** Distance from the centre in "radii": 1 on the edge of the (elliptic) touch area. */
     private fun Target.normalizedDistance(position: Offset): Float {
@@ -296,7 +303,10 @@ class SkinInput(
                 events += InputEvent.ContinuousDirection(source, now)
             }
         }
-        sentDirections = targets.associate { it.index to (steering[it.index] ?: Offset.Zero) }.filterValues { it != Offset.Zero }
+        sentDirections =
+            targets.associate {
+                it.index to (steering[it.index] ?: Offset.Zero)
+            }.filterValues { it != Offset.Zero }
 
         // What the skin draws.
         targets.forEach { target ->

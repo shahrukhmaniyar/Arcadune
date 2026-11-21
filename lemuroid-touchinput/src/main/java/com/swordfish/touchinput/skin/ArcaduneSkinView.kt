@@ -35,7 +35,6 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -59,12 +58,14 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_FAST_FORWARD
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /**
- * The player's changes to a skin: global size & opacity, plus optional per-control scale,
- * offset (in skin units), and hidden state.
+ * The player's changes to a skin: global size & opacity, screen scale & position, plus optional
+ * per-control scale, offset (in skin units), hidden state, and enabled optional buttons.
  */
 data class SkinCustomization(
     val size: Float = 1f,
@@ -73,20 +74,130 @@ data class SkinCustomization(
     val opacity: Float = 1f,
     /** Individual scale multiplier for specific controls (1f = follows global [size]). */
     val scales: Map<Int, Float> = emptyMap(),
-    /** Controls hidden by the player ([SkinControl.Menu] can never be hidden). */
+    /** Default-visible controls hidden by the player. */
     val hidden: Set<Int> = emptySet(),
+    /** Default-hidden optional controls (Fast Forward, Exit) enabled by the player. */
+    val shown: Set<Int> = emptySet(),
+    /** Game screen zoom multiplier (1f = default fit). */
+    val screenScale: Float = 1f,
+    /** Game screen translation normalized by surface width & height (0,0 = default placement). */
+    val screenOffset: Offset = Offset.Zero,
+    /** Per-screen zoom multipliers for multi-screen consoles (DS / 3DS), indexed by window. */
+    val screenScales: Map<Int, Float> = emptyMap(),
+    /** Per-screen normalized translations for multi-screen consoles (DS / 3DS), indexed by window. */
+    val screenOffsets: Map<Int, Offset> = emptyMap(),
+    /**
+     * Portrait console background height adjustment:
+     * 0f = console default, +1f = full-screen top edge, -1f = compact minimum height.
+     */
+    val portraitBgOffset: Float = 0f,
 ) {
     fun controlScale(index: Int): Float = scales[index] ?: 1f
 
     fun effectiveScale(index: Int): Float = (size * controlScale(index)).coerceIn(0.45f, 2.0f)
 
+    fun screenScaleOf(index: Int): Float = screenScales[index] ?: if (index == 0) screenScale else 1f
+
+    fun screenOffsetOf(index: Int): Offset = screenOffsets[index] ?: if (index == 0) screenOffset else Offset.Zero
+
+    fun hasScreenChangesAt(index: Int): Boolean {
+        val s = screenScaleOf(index)
+        val o = screenOffsetOf(index)
+        return abs(s - 1f) > 0.005f || abs(o.x) > 0.001f || abs(o.y) > 0.001f
+    }
+
+    fun withScreenTransform(
+        index: Int,
+        scale: Float = screenScaleOf(index),
+        offset: Offset = screenOffsetOf(index),
+    ): SkinCustomization {
+        val clampedScale = scale.coerceIn(MIN_SCREEN_SCALE, MAX_SCREEN_SCALE)
+        val nextScales =
+            if (abs(clampedScale - 1f) <= 0.001f) {
+                screenScales - index
+            } else {
+                screenScales + (index to clampedScale)
+            }
+        val nextOffsets =
+            if (abs(offset.x) <= 0.0005f && abs(offset.y) <= 0.0005f) {
+                screenOffsets - index
+            } else {
+                screenOffsets + (index to offset)
+            }
+        return if (index == 0) {
+            copy(
+                screenScale = clampedScale,
+                screenOffset = if (abs(offset.x) <= 0.0005f && abs(offset.y) <= 0.0005f) Offset.Zero else offset,
+                screenScales = nextScales - 0,
+                screenOffsets = nextOffsets - 0,
+            )
+        } else {
+            copy(
+                screenScales = nextScales,
+                screenOffsets = nextOffsets,
+            )
+        }
+    }
+
     fun isHidden(
         index: Int,
         control: SkinControl,
-    ): Boolean = control !is SkinControl.Menu && index in hidden
+    ): Boolean = if (control.defaultHidden) index !in shown else index in hidden
+
+    fun isControlAvailable(
+        control: SkinControl,
+        rewindAvailable: Boolean,
+        fastForwardSupported: Boolean = true,
+    ): Boolean =
+        when {
+            control is SkinControl.Rewind -> rewindAvailable
+            control is SkinControl.Button && control.keyCode == KEYCODE_FAST_FORWARD -> fastForwardSupported
+            else -> true
+        }
+
+    val hasScreenChanges: Boolean
+        get() =
+            abs(screenScale - 1f) > 0.005f ||
+                abs(screenOffset.x) > 0.001f ||
+                abs(screenOffset.y) > 0.001f ||
+                screenScales.any { (_, s) -> abs(s - 1f) > 0.005f } ||
+                screenOffsets.any { (_, o) -> abs(o.x) > 0.001f || abs(o.y) > 0.001f }
+
+    fun resetScreen(index: Int? = null): SkinCustomization =
+        when (index) {
+            null ->
+                copy(
+                    screenScale = 1f,
+                    screenOffset = Offset.Zero,
+                    screenScales = emptyMap(),
+                    screenOffsets = emptyMap(),
+                )
+            0 ->
+                copy(
+                    screenScale = 1f,
+                    screenOffset = Offset.Zero,
+                    screenScales = screenScales - 0,
+                    screenOffsets = screenOffsets - 0,
+                )
+            else ->
+                copy(
+                    screenScales = screenScales - index,
+                    screenOffsets = screenOffsets - index,
+                )
+        }
+
+    val hasPortraitBgChange: Boolean
+        get() = abs(portraitBgOffset) > 0.005f
+
+    fun withPortraitBgOffset(offset: Float): SkinCustomization {
+        val clamped = offset.coerceIn(MIN_BG_OFFSET, MAX_BG_OFFSET)
+        return copy(portraitBgOffset = if (abs(clamped) <= 0.002f) 0f else clamped)
+    }
+
+    fun resetPortraitBg(): SkinCustomization = copy(portraitBgOffset = 0f)
 
     fun hasControlChanges(index: Int): Boolean =
-        index in offsets || index in scales || index in hidden
+        index in offsets || index in scales || index in hidden || index in shown
 
     val isCustomized: Boolean
         get() =
@@ -94,14 +205,29 @@ data class SkinCustomization(
                 abs(opacity - 1f) > 0.005f ||
                 offsets.any { (_, off) -> abs(off.x) > 0.05f || abs(off.y) > 0.05f } ||
                 scales.any { (_, s) -> abs(s - 1f) > 0.005f } ||
-                hidden.isNotEmpty()
+                hidden.isNotEmpty() ||
+                shown.isNotEmpty() ||
+                hasScreenChanges ||
+                hasPortraitBgChange
 
     fun resetControl(index: Int): SkinCustomization =
         copy(
             offsets = offsets - index,
             scales = scales - index,
             hidden = hidden - index,
+            shown = shown - index,
         )
+
+    fun setControlVisible(
+        index: Int,
+        control: SkinControl,
+        visible: Boolean,
+    ): SkinCustomization =
+        if (control.defaultHidden) {
+            copy(shown = if (visible) shown + index else shown - index)
+        } else {
+            copy(hidden = if (visible) hidden - index else hidden + index)
+        }
 
     fun frameOf(
         index: Int,
@@ -123,9 +249,23 @@ data class SkinCustomization(
         buildString {
             append(size)
             if (opacity != 1f) append(";o=$opacity")
+            if (abs(screenScale - 1f) > 0.001f) append(";ss=$screenScale")
+            if (abs(screenOffset.x) > 0.0005f || abs(screenOffset.y) > 0.0005f) {
+                append(";so=${screenOffset.x}:${screenOffset.y}")
+            }
+            screenScales.toSortedMap().forEach { (idx, s) ->
+                if (idx != 0 && abs(s - 1f) > 0.001f) append(";ss$idx=$s")
+            }
+            screenOffsets.toSortedMap().forEach { (idx, off) ->
+                if (idx != 0 && (abs(off.x) > 0.0005f || abs(off.y) > 0.0005f)) {
+                    append(";so$idx=${off.x}:${off.y}")
+                }
+            }
+            if (abs(portraitBgOffset) > 0.001f) append(";bg=$portraitBgOffset")
             offsets.forEach { (index, offset) -> append(";$index:${offset.x}:${offset.y}") }
             scales.forEach { (index, s) -> if (s != 1f) append(";s$index=$s") }
             if (hidden.isNotEmpty()) append(";h=${hidden.sorted().joinToString(",")}")
+            if (shown.isNotEmpty()) append(";v=${shown.sorted().joinToString(",")}")
         }
 
     companion object {
@@ -134,28 +274,76 @@ data class SkinCustomization(
         const val MIN_OPACITY = 0.2f
         const val MIN_CONTROL_SCALE = 0.6f
         const val MAX_CONTROL_SCALE = 1.6f
+        const val MIN_SCREEN_SCALE = 0.4f
+        const val MAX_SCREEN_SCALE = 2.2f
+        const val MIN_BG_OFFSET = -1f
+        const val MAX_BG_OFFSET = 1f
 
         fun decode(text: String?): SkinCustomization {
             if (text.isNullOrBlank()) return SkinCustomization()
             return runCatching {
                 val parts = text.split(';')
                 var opacity = 1f
+                var screenScale = 1f
+                var screenOffset = Offset.Zero
+                var portraitBgOffset = 0f
+                val screenScales = mutableMapOf<Int, Float>()
+                val screenOffsets = mutableMapOf<Int, Offset>()
                 val offsets = mutableMapOf<Int, Offset>()
                 val scales = mutableMapOf<Int, Float>()
                 val hidden = mutableSetOf<Int>()
+                val shown = mutableSetOf<Int>()
                 for (part in parts.drop(1)) {
                     when {
                         part.startsWith("o=") -> {
                             opacity = part.removePrefix("o=").toFloat()
                         }
-                        part.startsWith("s") && '=' in part -> {
-                            val (idx, raw) = part.removePrefix("s").split('=', limit = 2)
-                            scales[idx.toInt()] = raw.toFloat().coerceIn(MIN_CONTROL_SCALE, MAX_CONTROL_SCALE)
+                        part.startsWith("bg=") -> {
+                            val rawBg = part.removePrefix("bg=").toFloat().coerceIn(MIN_BG_OFFSET, MAX_BG_OFFSET)
+                            portraitBgOffset = if (abs(rawBg) <= 0.002f) 0f else rawBg
+                        }
+                        part.startsWith("ss=") -> {
+                            screenScale =
+                                part.removePrefix("ss=").toFloat().coerceIn(MIN_SCREEN_SCALE, MAX_SCREEN_SCALE)
+                        }
+                        part.startsWith("so=") -> {
+                            val (sx, sy) = part.removePrefix("so=").split(':', limit = 2)
+                            screenOffset =
+                                Offset(
+                                    sx.toFloat().coerceIn(-1.5f, 1.5f),
+                                    sy.toFloat().coerceIn(-1.5f, 1.5f),
+                                )
+                        }
+                        part.startsWith("ss") && '=' in part -> {
+                            val (idxStr, raw) = part.removePrefix("ss").split('=', limit = 2)
+                            val idx = idxStr.toInt()
+                            val parsed = raw.toFloat().coerceIn(MIN_SCREEN_SCALE, MAX_SCREEN_SCALE)
+                            if (idx == 0) screenScale = parsed else screenScales[idx] = parsed
+                        }
+                        part.startsWith("so") && '=' in part -> {
+                            val (idxStr, raw) = part.removePrefix("so").split('=', limit = 2)
+                            val idx = idxStr.toInt()
+                            val (sx, sy) = raw.split(':', limit = 2)
+                            val parsed =
+                                Offset(
+                                    sx.toFloat().coerceIn(-1.5f, 1.5f),
+                                    sy.toFloat().coerceIn(-1.5f, 1.5f),
+                                )
+                            if (idx == 0) screenOffset = parsed else screenOffsets[idx] = parsed
                         }
                         part.startsWith("h=") -> {
                             part.removePrefix("h=").split(',')
                                 .filter { it.isNotBlank() }
                                 .forEach { hidden += it.toInt() }
+                        }
+                        part.startsWith("v=") -> {
+                            part.removePrefix("v=").split(',')
+                                .filter { it.isNotBlank() }
+                                .forEach { shown += it.toInt() }
+                        }
+                        part.startsWith("s") && '=' in part -> {
+                            val (idx, raw) = part.removePrefix("s").split('=', limit = 2)
+                            scales[idx.toInt()] = raw.toFloat().coerceIn(MIN_CONTROL_SCALE, MAX_CONTROL_SCALE)
                         }
                         ':' in part -> {
                             val (index, x, y) = part.split(':')
@@ -169,6 +357,12 @@ data class SkinCustomization(
                     opacity = opacity.coerceIn(MIN_OPACITY, 1f),
                     scales = scales,
                     hidden = hidden,
+                    shown = shown,
+                    screenScale = screenScale,
+                    screenOffset = screenOffset,
+                    screenScales = screenScales,
+                    screenOffsets = screenOffsets,
+                    portraitBgOffset = portraitBgOffset,
                 )
             }.getOrDefault(SkinCustomization())
         }
@@ -194,6 +388,11 @@ fun SkinControl.displayName(index: Int): String =
         is SkinControl.Rewind -> "Rewind"
         is SkinControl.Button ->
             when {
+                icon == SkinIcon.FAST_FORWARD -> "Fast Forward"
+                icon == SkinIcon.EXIT -> "Exit"
+                icon == SkinIcon.SWAP -> "Swap"
+                icon == SkinIcon.QUICK_SAVE -> "Quick Save"
+                icon == SkinIcon.QUICK_LOAD -> "Quick Load"
                 label.isNotBlank() -> label
                 else -> "Button ${index + 1}"
             }
@@ -215,19 +414,31 @@ fun ArcaduneSkinView(
     shell: Boolean = false,
     /** The skin's designed pictures, when it has them (see [SkinArt]). */
     art: SkinArt? = null,
+    fastForwardSupported: Boolean = true,
+    /** Extra vertical room above the panel so portrait controls moved upward are never clipped. */
+    topExtra: androidx.compose.ui.unit.Dp = 0.dp,
+    /** Number of speed steps (>1x) available on this core, drawn as subtle LED dots on Fast Forward. */
+    fastForwardDotsTotal: Int = 0,
+    /** Number of currently lit speed dots (0 at 1x, 1 at 2x, 2 at 4x, 3 at 6x, 4 at 8x). */
+    fastForwardDotsActive: Int = 0,
 ) {
     val origin = remember { mutableStateOf(Offset.Zero) }
     BoxWithConstraints(modifier.onGloballyPositioned { origin.value = it.boundsInRoot().topLeft }) {
         val density = LocalDensity.current.density
+        val surfaceHeightDp = (maxHeight - topExtra).value.coerceAtLeast(1f)
         val geometry =
-            remember(layout, pinToEdges, maxWidth, maxHeight) {
-                SkinGeometry(layout, pinToEdges, maxWidth.value, maxHeight.value)
+            remember(layout, pinToEdges, maxWidth, surfaceHeightDp) {
+                SkinGeometry(layout, pinToEdges, maxWidth.value, surfaceHeightDp)
             }
         val topLeft = origin.value
         // Where each control takes touches, in root pixels, for the touch tracker.
         val targets =
-            remember(geometry, customization, rewindAvailable, topLeft, density) {
-                geometry.touchRects(customization, rewindAvailable).map { (index, rect) ->
+            remember(geometry, customization, rewindAvailable, fastForwardSupported, topLeft, density, topExtra) {
+                geometry.touchRects(
+                    customization,
+                    rewindAvailable,
+                    fastForwardSupported = fastForwardSupported,
+                ).map { (index, rect) ->
                     val control = layout.controls[index]
                     SkinInput.Target(
                         index = index,
@@ -235,9 +446,9 @@ fun ArcaduneSkinView(
                         area =
                             androidx.compose.ui.geometry.Rect(
                                 topLeft.x + rect.left * density,
-                                topLeft.y + rect.top * density,
+                                topLeft.y + (topExtra.value + rect.top) * density,
                                 topLeft.x + rect.right * density,
-                                topLeft.y + rect.bottom * density,
+                                topLeft.y + (topExtra.value + rect.bottom) * density,
                             ),
                         round = control.takesRoundTouches(),
                     )
@@ -252,20 +463,25 @@ fun ArcaduneSkinView(
         }
 
         SkinFrame(
-            Modifier.fillMaxSize().graphicsLayer { alpha = customization.opacity },
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = customization.opacity }
+                .padding(top = topExtra),
             layout,
             pinToEdges,
             rewindAvailable,
             customization,
             drawBody = !shell,
             art = art,
+            fastForwardSupported = fastForwardSupported,
         ) { index, control, frame, placement, scale ->
             val inset = (control.reach * scale).dp
             Box(modifier = placement) {
                 when (control) {
                     is SkinControl.Dpad -> {
                         val art = LocalSkinArt.current?.part(control, pressed = false)
-                        val pad = ((control.reach + ART_BLEED) * scale).dp
+                        val partScale = if (control.frame.width > 0f) frame.width / control.frame.width else 1f
+                        val pad = ((control.reach + ART_BLEED) * partScale * scale).dp
                         Canvas(Modifier.fillMaxSize().padding(inset)) {
                             val direction = input.directions[index] ?: Offset.Zero
                             if (art != null) {
@@ -283,14 +499,27 @@ fun ArcaduneSkinView(
                             val direction = input.directions[index] ?: Offset.Zero
                             val knob = size.minDimension * 0.62f
                             val travel = size.minDimension * 0.22f
-                            translate((size.width - knob) / 2 + direction.x * travel, (size.height - knob) / 2 - direction.y * travel) {
+                            translate(
+                                (size.width - knob) / 2 + direction.x * travel,
+                                (size.height - knob) / 2 - direction.y * travel,
+                            ) {
                                 drawStickKnob(layout, direction != Offset.Zero, knob)
                             }
                         }
 
                     else -> {
                         val pressed = remember(index) { derivedStateOf { input.pressed[index] == true } }
-                        ControlGlyph(layout, control, frame, pressed, inset, scale, pinToEdges)
+                        ControlGlyph(
+                            layout = layout,
+                            control = control,
+                            frame = frame,
+                            pressed = pressed,
+                            inset = inset,
+                            scale = scale,
+                            pinned = pinToEdges,
+                            fastForwardDotsTotal = fastForwardDotsTotal,
+                            fastForwardDotsActive = fastForwardDotsActive,
+                        )
                     }
                 }
             }
@@ -323,44 +552,12 @@ private fun SkinControl.selectionCornerFraction(): Float =
         is SkinControl.Stick, is SkinControl.Menu, is SkinControl.Rewind -> 0.50f
     }
 
-private fun computeResizeKnobDp(
-    haloRect: Rect,
-    cornerFrac: Float,
-    surfaceWidthDp: Float,
-    surfaceHeightDp: Float,
-    topExtraDp: Float,
-): Offset {
-    val cx = haloRect.center.x
-    val cy = haloRect.center.y
-    val hw = haloRect.width / 2f
-    val hh = haloRect.height / 2f
-    val r = (haloRect.minDimension * cornerFrac).coerceIn(0f, minOf(hw, hh))
-    val offsetX = (hw - r) + r * 0.70710677f
-    val offsetY = (hh - r) + r * 0.70710677f
-    val edgeMargin = 16f
-    val dirX =
-        if (cx + offsetX > surfaceWidthDp - edgeMargin && cx - offsetX >= edgeMargin) -1f else 1f
-    val dirY =
-        if (cy + offsetY > surfaceHeightDp - edgeMargin && cy - offsetY >= -topExtraDp + edgeMargin) {
-            -1f
-        } else {
-            1f
-        }
-    val rawX = cx + dirX * offsetX
-    val rawY = cy + dirY * offsetY
-    val minY = -topExtraDp + edgeMargin
-    val maxY = (surfaceHeightDp - edgeMargin).coerceAtLeast(minY)
-    val minX = edgeMargin
-    val maxX = (surfaceWidthDp - edgeMargin).coerceAtLeast(minX)
-    return Offset(rawX.coerceIn(minX, maxX), rawY.coerceIn(minY, maxY))
-}
-
 /**
  * Direct-manipulation controller layout studio canvas:
  * - Renders artwork cleanly at rest (no permanent wireframe boxes cluttering unselected controls).
- * - Tap any control to select it (showing a dual-contrast shape-matched halo + corner resize knob).
- * - Drag any control to move it with magnetic smart-snap alignment guides, or pinch with two fingers
- *   anywhere on the canvas to resize the selected control (or all controls when none is selected).
+ * - Tap any control to select it (showing a dual-contrast shape-matched halo).
+ * - Drag any control with one finger to move it (works cleanly even on small buttons), or pinch
+ *   with two fingers anywhere on the canvas to resize the selected control (or all controls).
  */
 @Composable
 fun ArcaduneSkinEditor(
@@ -387,6 +584,15 @@ fun ArcaduneSkinEditor(
     accentColor: Color = Color(0xFFBB9CFF),
     onAccentColor: Color = Color(0xFF1E0F3D),
     onCanvasBusyChange: ((Boolean) -> Unit)? = null,
+    fastForwardSupported: Boolean = true,
+    fastForwardDotsTotal: Int = 4,
+    fastForwardDotsActive: Int = 0,
+    /** When non-null and true for a local touch point outside all controls, lets underlying screen manipulation handle it. */
+    shouldPassthroughBackgroundTouch: ((Offset) -> Boolean)? = null,
+    /** Fine-grained layer router: given local touch point + exact/halo control hit flags, true yields to Screen/BG layers. */
+    shouldYieldToLowerLayer: ((Offset, Boolean, Boolean) -> Boolean)? = null,
+    /** Invoked when a single tap lands on a passthrough background area while a control was selected. */
+    onBackgroundTap: ((Offset) -> Unit)? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     val currentHaptics by rememberUpdatedState(haptics)
@@ -398,6 +604,9 @@ fun ArcaduneSkinEditor(
     val currentCustomization by rememberUpdatedState(customization)
     val currentSelectedIndex by rememberUpdatedState(selectedIndex)
     val currentSnapEnabled by rememberUpdatedState(snapEnabled)
+    val currentPassthrough by rememberUpdatedState(shouldPassthroughBackgroundTouch)
+    val currentShouldYield by rememberUpdatedState(shouldYieldToLowerLayer)
+    val currentOnBackgroundTap by rememberUpdatedState(onBackgroundTap)
 
     val notPressed = remember { mutableStateOf(false) }
     val activeDragIndex = remember { mutableStateOf<Int?>(null) }
@@ -413,113 +622,69 @@ fun ArcaduneSkinEditor(
                 SkinGeometry(layout, pinToEdges, surfaceWidthDp, surfaceHeightDp)
             }
         val currentGeometry by rememberUpdatedState(geometry)
-        val rememberedRects =
-            remember(geometry, customization, rewindAvailable) {
-                geometry.touchRects(customization, rewindAvailable, includeHidden = false)
-            }
-        val rects by rememberUpdatedState(rememberedRects)
         val scale by rememberUpdatedState(geometry.scale)
+        val effectiveUnitsAbove =
+            remember(layout, topExtra, geometry.scale) {
+                maxOf(layout.unitsAbove(), if (geometry.scale > 0f) topExtra.value / geometry.scale else 0f)
+            }
+        val currentUnitsAbove by rememberUpdatedState(effectiveUnitsAbove)
 
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(layout, pinToEdges, rewindAvailable, topExtra) {
-                        val dragSlopPx = 3.5.dp.toPx()
+                    .pointerInput(layout, pinToEdges, rewindAvailable, fastForwardSupported, topExtra) {
+                        val dragSlopPx = 6.dp.toPx()
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = true, pass = PointerEventPass.Main)
-                            down.consume()
+                            val initialSelectedIndex = currentSelectedIndex
+                            val initialCustomization = currentCustomization
                             val startDp =
                                 Offset(
                                     down.position.x / density,
                                     down.position.y / density - topExtra.value,
                                 )
-                            val selIdx = currentSelectedIndex
-                            val selControl = selIdx?.let { layout.controls.getOrNull(it) }
-                            val selPlaced =
-                                if (selIdx != null && selControl != null) {
-                                    currentGeometry.placedFrame(selIdx, selControl.frame, currentCustomization)
-                                } else {
-                                    null
-                                }
-                            val selHalo = selPlaced?.inflate(4f)
-                            val knobDp =
-                                if (selHalo != null && selControl != null) {
-                                    computeResizeKnobDp(
-                                        selHalo,
-                                        selControl.selectionCornerFraction(),
-                                        surfaceWidthDp,
-                                        surfaceHeightDp,
-                                        topExtra.value,
+                            val exactHitIndex =
+                                currentGeometry.hitTestControl(
+                                    pointDp = startDp,
+                                    customization = initialCustomization,
+                                    rewindAvailable = rewindAvailable,
+                                    fastForwardSupported = fastForwardSupported,
+                                    exactOnly = true,
+                                )
+                            val hitIndex =
+                                exactHitIndex
+                                    ?: currentGeometry.hitTestControl(
+                                        pointDp = startDp,
+                                        customization = initialCustomization,
+                                        rewindAvailable = rewindAvailable,
+                                        fastForwardSupported = fastForwardSupported,
+                                        exactOnly = false,
                                     )
-                                } else {
-                                    null
-                                }
-                            val hitResizeKnob =
-                                selIdx != null &&
-                                    selPlaced != null &&
-                                    selControl != null &&
-                                    knobDp != null &&
-                                    (startDp - knobDp).getDistance() <= 34f
+                            val yieldDecision =
+                                currentShouldYield?.invoke(
+                                    down.position,
+                                    exactHitIndex != null,
+                                    hitIndex != null,
+                                )
+
+                            if (yieldDecision == true ||
+                                (
+                                    yieldDecision == null &&
+                                        hitIndex == null &&
+                                        initialSelectedIndex == null &&
+                                        currentPassthrough?.invoke(down.position) == true
+                                )
+                            ) {
+                                return@awaitEachGesture
+                            }
+
+                            down.consume()
 
                             try {
-                                if (hitResizeKnob) {
-                                    currentOnGestureStart?.invoke()
-                                    currentOnBusyChange?.invoke(true)
-                                    val centerDp = selPlaced.center
-                                    val initialDist = (startDp - centerDp).getDistance().coerceAtLeast(14f)
-                                    val initialScale = currentCustomization.controlScale(selIdx)
-                                    while (true) {
-                                        val event = awaitPointerEvent(PointerEventPass.Main)
-                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                        if (!change.pressed) break
-                                        change.consume()
-                                        val curDp =
-                                            Offset(
-                                                change.position.x / density,
-                                                change.position.y / density - topExtra.value,
-                                            )
-                                        val ratio = (curDp - centerDp).getDistance().coerceAtLeast(6f) / initialDist
-                                        val nextScale =
-                                            (initialScale * ratio).coerceIn(
-                                                SkinCustomization.MIN_CONTROL_SCALE,
-                                                SkinCustomization.MAX_CONTROL_SCALE,
-                                            )
-                                        val latest = currentCustomization
-                                        val scaled = latest.copy(scales = latest.scales + (selIdx to nextScale))
-                                        val curOff = scaled.offsets[selIdx] ?: Offset.Zero
-                                        val clampedOff =
-                                            currentGeometry.clampOffset(
-                                                selIdx,
-                                                scaled,
-                                                curOff,
-                                                layout.unitsAbove(),
-                                                snapToDefault = false,
-                                            )
-                                        currentOnCustomizationChange?.invoke(
-                                            scaled.copy(offsets = scaled.offsets + (selIdx to clampedOff)),
-                                        )
-                                        liveBadge.value = selIdx to "${(nextScale * 100).roundToInt()}%"
-                                    }
-                                    return@awaitEachGesture
-                                }
-
-                                val hitIndex =
-                                    rects
-                                        .filter { (_, rect) -> rect.contains(startDp) }
-                                        .minByOrNull { (idx, rect) ->
-                                            val area = rect.width * rect.height
-                                            if (idx == currentSelectedIndex) area * 0.85f else area
-                                        }
-                                        ?.first
-
-                                if (hitIndex != null && hitIndex != currentSelectedIndex) {
-                                    currentOnSelect?.invoke(hitIndex)
-                                    currentHaptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                }
-
                                 var gestureNotified = false
                                 var pinching = false
+                                var pinchPair: Pair<Long, Long>? = null
                                 var pinchTargetIdx: Int? = null
                                 var pinchInitialSpan = 1f
                                 var pinchInitialScale = 1f
@@ -537,37 +702,69 @@ fun ArcaduneSkinEditor(
                                     if (pressed.isEmpty()) break
 
                                     if (pressed.size >= 2 && currentOnCustomizationChange != null) {
+                                        val p0 = pressed[0]
+                                        val p1 = pressed[1]
+                                        val pair = p0.id.value to p1.id.value
                                         val span =
-                                            (pressed[0].position - pressed[1].position)
+                                            (p0.position - p1.position)
                                                 .getDistance()
                                                 .coerceAtLeast(16f)
                                         if (!pinching) {
-                                            if (!gestureNotified) {
+                                            if (draggingIdx != null) {
+                                                currentOnCustomizationChange?.invoke(initialCustomization)
+                                            }
+                                            val p0Dp =
+                                                Offset(
+                                                    p0.position.x / density,
+                                                    p0.position.y / density - topExtra.value,
+                                                )
+                                            val p1Dp =
+                                                Offset(
+                                                    p1.position.x / density,
+                                                    p1.position.y / density - topExtra.value,
+                                                )
+                                            pinchTargetIdx =
+                                                currentGeometry.resolvePinchTarget(
+                                                    p0Dp = p0Dp,
+                                                    p1Dp = p1Dp,
+                                                    selectedIndex = initialSelectedIndex,
+                                                    customization = initialCustomization,
+                                                    rewindAvailable = rewindAvailable,
+                                                    fastForwardSupported = fastForwardSupported,
+                                                )
+                                            if (pinchTargetIdx != null && !gestureNotified) {
                                                 currentOnGestureStart?.invoke()
                                                 gestureNotified = true
                                                 currentOnBusyChange?.invoke(true)
                                             }
                                             pinching = true
+                                            pinchPair = pair
                                             draggingIdx = null
                                             activeDragIndex.value = null
                                             activeSnap.value = null
-                                            pinchTargetIdx = currentSelectedIndex ?: hitIndex
-                                            if (pinchTargetIdx != null && pinchTargetIdx != currentSelectedIndex) {
-                                                currentOnSelect?.invoke(pinchTargetIdx)
-                                            }
-                                            pinchInitialSpan = span
-                                            val tIdx = pinchTargetIdx
-                                            pinchInitialScale =
-                                                if (tIdx != null) {
-                                                    currentCustomization.controlScale(tIdx)
-                                                } else {
-                                                    currentCustomization.size
-                                                }
-                                        } else {
-                                            val ratio = span / pinchInitialSpan
-                                            val latest = currentCustomization
                                             val tIdx = pinchTargetIdx
                                             if (tIdx != null) {
+                                                if (tIdx != currentSelectedIndex) {
+                                                    currentOnSelect?.invoke(tIdx)
+                                                    currentHaptics.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove,
+                                                    )
+                                                }
+                                                pinchInitialSpan = span
+                                                pinchInitialScale = initialCustomization.controlScale(tIdx)
+                                            }
+                                        } else if (pinchPair != pair) {
+                                            pinchPair = pair
+                                            val tIdx = pinchTargetIdx
+                                            if (tIdx != null) {
+                                                pinchInitialSpan = span
+                                                pinchInitialScale = currentCustomization.controlScale(tIdx)
+                                            }
+                                        } else {
+                                            val tIdx = pinchTargetIdx
+                                            if (tIdx != null) {
+                                                val ratio = span / pinchInitialSpan
+                                                val latest = currentCustomization
                                                 val nextScale =
                                                     (pinchInitialScale * ratio).coerceIn(
                                                         SkinCustomization.MIN_CONTROL_SCALE,
@@ -581,21 +778,22 @@ fun ArcaduneSkinEditor(
                                                         tIdx,
                                                         scaled,
                                                         curOff,
-                                                        layout.unitsAbove(),
+                                                        currentUnitsAbove,
                                                         snapToDefault = false,
                                                     )
+                                                val nextOffsets =
+                                                    if (tIdx in scaled.offsets ||
+                                                        abs(clamped.x) > 0.01f ||
+                                                        abs(clamped.y) > 0.01f
+                                                    ) {
+                                                        scaled.offsets + (tIdx to clamped)
+                                                    } else {
+                                                        scaled.offsets
+                                                    }
                                                 currentOnCustomizationChange?.invoke(
-                                                    scaled.copy(offsets = scaled.offsets + (tIdx to clamped)),
+                                                    scaled.copy(offsets = nextOffsets),
                                                 )
                                                 liveBadge.value = tIdx to "${(nextScale * 100).roundToInt()}%"
-                                            } else {
-                                                val nextGlobal =
-                                                    (pinchInitialScale * ratio).coerceIn(
-                                                        SkinCustomization.MIN_SIZE,
-                                                        SkinCustomization.MAX_SIZE,
-                                                    )
-                                                currentOnCustomizationChange?.invoke(latest.copy(size = nextGlobal))
-                                                liveBadge.value = null to "${(nextGlobal * 100).roundToInt()}%"
                                             }
                                         }
                                     } else if (!pinching && hitIndex != null) {
@@ -606,6 +804,12 @@ fun ArcaduneSkinEditor(
                                                 currentOnGestureStart?.invoke()
                                                 gestureNotified = true
                                                 currentOnBusyChange?.invoke(true)
+                                            }
+                                            if (hitIndex != currentSelectedIndex) {
+                                                currentOnSelect?.invoke(hitIndex)
+                                                currentHaptics.performHapticFeedback(
+                                                    HapticFeedbackType.TextHandleMove,
+                                                )
                                             }
                                             draggingIdx = hitIndex
                                             activeDragIndex.value = hitIndex
@@ -628,7 +832,7 @@ fun ArcaduneSkinEditor(
                                                         customization = latest,
                                                         candidate = dragStartOffset + rawDelta,
                                                         rewindAvailable = rewindAvailable,
-                                                        unitsAbove = layout.unitsAbove(),
+                                                        unitsAbove = currentUnitsAbove,
                                                         snapEnabled = currentSnapEnabled,
                                                     )
                                                 val vLocked =
@@ -663,8 +867,18 @@ fun ArcaduneSkinEditor(
                                     }
                                 }
 
-                                if (!pinching && draggingIdx == null && hitIndex == null) {
-                                    currentOnSelect?.invoke(null)
+                                if (!pinching && draggingIdx == null) {
+                                    if (hitIndex != null) {
+                                        val changed = hitIndex != currentSelectedIndex
+                                        currentOnSelect?.invoke(hitIndex)
+                                        if (changed) {
+                                            currentHaptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    } else if (currentOnBackgroundTap != null) {
+                                        currentOnBackgroundTap?.invoke(down.position)
+                                    } else {
+                                        currentOnSelect?.invoke(null)
+                                    }
                                 }
                             } finally {
                                 activeDragIndex.value = null
@@ -679,8 +893,8 @@ fun ArcaduneSkinEditor(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .padding(top = topExtra)
-                        .graphicsLayer { alpha = customization.opacity },
+                        .graphicsLayer { alpha = customization.opacity }
+                        .padding(top = topExtra),
                 layout = layout,
                 pinToEdges = pinToEdges,
                 rewindAvailable = rewindAvailable,
@@ -688,6 +902,9 @@ fun ArcaduneSkinEditor(
                 drawBody = !shell,
                 art = art,
                 notPressed = notPressed,
+                fastForwardSupported = fastForwardSupported,
+                fastForwardDotsTotal = fastForwardDotsTotal,
+                fastForwardDotsActive = fastForwardDotsActive,
             )
 
             // Precision studio overlay: dynamic drag snap lasers, selection halo & resize handle.
@@ -754,11 +971,12 @@ fun ArcaduneSkinEditor(
                     }
                 }
 
-                // 2. Dual-contrast precision selection halo + corner resize knob on the selected control.
+                // 2. Dual-contrast precision selection halo on the selected control.
                 val activeSel = selectedIndex
                 val activeCtrl = activeSel?.let { layout.controls.getOrNull(it) }
                 if (activeSel != null && activeCtrl != null &&
-                    (rewindAvailable || activeCtrl !is SkinControl.Rewind)
+                    !customization.isHidden(activeSel, activeCtrl) &&
+                    customization.isControlAvailable(activeCtrl, rewindAvailable, fastForwardSupported)
                 ) {
                     val placed = geometry.placedFrame(activeSel, activeCtrl.frame, customization)
                     val haloDp = placed.inflate(4f)
@@ -791,53 +1009,6 @@ fun ArcaduneSkinEditor(
                         cornerPx,
                         style = Stroke(width = 2.6.dp.toPx()),
                     )
-
-                    if (onCustomizationChange != null) {
-                        val knobDp =
-                            computeResizeKnobDp(
-                                haloDp,
-                                cornerFrac,
-                                surfaceWidthDp,
-                                surfaceHeightDp,
-                                topExtra.value,
-                            )
-                        val knobPx = Offset(knobDp.x.dp.toPx(), topOffsetPx + knobDp.y.dp.toPx())
-                        val knobRadius = 14.dp.toPx()
-                        drawCircle(
-                            Color.Black.copy(alpha = 0.68f),
-                            radius = knobRadius + 2.2.dp.toPx(),
-                            center = knobPx,
-                        )
-                        drawCircle(accentColor, radius = knobRadius, center = knobPx)
-                        val diag = 5.dp.toPx()
-                        val flipX = if (knobDp.x < haloDp.center.x) -1f else 1f
-                        val flipY = if (knobDp.y < haloDp.center.y) -1f else 1f
-                        val pA = knobPx + Offset(-diag * flipX, -diag * flipY)
-                        val pB = knobPx + Offset(diag * flipX, diag * flipY)
-                        val iconStroke = 2.dp.toPx()
-                        drawLine(
-                            onAccentColor,
-                            pA,
-                            pB,
-                            strokeWidth = iconStroke,
-                            cap = StrokeCap.Round,
-                        )
-                        val arm = 3.8.dp.toPx()
-                        drawLine(
-                            onAccentColor,
-                            pB,
-                            pB + Offset(-arm * flipX, 0f),
-                            strokeWidth = iconStroke,
-                            cap = StrokeCap.Round,
-                        )
-                        drawLine(
-                            onAccentColor,
-                            pB,
-                            pB + Offset(0f, -arm * flipY),
-                            strokeWidth = iconStroke,
-                            cap = StrokeCap.Round,
-                        )
-                    }
                 }
             }
 
@@ -923,9 +1094,18 @@ fun ArcaduneSkinPreview(
     shell: Boolean = false,
     customization: SkinCustomization = SkinCustomization(),
     art: SkinArt? = null,
+    topExtra: androidx.compose.ui.unit.Dp = 0.dp,
+    fastForwardDotsTotal: Int = 4,
 ) {
     val notPressed = remember { mutableStateOf(false) }
-    val frameModifier = modifier.graphicsLayer { alpha = customization.opacity }
+    val frameModifier =
+        if (customization.opacity < 0.999f) {
+            modifier
+                .graphicsLayer { alpha = customization.opacity }
+                .padding(top = topExtra)
+        } else {
+            modifier.padding(top = topExtra)
+        }
     StaticSkinFrame(
         modifier = frameModifier,
         layout = layout,
@@ -935,6 +1115,7 @@ fun ArcaduneSkinPreview(
         drawBody = !shell,
         art = art,
         notPressed = notPressed,
+        fastForwardDotsTotal = fastForwardDotsTotal,
     )
 }
 
@@ -947,11 +1128,14 @@ private fun StaticControl(
     notPressed: State<Boolean>,
     scale: Float,
     pinned: Boolean,
+    fastForwardDotsTotal: Int = 0,
+    fastForwardDotsActive: Int = 0,
 ) {
     when (control) {
         is SkinControl.Dpad -> {
             val art = LocalSkinArt.current?.part(control, pressed = false)
-            val pad = ((control.reach + ART_BLEED) * scale).dp
+            val partScale = if (control.frame.width > 0f) frame.width / control.frame.width else 1f
+            val pad = ((control.reach + ART_BLEED) * partScale * scale).dp
             Canvas(Modifier.fillMaxSize()) {
                 if (art != null) drawArtPart(art, pad.toPx()) else drawAnyDpad(layout, control.look, Offset.Zero)
             }
@@ -964,7 +1148,18 @@ private fun StaticControl(
                     drawStickKnob(layout, false, knob)
                 }
             }
-        else -> ControlGlyph(layout, control, frame, notPressed, 0.dp, scale, pinned)
+        else ->
+            ControlGlyph(
+                layout = layout,
+                control = control,
+                frame = frame,
+                pressed = notPressed,
+                inset = 0.dp,
+                scale = scale,
+                pinned = pinned,
+                fastForwardDotsTotal = fastForwardDotsTotal,
+                fastForwardDotsActive = fastForwardDotsActive,
+            )
     }
 }
 
@@ -986,9 +1181,10 @@ fun SkinLayout.clampControlOffset(
     customization: SkinCustomization,
     candidate: Offset,
     snapToDefault: Boolean = false,
+    extraUnitsAbove: Float = 0f,
 ): Offset =
     SkinGeometry(this, pinToEdges, surfaceWidthDp, surfaceHeightDp)
-        .clampOffset(index, customization, candidate, unitsAbove(), snapToDefault)
+        .clampOffset(index, customization, candidate, maxOf(unitsAbove(), extraUnitsAbove), snapToDefault)
 
 /**
  * Clamps and optionally magnet-snaps [candidate] (in skin units) to the control's default origin,
@@ -1004,6 +1200,7 @@ fun SkinLayout.snapControlOffset(
     rewindAvailable: Boolean = true,
     snapEnabled: Boolean = true,
     snapThresholdDp: Float = 5.5f,
+    extraUnitsAbove: Float = 0f,
 ): ControlSnapResult =
     SkinGeometry(this, pinToEdges, surfaceWidthDp, surfaceHeightDp)
         .snapOffset(
@@ -1011,7 +1208,7 @@ fun SkinLayout.snapControlOffset(
             customization = customization,
             candidate = candidate,
             rewindAvailable = rewindAvailable,
-            unitsAbove = unitsAbove(),
+            unitsAbove = maxOf(unitsAbove(), extraUnitsAbove),
             snapEnabled = snapEnabled,
             snapThresholdDp = snapThresholdDp,
         )
@@ -1153,16 +1350,18 @@ internal class SkinGeometry(
                 placedFrame(peerIdx, peerCtrl.frame, customization).center
             }
 
-        val xCandidates = buildList {
-            add(width / 2f)
-            add(baseCenterX)
-            peers.forEach { add(it.x) }
-        }
-        val yCandidates = buildList {
-            add(height / 2f)
-            add(baseCenterY)
-            peers.forEach { add(it.y) }
-        }
+        val xCandidates =
+            buildList {
+                add(width / 2f)
+                add(baseCenterX)
+                peers.forEach { add(it.x) }
+            }
+        val yCandidates =
+            buildList {
+                add(height / 2f)
+                add(baseCenterY)
+                peers.forEach { add(it.y) }
+            }
 
         val bestX = xCandidates.minByOrNull { abs(it - candCx) }?.takeIf { abs(it - candCx) <= snapThresholdDp }
         val bestY = yCandidates.minByOrNull { abs(it - candCy) }?.takeIf { abs(it - candCy) <= snapThresholdDp }
@@ -1196,25 +1395,202 @@ internal class SkinGeometry(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
         includeHidden: Boolean = false,
+        fastForwardSupported: Boolean = true,
     ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
-        rects(customization, rewindAvailable, withReach = true, includeHidden = includeHidden)
+        rects(
+            customization,
+            rewindAvailable,
+            withReach = true,
+            includeHidden = includeHidden,
+            fastForwardSupported = fastForwardSupported,
+        )
 
     /** Each control as drawn (without its reach), in dp, by index. */
     fun frameRects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
         includeHidden: Boolean = false,
+        fastForwardSupported: Boolean = true,
     ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
-        rects(customization, rewindAvailable, withReach = false, includeHidden = includeHidden)
+        rects(
+            customization,
+            rewindAvailable,
+            withReach = false,
+            includeHidden = includeHidden,
+            fastForwardSupported = fastForwardSupported,
+        )
+
+    /**
+     * Shape-aware editor hit-test for [pointDp] (in surface dp):
+     * 1) Exact visual shape check (ellipse for round controls/D-pads/sticks, box for pills/shoulders)
+     *    so rectangular reach halos of nearby small buttons never steal taps from A/B/X/Y.
+     *    When a small control sits inside/over a much larger one (<0.6x area), the smaller wins.
+     * 2) Forgiving minimum 42dp halo (+ portrait caption area below pills) picking closest edge.
+     */
+    fun hitTestControl(
+        pointDp: Offset,
+        customization: SkinCustomization,
+        rewindAvailable: Boolean,
+        fastForwardSupported: Boolean = true,
+        exactOnly: Boolean = false,
+    ): Int? {
+        data class ExactCandidate(
+            val index: Int,
+            val area: Float,
+            val placed: Rect,
+            val centerDist: Float,
+            val normDist: Float,
+        )
+        val exactHits = mutableListOf<ExactCandidate>()
+
+        data class HaloCandidate(
+            val index: Int,
+            val edgeDist: Float,
+            val centerDist: Float,
+        )
+        val haloHits = mutableListOf<HaloCandidate>()
+
+        layout.controls.forEachIndexed { index, item ->
+            if (!customization.isControlAvailable(item, rewindAvailable, fastForwardSupported)) {
+                return@forEachIndexed
+            }
+            if (customization.isHidden(index, item)) return@forEachIndexed
+
+            val placed = placedFrame(index, item.frame, customization)
+            val area = (placed.width * placed.height).coerceAtLeast(1f)
+            val isRound = item.takesRoundTouches()
+            val centerDist = hypot(pointDp.x - placed.center.x, pointDp.y - placed.center.y)
+
+            val normDist =
+                if (isRound) {
+                    val rx = (placed.width / 2f).coerceAtLeast(1f)
+                    val ry = (placed.height / 2f).coerceAtLeast(1f)
+                    hypot((pointDp.x - placed.center.x) / rx, (pointDp.y - placed.center.y) / ry)
+                } else {
+                    val minDim = minOf(placed.width, placed.height)
+                    val exactPad = if (minDim < 26f) 3.5f else 1.5f
+                    if (placed.inflate(exactPad).contains(pointDp)) {
+                        val hw = (placed.width / 2f + exactPad).coerceAtLeast(1f)
+                        val hh = (placed.height / 2f + exactPad).coerceAtLeast(1f)
+                        maxOf(abs(pointDp.x - placed.center.x) / hw, abs(pointDp.y - placed.center.y) / hh)
+                    } else {
+                        Float.POSITIVE_INFINITY
+                    }
+                }
+
+            if (normDist <= 1.02f) {
+                exactHits += ExactCandidate(index, area, placed, centerDist, normDist)
+            } else if (!exactOnly) {
+                val reachDp = item.reach * scale
+                val padX = maxOf(reachDp, ((42f - placed.width) / 2f).coerceAtLeast(6f))
+                val padTop = maxOf(reachDp, ((42f - placed.height) / 2f).coerceAtLeast(6f))
+                val captionExtra =
+                    if (!pinToEdges && item is SkinControl.Button && item.labelBelow && item.icon == null) {
+                        11f * scale
+                    } else {
+                        0f
+                    }
+                val expanded =
+                    Rect(
+                        placed.left - padX,
+                        placed.top - padTop,
+                        placed.right + padX,
+                        placed.bottom + padTop + captionExtra,
+                    )
+                if (expanded.contains(pointDp)) {
+                    val edgeDist =
+                        if (isRound) {
+                            (centerDist - minOf(placed.width, placed.height) / 2f).coerceAtLeast(0f)
+                        } else {
+                            val dxOut = maxOf(placed.left - pointDp.x, 0f, pointDp.x - placed.right)
+                            val dyOut = maxOf(placed.top - pointDp.y, 0f, pointDp.y - placed.bottom)
+                            hypot(dxOut, dyOut)
+                        }
+                    haloHits += HaloCandidate(index, edgeDist, centerDist)
+                }
+            }
+        }
+
+        if (exactHits.isNotEmpty()) {
+            val nestedSmall =
+                exactHits.filter { cand ->
+                    exactHits.any { other ->
+                        other.index != cand.index &&
+                            cand.area < other.area * 0.35f &&
+                            other.placed.contains(cand.placed.center)
+                    }
+                }
+            val pool = nestedSmall.ifEmpty { exactHits }
+            return pool.minByOrNull { it.centerDist }?.index
+        }
+        if (exactOnly) return null
+
+        return haloHits
+            .minWithOrNull(compareBy<HaloCandidate> { it.edgeDist }.thenBy { it.centerDist })
+            ?.index
+    }
+
+    /**
+     * Resolves which single control a 2-finger pinch ([p0Dp], [p1Dp]) should resize:
+     * 1) If the player has already selected a visible control, ALWAYS resize that selected control
+     *    (never let neighboring buttons or edge constraints hijack the selection!).
+     * 2) Otherwise, resize the control under the pinch midpoint (or under both fingers if identical,
+     *    or nearest visible control center within 48dp of the midpoint).
+     * Never falls back to global size and never mutates any other control.
+     */
+    fun resolvePinchTarget(
+        p0Dp: Offset,
+        p1Dp: Offset,
+        selectedIndex: Int?,
+        customization: SkinCustomization,
+        rewindAvailable: Boolean,
+        fastForwardSupported: Boolean = true,
+    ): Int? {
+        if (selectedIndex != null) {
+            val selCtrl = layout.controls.getOrNull(selectedIndex)
+            if (selCtrl != null &&
+                !customization.isHidden(selectedIndex, selCtrl) &&
+                customization.isControlAvailable(selCtrl, rewindAvailable, fastForwardSupported)
+            ) {
+                return selectedIndex
+            }
+        }
+
+        val midDp = Offset((p0Dp.x + p1Dp.x) / 2f, (p0Dp.y + p1Dp.y) / 2f)
+        hitTestControl(midDp, customization, rewindAvailable, fastForwardSupported)?.let { return it }
+
+        val hit0 = hitTestControl(p0Dp, customization, rewindAvailable, fastForwardSupported)
+        val hit1 = hitTestControl(p1Dp, customization, rewindAvailable, fastForwardSupported)
+        if (hit0 != null && hit0 == hit1) return hit0
+
+        var bestIdx: Int? = null
+        var bestDist = 48f
+        layout.controls.forEachIndexed { index, item ->
+            if (!customization.isControlAvailable(item, rewindAvailable, fastForwardSupported)) {
+                return@forEachIndexed
+            }
+            if (customization.isHidden(index, item)) return@forEachIndexed
+            val center = placedFrame(index, item.frame, customization).center
+            val dist = (center - midDp).getDistance()
+            if (dist <= bestDist) {
+                bestDist = dist
+                bestIdx = index
+            }
+        }
+        return bestIdx
+    }
 
     private fun rects(
         customization: SkinCustomization,
         rewindAvailable: Boolean,
         withReach: Boolean,
         includeHidden: Boolean,
+        fastForwardSupported: Boolean = true,
     ): List<Pair<Int, androidx.compose.ui.geometry.Rect>> =
         layout.controls.mapIndexedNotNull { index, item ->
-            if (item is SkinControl.Rewind && !rewindAvailable) return@mapIndexedNotNull null
+            if (!customization.isControlAvailable(item, rewindAvailable, fastForwardSupported)) {
+                return@mapIndexedNotNull null
+            }
             if (!includeHidden && customization.isHidden(index, item)) return@mapIndexedNotNull null
             val placed = placedFrame(index, item.frame, customization)
             val reach = if (withReach) item.reach * scale else 0f
@@ -1239,6 +1615,9 @@ private fun StaticSkinFrame(
     drawBody: Boolean,
     art: SkinArt?,
     notPressed: State<Boolean>,
+    fastForwardSupported: Boolean = true,
+    fastForwardDotsTotal: Int = 0,
+    fastForwardDotsActive: Int = 0,
 ) {
     androidx.compose.runtime.CompositionLocalProvider(LocalSkinArt provides art) {
         BoxWithConstraints(modifier = modifier) {
@@ -1257,7 +1636,9 @@ private fun StaticSkinFrame(
             )
 
             layout.controls.forEachIndexed { index, item ->
-                if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
+                if (!customization.isControlAvailable(item, rewindAvailable, fastForwardSupported)) {
+                    return@forEachIndexed
+                }
                 if (customization.isHidden(index, item)) return@forEachIndexed
                 androidx.compose.runtime.key(index) {
                     val frame = customization.frameOf(index, item.frame)
@@ -1276,6 +1657,8 @@ private fun StaticSkinFrame(
                         scale = scale,
                         pinToEdges = pinToEdges,
                         notPressed = notPressed,
+                        fastForwardDotsTotal = fastForwardDotsTotal,
+                        fastForwardDotsActive = fastForwardDotsActive,
                     )
                 }
             }
@@ -1298,6 +1681,8 @@ private fun StaticSkinControlItem(
     scale: Float,
     pinToEdges: Boolean,
     notPressed: State<Boolean>,
+    fastForwardDotsTotal: Int = 0,
+    fastForwardDotsActive: Int = 0,
 ) {
     val frame =
         remember(frameX, frameY, frameWidth, frameHeight) {
@@ -1315,9 +1700,18 @@ private fun StaticSkinControlItem(
                 .size(boxW.dp, boxH.dp)
                 .padding((reach * scale).dp),
     ) {
-        StaticControl(layout, control, frame, notPressed, scale, pinToEdges)
+        StaticControl(
+            layout = layout,
+            control = control,
+            frame = frame,
+            notPressed = notPressed,
+            scale = scale,
+            pinned = pinToEdges,
+            fastForwardDotsTotal = fastForwardDotsTotal,
+            fastForwardDotsActive = fastForwardDotsActive,
+        )
     }
-    if (!pinToEdges) {
+    if (!pinToEdges || control.isExtraButton()) {
         Caption(layout, control, frame, placedLeft, placedTop, scale)
     }
 }
@@ -1330,13 +1724,12 @@ private fun SkinBodyBackdrop(
     scale: Float,
     art: SkinArt?,
 ) {
-    // The NES pad keeps its own black face even inside a shell.
-    if (!pinToEdges && (drawBody || layout.style == SkinStyle.NES_CLASSIC)) {
-        Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
-    }
-    // The body's designed overlay over the panel: the plastic's grain, then sheen, wordmark, grille.
+    // When a ConsoleShell (Layer 1 BG) sits behind the screens, ConsoleShell renders the console
+    // body, NES deck face, grain, and art.body underneath Layer 2 (Screen), keeping Layer 3 strictly buttons.
+    if (!drawBody || pinToEdges) return
+    Canvas(Modifier.fillMaxSize()) { drawSkinBody(layout, scale * density) }
     val bodyArt = art?.body
-    if (bodyArt != null && !pinToEdges) {
+    if (bodyArt != null) {
         val grain = art.grain
         val grainTile =
             remember(grain) {
@@ -1369,6 +1762,7 @@ private fun SkinFrame(
     customization: SkinCustomization,
     drawBody: Boolean = true,
     art: SkinArt? = null,
+    fastForwardSupported: Boolean = true,
     control: @Composable BoxWithConstraintsScope.(
         index: Int,
         control: SkinControl,
@@ -1394,7 +1788,9 @@ private fun SkinFrame(
             )
 
             layout.controls.forEachIndexed { index, item ->
-                if (item is SkinControl.Rewind && !rewindAvailable) return@forEachIndexed
+                if (!customization.isControlAvailable(item, rewindAvailable, fastForwardSupported)) {
+                    return@forEachIndexed
+                }
                 if (customization.isHidden(index, item)) return@forEachIndexed
                 // Each control keeps its identity by index, so a control that comes or goes (rewind)
                 // never makes the ones after it start over.
@@ -1409,8 +1805,8 @@ private fun SkinFrame(
                             .absoluteOffset { IntOffset(x.dp.roundToPx(), y.dp.roundToPx()) }
                             .size((placed.width + 2 * reach * scale).dp, (placed.height + 2 * reach * scale).dp)
                     control(index, item, frame, placement, scale)
-                    // Sideways there is no room under the controls: names go on them instead.
-                    if (!pinToEdges) {
+                    // Sideways there is no room under the controls: names go on them instead (the four extra buttons keep theirs underneath, as upright).
+                    if (!pinToEdges || item.isExtraButton()) {
                         Caption(layout, item, frame, placed.left, placed.top, scale)
                     }
                 }
@@ -1538,24 +1934,33 @@ private fun DrawScope.drawSkinBody(
 
         SkinStyle.NES_CLASSIC -> {
             drawRoundRect(Nes.Frame, cornerRadius = CornerRadius(16 * unit))
-            fun rect(
-                x: Float,
-                y: Float,
-                w: Float,
-                h: Float,
-                color: Color,
-                radius: Float,
-            ) = drawRoundRect(color, Offset(x * unit, y * unit), Size(w * unit, h * unit), CornerRadius(radius * unit))
-            rect(11f, 33f, 298f, 230f, Nes.Pad, 12f)
-            for ((top, bottom) in listOf(33f to 56f, 67f to 97f, 109f to 140f, 151f to 181f)) {
-                rect(93f, top, 134f, bottom - top, Nes.Stripe, 6f)
-            }
-            rect(93f, 192f, 134f, 36f, Nes.WhiteBox, 4f)
-            rect(93f, 239f, 134f, 24f, Nes.CaptionStrip, 6f)
+            drawNesDeckFace(unit)
         }
 
         SkinStyle.OVERLAY -> Unit
     }
+}
+
+internal fun DrawScope.drawNesDeckFace(
+    unit: Float,
+    extraTopPx: Float = 0f,
+) {
+    val extraUnits = if (unit > 0f) extraTopPx / unit else 0f
+
+    fun rect(
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        color: Color,
+        radius: Float,
+    ) = drawRoundRect(color, Offset(x * unit, y * unit), Size(w * unit, h * unit), CornerRadius(radius * unit))
+    rect(11f, 33f - extraUnits, 298f, 230f + extraUnits, Nes.Pad, 12f)
+    for ((top, bottom) in listOf(33f to 56f, 67f to 97f, 109f to 140f, 151f to 181f)) {
+        rect(93f, top, 134f, bottom - top, Nes.Stripe, 6f)
+    }
+    rect(93f, 192f, 134f, 36f, Nes.WhiteBox, 4f)
+    rect(93f, 239f, 134f, 24f, Nes.CaptionStrip, 6f)
 }
 
 /**
@@ -1676,14 +2081,22 @@ private fun DrawScope.drawBallTop(
     val palette = layout.paletteOrMono()
     // The dust washer and the gate around the shaft.
     drawCircle(palette.stickBase.shade(-0.3f), r, c)
-    drawCircle(Brush.verticalGradient(listOf(palette.stickBase.shade(0.1f), palette.stickBase), c.y - r, c.y + r), r * 0.9f, c)
+    drawCircle(
+        Brush.verticalGradient(listOf(palette.stickBase.shade(0.1f), palette.stickBase), c.y - r, c.y + r),
+        r * 0.9f,
+        c,
+    )
     drawCircle(palette.dpadMark, r * 0.9f, c, style = Stroke(r * 0.03f))
     // The shaft, then the ball with a highlight, like light on a glossy ball.
     drawLine(Color(0xFF6A6A70), c, lean, r * 0.14f, androidx.compose.ui.graphics.StrokeCap.Round)
     val ball = palette.stickKnob
     drawCircle(Color(0x55000000), r * 0.4f, lean + Offset(0f, r * 0.06f))
     drawCircle(
-        Brush.radialGradient(listOf(ball.shade(0.35f), ball, ball.shade(-0.35f)), lean - Offset(r * 0.12f, r * 0.14f), r * 0.5f),
+        Brush.radialGradient(
+            listOf(ball.shade(0.35f), ball, ball.shade(-0.35f)),
+            lean - Offset(r * 0.12f, r * 0.14f),
+            r * 0.5f,
+        ),
         r * 0.38f,
         lean,
     )
@@ -1892,7 +2305,15 @@ private fun DrawScope.drawTriangleMark(
     val back = centre - dir * (size * 0.6f)
     val a = back + side * (size * 0.85f)
     val b = back - side * (size * 0.85f)
-    drawPath(Path().apply { moveTo(tip.x, tip.y); lineTo(a.x, a.y); lineTo(b.x, b.y); close() }, color)
+    drawPath(
+        Path().apply {
+            moveTo(tip.x, tip.y)
+            lineTo(a.x, a.y)
+            lineTo(b.x, b.y)
+            close()
+        },
+        color,
+    )
 }
 
 /** The well an analog stick sits in. */
@@ -2008,14 +2429,43 @@ private fun DrawScope.drawDpad(
     )
     // The pressed arm (or two, on a diagonal) darkens like a pressed rubber pad.
     val pressed = Mono.ButtonPressedTop
-    if (direction.y < -0.3f) drawRect(pressed, Offset(left + arm + inner, top + inner), Size(arm - 2 * inner, arm - inner))
-    if (direction.y > 0.3f) drawRect(pressed, Offset(left + arm + inner, top + 2 * arm), Size(arm - 2 * inner, arm - inner))
-    if (direction.x < -0.3f) drawRect(pressed, Offset(left + inner, top + arm + inner), Size(arm - inner, arm - 2 * inner))
-    if (direction.x > 0.3f) drawRect(pressed, Offset(left + 2 * arm, top + arm + inner), Size(arm - inner, arm - 2 * inner))
+    if (direction.y < -0.3f) {
+        drawRect(
+            pressed,
+            Offset(left + arm + inner, top + inner),
+            Size(arm - 2 * inner, arm - inner),
+        )
+    }
+    if (direction.y > 0.3f) {
+        drawRect(
+            pressed,
+            Offset(left + arm + inner, top + 2 * arm),
+            Size(arm - 2 * inner, arm - inner),
+        )
+    }
+    if (direction.x < -0.3f) {
+        drawRect(
+            pressed,
+            Offset(left + inner, top + arm + inner),
+            Size(arm - inner, arm - 2 * inner),
+        )
+    }
+    if (direction.x > 0.3f) {
+        drawRect(
+            pressed,
+            Offset(left + 2 * arm, top + arm + inner),
+            Size(arm - inner, arm - 2 * inner),
+        )
+    }
 
     drawArrows(left, top, arm, Mono.Emboss, direction)
     drawCircle(Color(0xFF0B0B0C), arm * 0.3f, Offset(left + full / 2, top + full / 2))
-    drawCircle(Mono.Emboss.copy(alpha = 0.6f), arm * 0.3f, Offset(left + full / 2, top + full / 2), style = Stroke(arm * 0.04f))
+    drawCircle(
+        Mono.Emboss.copy(alpha = 0.6f),
+        arm * 0.3f,
+        Offset(left + full / 2, top + full / 2),
+        style = Stroke(arm * 0.04f),
+    )
 }
 
 private fun DrawScope.drawArrows(
@@ -2029,16 +2479,35 @@ private fun DrawScope.drawArrows(
     val far = arm * 1.15f
     val near = arm * 0.78f
     val half = arm * 0.22f
+
     // The arrow of a pressed arm lights up, so the press shows even on a black d-pad.
     fun triangle(
         lit: Boolean,
         tip: Offset,
         a: Offset,
         b: Offset,
-    ) = drawPath(Path().apply { moveTo(tip.x, tip.y); lineTo(a.x, a.y); lineTo(b.x, b.y); close() }, if (lit) PressedMark else color)
-    triangle(direction.y < -0.3f, Offset(c.x, c.y - far), Offset(c.x - half, c.y - near), Offset(c.x + half, c.y - near))
+    ) = drawPath(
+        Path().apply {
+            moveTo(tip.x, tip.y)
+            lineTo(a.x, a.y)
+            lineTo(b.x, b.y)
+            close()
+        },
+        if (lit) PressedMark else color,
+    )
+    triangle(
+        direction.y < -0.3f,
+        Offset(c.x, c.y - far),
+        Offset(c.x - half, c.y - near),
+        Offset(c.x + half, c.y - near),
+    )
     triangle(direction.y > 0.3f, Offset(c.x, c.y + far), Offset(c.x - half, c.y + near), Offset(c.x + half, c.y + near))
-    triangle(direction.x < -0.3f, Offset(c.x - far, c.y), Offset(c.x - near, c.y - half), Offset(c.x - near, c.y + half))
+    triangle(
+        direction.x < -0.3f,
+        Offset(c.x - far, c.y),
+        Offset(c.x - near, c.y - half),
+        Offset(c.x - near, c.y + half),
+    )
     triangle(direction.x > 0.3f, Offset(c.x + far, c.y), Offset(c.x + near, c.y - half), Offset(c.x + near, c.y + half))
 }
 
@@ -2062,7 +2531,12 @@ private fun DrawScope.drawChevrons(
                 lineTo(tip.x, tip.y)
                 lineTo((back - side * half).x, (back - side * half).y)
             }
-        val stroke = Stroke(width, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        val stroke =
+            Stroke(
+                width,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            )
         drawPath(path, color, style = stroke)
     }
 }
@@ -2082,6 +2556,8 @@ private fun ControlGlyph(
     inset: androidx.compose.ui.unit.Dp,
     scale: Float,
     pinned: Boolean,
+    fastForwardDotsTotal: Int = 0,
+    fastForwardDotsActive: Int = 0,
 ) {
     val style = layout.style
     val palette = layout.palette
@@ -2093,14 +2569,18 @@ private fun ControlGlyph(
         label = "sink",
     )
     Box(
-        modifier = Modifier.fillMaxSize().padding(inset).graphicsLayer { scaleX = sink; scaleY = sink },
+        modifier =
+            Modifier.fillMaxSize().padding(inset).graphicsLayer {
+                scaleX = sink
+                scaleY = sink
+            },
         contentAlignment = Alignment.Center,
     ) {
         val shape =
             when (control) {
                 is SkinControl.Button -> control.shape
                 is SkinControl.Menu, is SkinControl.Rewind ->
-                    if (style == SkinStyle.NES_CLASSIC || frame.width < frame.height * 1.3f) ButtonShape.ROUND else ButtonShape.PILL
+                    if (frame.width < frame.height * 1.3f) ButtonShape.ROUND else ButtonShape.PILL
                 is SkinControl.Dpad, is SkinControl.Stick -> ButtonShape.ROUND
             }
         val key = (control as? SkinControl.Button)?.keyCode
@@ -2145,7 +2625,8 @@ private fun ControlGlyph(
         // The designed picture of the control, when the skin has one (see SkinArt).
         val art = LocalSkinArt.current?.part(control, isPressed)
         if (art != null) {
-            val reachPad = (control.reach + ART_BLEED) * scale
+            val partScale = if (control.frame.width > 0f) frame.width / control.frame.width else 1f
+            val reachPad = (control.reach + ART_BLEED) * partScale * scale
             Canvas(Modifier.fillMaxSize()) { drawArtPart(art, reachPad.dp.toPx()) }
         } else {
             Canvas(Modifier.fillMaxSize()) {
@@ -2156,8 +2637,10 @@ private fun ControlGlyph(
                         drawConsoleButton(shape, fill.standingOutFrom(consolePalette.body), isPressed)
                     style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
                         drawNesFaceButton(isPressed)
-                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) ->
+                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) && frame.width < frame.height * 1.3f ->
                         drawNesSmallButton(isPressed)
+                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind || (control is SkinControl.Button && control.isExtraButton())) ->
+                        drawNesSmallPill(isPressed)
                     else -> drawMonoButton(shape, isPressed)
                 }
             }
@@ -2178,10 +2661,35 @@ private fun ControlGlyph(
                 control is SkinControl.Button && (!control.labelBelow || style == SkinStyle.OVERLAY || pinned) -> control.label
                 else -> null
             }
-        if (glyph != null && style != SkinStyle.NES_CLASSIC) {
+        if (glyph != null && (style != SkinStyle.NES_CLASSIC || control is SkinControl.Button || frame.width >= frame.height * 1.3f)) {
             val coloured = style == SkinStyle.CONSOLE || style == SkinStyle.OVERLAY || style == SkinStyle.OUTLINE
             val glyphColor = if (coloured) labelColor else Mono.Glyph
-            Canvas(Modifier.fillMaxSize(if (shape == ButtonShape.PILL) 0.7f else 0.56f)) { drawGlyph(glyph, glyphColor) }
+            val mouldedShadow = style == SkinStyle.CONSOLE
+            val pressedShift = isPressed && art != null
+            if (glyph == Glyph.FAST_FORWARD && fastForwardDotsTotal > 0) {
+                val activeCount = fastForwardDotsActive.coerceIn(0, fastForwardDotsTotal)
+                Canvas(Modifier.fillMaxSize()) {
+                    drawFastForwardWithDots(
+                        baseColor = glyphColor,
+                        totalDots = fastForwardDotsTotal,
+                        activeDots = activeCount,
+                        mouldedShadow = mouldedShadow,
+                        pressedShift = pressedShift,
+                    )
+                }
+            } else {
+                Canvas(Modifier.fillMaxSize(if (shape == ButtonShape.PILL) 0.7f else 0.56f)) {
+                    val pressDy = if (pressedShift) size.minDimension * 0.032f else 0f
+                    translate(top = pressDy) {
+                        if (mouldedShadow) {
+                            translate(top = (size.minDimension * 0.055f).coerceAtLeast(1f)) {
+                                drawGlyph(glyph, Color.Black.copy(alpha = 0.26f))
+                            }
+                        }
+                        drawGlyph(glyph, glyphColor)
+                    }
+                }
+            }
         }
         if (onButton != null && onButton in PlayStationSymbols) {
             val overlaySymbol = key?.let { palette?.labelOf(it) } ?: Overlay.Glyph
@@ -2189,7 +2697,13 @@ private fun ControlGlyph(
             Canvas(Modifier.fillMaxSize(0.46f)) { drawPlayStationSymbol(onButton, symbolColor) }
         } else if (onButton != null && !(art != null && artCarriesLabel(control))) {
             val unitDp = scale
-            val fontSize = with(LocalDensity.current) { (minOf(frame.width, frame.height) * unitDp * if (control is SkinControl.Button && control.shape == ButtonShape.PILL) 0.42f else 0.46f).dp.toSp() }
+            val fontSize =
+                with(LocalDensity.current) {
+                    val natural = minOf(frame.width, frame.height) * unitDp * if (control is SkinControl.Button && control.shape == ButtonShape.PILL) 0.42f else 0.46f
+                    // A long name (SELECT/X) shrinks to fit inside the pill.
+                    val fits = frame.width * unitDp * 0.84f / (onButton.length * 0.62f)
+                    minOf(natural, fits).dp.toSp()
+                }
             // Medium weight with a faint emboss, like lettering moulded into the plastic.
             val emboss =
                 if (style == SkinStyle.CONSOLE) {
@@ -2221,7 +2735,82 @@ private fun readableOn(
     }
 
 /** The pictures drawn on buttons. */
-private enum class Glyph { MENU, REWIND, MIC, LID, SWAP, FAST_FORWARD, QUICK_SAVE, QUICK_LOAD }
+private enum class Glyph { MENU, REWIND, MIC, LID, SWAP, FAST_FORWARD, QUICK_SAVE, QUICK_LOAD, EXIT }
+
+/**
+ * Draws the Fast Forward double-chevron with the same weight and moulded finish as [Glyph.REWIND],
+ * above a minimalist row of [totalDots] progressive micro-LED speed pips (lighting [activeDots]
+ * from left to right in the skin's native glyph colour).
+ */
+private fun DrawScope.drawFastForwardWithDots(
+    baseColor: Color,
+    totalDots: Int,
+    activeDots: Int,
+    mouldedShadow: Boolean,
+    pressedShift: Boolean,
+) {
+    val w = size.width
+    val h = size.height
+    val s = minOf(w, h)
+    val pressDy = if (pressedShift) s * 0.022f else 0f
+    val cx = w * 0.5f
+    val cy = h * 0.40f + pressDy
+    val triHalfH = s * 0.165f
+    val triW = s * 0.196f
+    val shadowDy = (s * 0.038f).coerceAtLeast(1f)
+
+    for (startX in listOf(cx - triW * 1.04f, cx + triW * 0.04f)) {
+        val tipX = startX + triW
+        if (mouldedShadow) {
+            drawPath(
+                Path().apply {
+                    moveTo(startX, cy - triHalfH + shadowDy)
+                    lineTo(tipX, cy + shadowDy)
+                    lineTo(startX, cy + triHalfH + shadowDy)
+                    close()
+                },
+                Color.Black.copy(alpha = 0.26f),
+            )
+        }
+        drawPath(
+            Path().apply {
+                moveTo(startX, cy - triHalfH)
+                lineTo(tipX, cy)
+                lineTo(startX, cy + triHalfH)
+                close()
+            },
+            baseColor,
+        )
+    }
+
+    val count = totalDots.coerceIn(1, 6)
+    val dotY = h * 0.735f + pressDy
+    val maxSpan = w * 0.56f
+    val rawRadius = (s * 0.054f).coerceAtLeast(1.25f)
+    val step = if (count > 1) minOf(s * 0.185f, maxSpan / (count - 1).toFloat()) else 0f
+    val dotRadius = if (count > 1) minOf(rawRadius, step * 0.34f) else rawRadius
+    val firstDotX = cx - step * (count - 1) / 2f
+
+    for (i in 0 until count) {
+        val center = Offset(firstDotX + i * step, dotY)
+        if (i < activeDots) {
+            drawCircle(baseColor.copy(alpha = 0.26f), radius = dotRadius * 1.48f, center = center)
+            if (mouldedShadow) {
+                drawCircle(
+                    Color.Black.copy(alpha = 0.26f),
+                    radius = dotRadius,
+                    center = Offset(center.x, center.y + dotRadius * 0.35f),
+                )
+            }
+            drawCircle(baseColor, radius = dotRadius, center = center)
+        } else {
+            if (mouldedShadow) {
+                drawCircle(Color.Black.copy(alpha = 0.20f), radius = dotRadius * 0.88f, center = center)
+            }
+            drawCircle(baseColor.copy(alpha = 0.26f), radius = dotRadius * 0.85f, center = center)
+        }
+    }
+}
 
 /** Draws [glyph] centred in this canvas, in strokes like the rest of Arcadune's icons. */
 private fun DrawScope.drawGlyph(
@@ -2231,17 +2820,35 @@ private fun DrawScope.drawGlyph(
     val s = minOf(size.width, size.height)
     val c = Offset(size.width / 2, size.height / 2)
     val w = s * 0.11f
-    val stroke = Stroke(width = w, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+    val stroke =
+        Stroke(
+            width = w,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round,
+        )
+
     fun p(
         x: Float,
         y: Float,
     ) = Offset(c.x + x * s, c.y + y * s)
     when (glyph) {
         Glyph.MENU ->
-            for (y in listOf(-0.22f, 0f, 0.22f)) drawLine(color, p(-0.3f, y), p(0.3f, y), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            for (y in listOf(
+                -0.22f,
+                0f,
+                0.22f,
+            )) drawLine(color, p(-0.3f, y), p(0.3f, y), w, androidx.compose.ui.graphics.StrokeCap.Round)
         Glyph.REWIND -> {
             for (dx in listOf(-0.3f, 0.02f)) {
-                drawPath(Path().apply { moveTo(p(dx + 0.28f, -0.24f).x, p(0f, -0.24f).y); lineTo(p(dx + 0.28f, 0.24f).x, p(0f, 0.24f).y); lineTo(p(dx, 0f).x, c.y); close() }, color)
+                drawPath(
+                    Path().apply {
+                        moveTo(p(dx + 0.28f, -0.24f).x, p(0f, -0.24f).y)
+                        lineTo(p(dx + 0.28f, 0.24f).x, p(0f, 0.24f).y)
+                        lineTo(p(dx, 0f).x, c.y)
+                        close()
+                    },
+                    color,
+                )
             }
         }
         Glyph.MIC -> {
@@ -2252,7 +2859,16 @@ private fun DrawScope.drawGlyph(
         Glyph.LID -> {
             // A clamshell closing: the base, and the lid coming down onto it.
             drawLine(color, p(-0.4f, 0.3f), p(0.4f, 0.3f), w, androidx.compose.ui.graphics.StrokeCap.Round)
-            drawPath(Path().apply { moveTo(p(-0.36f, 0.3f).x, p(0f, 0.3f).y); lineTo(p(-0.24f, -0.3f).x, p(0f, -0.3f).y); lineTo(p(0.24f, -0.3f).x, p(0f, -0.3f).y); lineTo(p(0.36f, 0.3f).x, p(0f, 0.3f).y) }, color, style = stroke)
+            drawPath(
+                Path().apply {
+                    moveTo(p(-0.36f, 0.3f).x, p(0f, 0.3f).y)
+                    lineTo(p(-0.24f, -0.3f).x, p(0f, -0.3f).y)
+                    lineTo(p(0.24f, -0.3f).x, p(0f, -0.3f).y)
+                    lineTo(p(0.36f, 0.3f).x, p(0f, 0.3f).y)
+                },
+                color,
+                style = stroke,
+            )
             drawLine(color, p(-0.1f, 0f), p(0.1f, 0f), w, androidx.compose.ui.graphics.StrokeCap.Round)
         }
         Glyph.FAST_FORWARD -> {
@@ -2293,6 +2909,42 @@ private fun DrawScope.drawGlyph(
             drawArc(color, -90f, 90f, false, p(-0.04f, -0.36f), Size(s * 0.4f, s * 0.36f), style = stroke)
             drawArc(color, 90f, 90f, false, p(-0.36f, 0f), Size(s * 0.4f, s * 0.36f), style = stroke)
         }
+        Glyph.EXIT -> {
+            // Rounded doorway bracket on the left + crisp outward arrow on the right, proportioned to MENU / REWIND.
+            val r = 0.08f
+            drawPath(
+                Path().apply {
+                    moveTo(p(-0.05f, -0.26f).x, p(0f, -0.26f).y)
+                    lineTo(p(-0.29f + r, -0.26f).x, p(0f, -0.26f).y)
+                    quadraticBezierTo(
+                        p(-0.29f, -0.26f).x,
+                        p(0f, -0.26f).y,
+                        p(-0.29f, -0.26f + r).x,
+                        p(0f, -0.26f + r).y,
+                    )
+                    lineTo(p(-0.29f, 0.26f - r).x, p(0f, 0.26f - r).y)
+                    quadraticBezierTo(
+                        p(-0.29f, 0.26f).x,
+                        p(0f, 0.26f).y,
+                        p(-0.29f + r, 0.26f).x,
+                        p(0f, 0.26f).y,
+                    )
+                    lineTo(p(-0.05f, 0.26f).x, p(0f, 0.26f).y)
+                },
+                color,
+                style = stroke,
+            )
+            drawLine(color, p(-0.08f, 0f), p(0.29f, 0f), w, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawPath(
+                Path().apply {
+                    moveTo(p(0.12f, -0.17f).x, p(0f, -0.17f).y)
+                    lineTo(p(0.29f, 0f).x, p(0f, 0f).y)
+                    lineTo(p(0.12f, 0.17f).x, p(0f, 0.17f).y)
+                },
+                color,
+                style = stroke,
+            )
+        }
     }
 }
 
@@ -2313,7 +2965,14 @@ private fun DrawScope.drawMonoButton(
     drawRoundRect(
         brush =
             Brush.verticalGradient(
-                if (pressed) listOf(Mono.ButtonPressedTop, Mono.ButtonBottom) else listOf(Mono.ButtonTop, Mono.ButtonBottom),
+                if (pressed) {
+                    listOf(
+                        Mono.ButtonPressedTop,
+                        Mono.ButtonBottom,
+                    )
+                } else {
+                    listOf(Mono.ButtonTop, Mono.ButtonBottom)
+                },
             ),
         topLeft = Offset(ring, ring),
         size = Size(size.width - 2 * ring, size.height - 2 * ring),
@@ -2339,7 +2998,14 @@ private fun DrawScope.drawConsoleButton(
     val topLeft = Offset(depth, depth * 0.5f + sink)
     val corner = minOf(radius.x, face.minDimension / 2)
     val faceBottom = topLeft.y + face.height
-    drawRaised({ grow -> roundedBox(topLeft, face, corner, grow) }, fill, pressed, size.minDimension, topLeft.y, faceBottom)
+    drawRaised(
+        { grow -> roundedBox(topLeft, face, corner, grow) },
+        fill,
+        pressed,
+        size.minDimension,
+        topLeft.y,
+        faceBottom,
+    )
 }
 
 /** Triangle, circle, cross or square, as outlines like on the real buttons. */
@@ -2349,7 +3015,12 @@ private fun DrawScope.drawPlayStationSymbol(
 ) {
     val s = size.minDimension
     val c = Offset(size.width / 2, size.height / 2)
-    val stroke = Stroke(width = s * 0.13f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+    val stroke =
+        Stroke(
+            width = s * 0.13f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round,
+        )
     when (symbol) {
         "△" ->
             drawPath(
@@ -2365,8 +3036,20 @@ private fun DrawScope.drawPlayStationSymbol(
         "○" -> drawCircle(color, s * 0.42f, c, style = stroke)
         "✕" -> {
             val d = s * 0.38f
-            drawLine(color, c + Offset(-d, -d), c + Offset(d, d), stroke.width, androidx.compose.ui.graphics.StrokeCap.Round)
-            drawLine(color, c + Offset(d, -d), c + Offset(-d, d), stroke.width, androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(
+                color,
+                c + Offset(-d, -d),
+                c + Offset(d, d),
+                stroke.width,
+                androidx.compose.ui.graphics.StrokeCap.Round,
+            )
+            drawLine(
+                color,
+                c + Offset(d, -d),
+                c + Offset(-d, d),
+                stroke.width,
+                androidx.compose.ui.graphics.StrokeCap.Round,
+            )
         }
         "□" -> drawRect(color, c - Offset(s * 0.38f, s * 0.38f), Size(s * 0.76f, s * 0.76f), style = stroke)
     }
@@ -2374,7 +3057,11 @@ private fun DrawScope.drawPlayStationSymbol(
 
 private fun DrawScope.drawNesFaceButton(pressed: Boolean) {
     drawRoundRect(Color(0xFFE4E4E6), cornerRadius = CornerRadius(size.minDimension * 0.16f))
-    drawRoundRect(Color(0x22000000), cornerRadius = CornerRadius(size.minDimension * 0.16f), style = Stroke(size.minDimension * 0.02f))
+    drawRoundRect(
+        Color(0x22000000),
+        cornerRadius = CornerRadius(size.minDimension * 0.16f),
+        style = Stroke(size.minDimension * 0.02f),
+    )
     val r = size.minDimension * 0.37f
     val c = Offset(size.width / 2, size.height / 2)
     drawCircle(Color(0x55000000), r, c + Offset(r * 0.08f, r * 0.12f))
@@ -2394,6 +3081,29 @@ private fun DrawScope.drawNesSmallButton(pressed: Boolean) {
     val r = size.minDimension / 2
     drawCircle(Color(0xFF9A9A9D), r)
     drawCircle(if (pressed) Color(0xFFBDBDBF) else Color(0xFFF2F2F4), r * 0.86f)
+}
+
+private fun DrawScope.drawNesSmallPill(pressed: Boolean) {
+    val radius = CornerRadius(size.minDimension / 2)
+    val rim = (size.minDimension * 0.10f).coerceAtLeast(1.2f)
+    if (!pressed) {
+        drawRoundRect(Mono.Shadow, Offset(0f, size.minDimension * 0.06f), size, radius)
+    }
+    // Crisp NES silver-grey bezel ring so the pill stands out cleanly even when the dark NES deck is raised.
+    drawRoundRect(Color(0xFFB8B8BE), cornerRadius = radius)
+    drawRoundRect(
+        brush =
+            Brush.verticalGradient(
+                if (pressed) {
+                    listOf(Mono.ButtonPressedTop, Mono.ButtonBottom)
+                } else {
+                    listOf(Mono.ButtonTop, Mono.ButtonBottom)
+                },
+            ),
+        topLeft = Offset(rim, rim),
+        size = Size((size.width - 2 * rim).coerceAtLeast(1f), (size.height - 2 * rim).coerceAtLeast(1f)),
+        cornerRadius = CornerRadius((radius.x - rim).coerceAtLeast(0f)),
+    )
 }
 
 private fun DrawScope.drawOutlineButton(
@@ -2446,8 +3156,11 @@ private fun Caption(
     y: Float,
     scale: Float,
 ) {
+    if (layout.captionless && (control is SkinControl.Menu || control is SkinControl.Rewind)) return
     val style = layout.style
-    if (style == SkinStyle.OVERLAY) return
+    // Sideways over the game the controls carry no names, except the four extra buttons: they read like upright.
+    val extraButton = control.isExtraButton()
+    if (style == SkinStyle.OVERLAY && !extraButton) return
     val text =
         when (control) {
             is SkinControl.Button -> control.label.takeIf { control.labelBelow }
@@ -2458,25 +3171,35 @@ private fun Caption(
 
     val nes = style == SkinStyle.NES_CLASSIC
     val isFace = control is SkinControl.Button && control.shape == ButtonShape.ROUND
-    val fontUnits = if (nes && isFace) 13f else 8.5f
+    val fontUnits = (if (nes && isFace) 13f else 8.5f) * ((control as? SkinControl.Button)?.captionScale ?: 1f)
     val width = maxOf(frame.width, 60f)
 
-    // Where the name goes: under the control, or (NES menu / rewind) beside it.
+    // Where the name goes: under the control (on the NES deck, small buttons share one baseline).
     val (left, top, align) =
         when {
-            nes && control is SkinControl.Menu -> Triple(x - (width + 4) * scale, y + (frame.height / 2 - fontUnits * 0.7f) * scale, TextAlign.End)
-            nes && control is SkinControl.Rewind -> Triple(x + (frame.width + 4) * scale, y + (frame.height / 2 - fontUnits * 0.7f) * scale, TextAlign.Start)
-            nes && !isFace -> Triple(x + (frame.width - width) / 2 * scale, y + (244f - frame.y) * scale, TextAlign.Center)
+            nes && !isFace && !control.isExtraButton() && control !is SkinControl.Menu && control !is SkinControl.Rewind ->
+                Triple(
+                    x + (frame.width - width) / 2 * scale,
+                    y + (244f - frame.y) * scale,
+                    TextAlign.Center,
+                )
             nes -> Triple(x + (frame.width - width) / 2 * scale, y + (frame.height + 3) * scale, TextAlign.Center)
             else -> Triple(x + (frame.width - width) / 2 * scale, y + (frame.height + 4) * scale, TextAlign.Center)
         }
 
     val color =
         when {
-            nes && (control is SkinControl.Menu || control is SkinControl.Rewind) -> Color(0xFFEDEDEF)
+            nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind) -> Color.White
+            style == SkinStyle.OVERLAY -> Color.White
             nes -> Nes.Label
             style == SkinStyle.CONSOLE || style == SkinStyle.OUTLINE -> layout.paletteOrMono().caption
             else -> Mono.Caption
+        }
+    val captionShadow =
+        if ((nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind)) || style == SkinStyle.OVERLAY) {
+            androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.65f), Offset(0f, 1f), 2f)
+        } else {
+            null
         }
     val fontSize = with(LocalDensity.current) { (fontUnits * scale).dp.toSp() }
     Box(
@@ -2499,7 +3222,7 @@ private fun Caption(
             textAlign = align,
             maxLines = 1,
             softWrap = false,
-            style = androidx.compose.ui.text.TextStyle(lineHeight = fontSize * 1.2f),
+            style = androidx.compose.ui.text.TextStyle(lineHeight = fontSize * 1.2f, shadow = captionShadow),
         )
     }
 }

@@ -9,13 +9,14 @@ import org.junit.Test
 
 class RetroAchievementsTest {
     @Test
-    fun `console map maps all 24 supported systems to positive rcheevos console IDs and excludes 3DS`() {
+    fun `console map maps all 33 supported systems to positive rcheevos console IDs and excludes 3DS and Atari 800`() {
         val allSystems = SystemID.values()
-        assertEquals(25, allSystems.size)
+        assertEquals(35, allSystems.size)
 
+        val unsupported = setOf(SystemID.NINTENDO_3DS, SystemID.ATARI800)
         allSystems.forEach { systemId ->
             val consoleId = RetroAchievementsConsoleMap.getConsoleId(systemId)
-            if (systemId == SystemID.NINTENDO_3DS) {
+            if (systemId in unsupported) {
                 assertEquals(RetroAchievementsConsoleMap.RC_CONSOLE_UNKNOWN, consoleId)
                 assertFalse(RetroAchievementsConsoleMap.isSupported(systemId))
             } else {
@@ -27,10 +28,19 @@ class RetroAchievementsTest {
         assertEquals(7, RetroAchievementsConsoleMap.getConsoleId(SystemID.NES))
         assertEquals(3, RetroAchievementsConsoleMap.getConsoleId(SystemID.SNES))
         assertEquals(5, RetroAchievementsConsoleMap.getConsoleId(SystemID.GBA))
+        assertEquals(10, RetroAchievementsConsoleMap.getConsoleId(SystemID.SEGA32X))
         assertEquals(12, RetroAchievementsConsoleMap.getConsoleId(SystemID.PSX))
         assertEquals(18, RetroAchievementsConsoleMap.getConsoleId(SystemID.NDS))
-        assertEquals(41, RetroAchievementsConsoleMap.getConsoleId(SystemID.PSP))
         assertEquals(27, RetroAchievementsConsoleMap.getConsoleId(SystemID.FBNEO))
+        assertEquals(29, RetroAchievementsConsoleMap.getConsoleId(SystemID.MSX))
+        assertEquals(30, RetroAchievementsConsoleMap.getConsoleId(SystemID.C64))
+        assertEquals(38, RetroAchievementsConsoleMap.getConsoleId(SystemID.APPLEII))
+        assertEquals(39, RetroAchievementsConsoleMap.getConsoleId(SystemID.SATURN))
+        assertEquals(40, RetroAchievementsConsoleMap.getConsoleId(SystemID.DREAMCAST))
+        assertEquals(41, RetroAchievementsConsoleMap.getConsoleId(SystemID.PSP))
+        assertEquals(43, RetroAchievementsConsoleMap.getConsoleId(SystemID.THREEDO))
+        assertEquals(44, RetroAchievementsConsoleMap.getConsoleId(SystemID.COLECOVISION))
+        assertEquals(50, RetroAchievementsConsoleMap.getConsoleId(SystemID.ATARI5200))
     }
 
     @Test

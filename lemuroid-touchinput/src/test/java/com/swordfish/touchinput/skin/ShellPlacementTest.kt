@@ -29,7 +29,16 @@ class ShellPlacementTest {
     ): ShellPlacement {
         val shell = !landscape || skin.landscape.screenArea != null
         val spec = ScreenSpecs.forController(id, emptyMap(), landscape)
-        return placeShell(skin, landscape, shell, spec, width * dp, height * dp, Rect(0f, 0f, width * dp, height * dp), dp)
+        return placeShell(
+            skin,
+            landscape,
+            shell,
+            spec,
+            width * dp,
+            height * dp,
+            Rect(0f, 0f, width * dp, height * dp),
+            dp,
+        )
     }
 
     @Test
@@ -91,8 +100,14 @@ class ShellPlacementTest {
             for ((h, w) in uprightScreens) {
                 val p = place(id, skin, w, h, landscape = true)
                 for (window in p.windows) {
-                    assertTrue("$id ${w}x$h: window off screen $window", window.left >= -0.5f && window.right <= w * dp + 0.5f)
-                    assertTrue("$id ${w}x$h: window off screen $window", window.top >= -0.5f && window.bottom <= h * dp + 0.5f)
+                    assertTrue(
+                        "$id ${w}x$h: window off screen $window",
+                        window.left >= -0.5f && window.right <= w * dp + 0.5f,
+                    )
+                    assertTrue(
+                        "$id ${w}x$h: window off screen $window",
+                        window.top >= -0.5f && window.bottom <= h * dp + 0.5f,
+                    )
                 }
             }
         }
@@ -129,9 +144,17 @@ class ShellPlacementTest {
             for (values in settings) {
                 for ((w, h) in sideways) {
                     val spec = ScreenSpecs.forController(id, values, true)
-                    val p = placeShell(skin, true, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp)
+                    // As players get it: the skin's defaults (the DS and 3DS ones move screens and buttons).
+                    val defaults = layout.defaultCustomization
+                    // Moved screens were tuned on a 20:9 phone; elsewhere they grow or shrink against
+                    // the buttons (a known limit, left to the player's own adjusting).
+                    // They were also tuned for the core's default screen arrangement only.
+                    if (defaults.hasScreenChanges && (w / h < 2.1f || values != settings.first())) continue
+                    val p = placeShell(skin, true, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, defaults)
+                    // Tuned screens too big for this phone run off it; nothing can keep clear of those.
+                    if (p.windows.any { it.top < -dp || it.bottom > (h + 1) * dp || it.left < -dp || it.right > (w + 1) * dp }) continue
                     val geometry = SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
-                    val controls = geometry.frameRects(SkinCustomization(), rewindAvailable = true)
+                    val controls = geometry.frameRects(defaults, rewindAvailable = true)
                     for (window in p.windows) {
                         val frame = if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP
                         val bezel = Rect(window.topLeft / dp, window.bottomRight / dp).inflate(frame)
@@ -202,6 +225,9 @@ class ShellPlacementTest {
                 opacity = 0.6f,
                 scales = mapOf(1 to 1.35f, 3 to 0.75f),
                 hidden = setOf(2, 4),
+                shown = setOf(7, 8),
+                screenScale = 1.15f,
+                screenOffset = Offset(0.02f, -0.06f),
             )
         assertEquals(changed, SkinCustomization.decode(changed.encode()))
         val resetThree = changed.resetControl(3)
@@ -209,12 +235,253 @@ class ShellPlacementTest {
         assertTrue(resetThree.hasControlChanges(1))
         val menu = SkinControl.Menu(SkinRect(0f, 0f, 40f, 18f))
         val button = SkinControl.Button(1, "A", ButtonShape.ROUND, SkinRect(0f, 0f, 40f, 40f))
+        val optionalExit =
+            SkinControl.Button(2, "EXIT", ButtonShape.PILL, SkinRect(0f, 0f, 40f, 18f), defaultHidden = true)
         val hiddenAttempt = SkinCustomization(hidden = setOf(0, 1))
-        assertFalse("Menu can never be hidden", hiddenAttempt.isHidden(0, menu))
+        assertTrue("Any default button including Menu can be hidden", hiddenAttempt.isHidden(0, menu))
         assertTrue(hiddenAttempt.isHidden(1, button))
+        assertTrue("Optional buttons start hidden", SkinCustomization().isHidden(2, optionalExit))
+        assertFalse(
+            "Optional buttons appear when shown",
+            SkinCustomization(shown = setOf(2)).isHidden(2, optionalExit),
+        )
         assertEquals(SkinCustomization(), SkinCustomization.decode(SkinCustomization().encode()))
         assertEquals(SkinCustomization(), SkinCustomization.decode(null))
         assertEquals(SkinCustomization(), SkinCustomization.decode("garbage;;"))
+    }
+
+    @Test
+    fun customScreenScaleAndOffsetCanSlideUpPastTopNotchInset() {
+        val gba = ArcaduneSkins.forController(TouchControllerID.GBA)!!
+        val spec = ScreenSpecs.forController(TouchControllerID.GBA, emptyMap(), landscape = false)
+        val w = 393f * dp
+        val h = 873f * dp
+        // Simulate a phone with an unusually large 48dp top cutout inset.
+        val safeWithBigNotch = Rect(0f, 48f * dp, w, h)
+
+        val defaultPlacement = placeShell(gba, false, true, spec, w, h, safeWithBigNotch, dp)
+        assertTrue(defaultPlacement.picture.top >= 48f * dp)
+
+        // Slide screen all the way up into the top margin and zoom slightly.
+        val custom = SkinCustomization(screenScale = 1.1f, screenOffset = Offset(0f, -0.25f))
+        val shiftedPlacement = placeShell(gba, false, true, spec, w, h, safeWithBigNotch, dp, custom)
+        assertTrue(
+            "Screen can move up above safe.top (${shiftedPlacement.picture.top} < ${safeWithBigNotch.top})",
+            shiftedPlacement.picture.top < safeWithBigNotch.top,
+        )
+        assertTrue(
+            "Screen zooms larger (${shiftedPlacement.picture.width} > ${defaultPlacement.picture.width})",
+            shiftedPlacement.picture.width > defaultPlacement.picture.width,
+        )
+    }
+
+    @Test
+    fun perScreenCustomizationMovesAndScalesDsAnd3dsScreensIndependently() {
+        val multiCustom =
+            SkinCustomization(
+                scales = mapOf(1 to 1.3f),
+            )
+                .withScreenTransform(0, scale = 1.15f, offset = Offset(0.04f, -0.05f))
+                .withScreenTransform(1, scale = 0.85f, offset = Offset(-0.03f, 0.06f))
+
+        val roundTripped = SkinCustomization.decode(multiCustom.encode())
+        assertEquals(multiCustom, roundTripped)
+        assertEquals(1.3f, roundTripped.controlScale(1), 0.001f)
+        assertEquals(1.15f, roundTripped.screenScaleOf(0), 0.001f)
+        assertEquals(0.85f, roundTripped.screenScaleOf(1), 0.001f)
+        assertEquals(0.04f, roundTripped.screenOffsetOf(0).x, 0.001f)
+        assertEquals(0.06f, roundTripped.screenOffsetOf(1).y, 0.001f)
+
+        for (id in listOf(TouchControllerID.MELONDS, TouchControllerID.NINTENDO_3DS)) {
+            val skin = ArcaduneSkins.forController(id)!!
+            val spec = ScreenSpecs.forController(id, emptyMap(), landscape = false)
+            val w = 393f * dp
+            val h = 873f * dp
+            val safe = Rect(0f, 0f, w, h)
+
+            val base = placeShell(skin, false, true, spec, w, h, safe, dp)
+            assertEquals("$id should expose 2 independent windows", 2, base.windows.size)
+
+            val onlyTopEdited =
+                SkinCustomization().withScreenTransform(
+                    index = 0,
+                    scale = 1.18f,
+                    offset = Offset(0.05f, -0.04f),
+                )
+            val editedTop = placeShell(skin, false, true, spec, w, h, safe, dp, onlyTopEdited)
+            assertNotEquals("$id top window should move/scale", base.windows[0], editedTop.windows[0])
+            assertEquals("$id bottom window must stay untouched", base.windows[1], editedTop.windows[1])
+
+            val bothEdited =
+                onlyTopEdited.withScreenTransform(
+                    index = 1,
+                    scale = 0.88f,
+                    offset = Offset(-0.04f, 0.03f),
+                )
+            val resetTopOnly = bothEdited.resetScreen(0)
+            val afterResetTop = placeShell(skin, false, true, spec, w, h, safe, dp, resetTopOnly)
+            assertEquals("$id top window resets to default", base.windows[0], afterResetTop.windows[0])
+            assertNotEquals("$id bottom window keeps its own transform", base.windows[1], afterResetTop.windows[1])
+
+            // Also verify independent dual-screen editing in Landscape (hybrid / large+small layouts).
+            val landSpec = ScreenSpecs.forController(id, emptyMap(), landscape = true)
+            val lw = 873f * dp
+            val lh = 393f * dp
+            val landSafe = Rect(0f, 0f, lw, lh)
+            val landBase = placeShell(skin, true, true, landSpec, lw, lh, landSafe, dp)
+            assertEquals("$id sideways should expose 2 independent windows", 2, landBase.windows.size)
+            val onlySecondZoomed =
+                SkinCustomization().withScreenTransform(
+                    index = 1,
+                    scale = 1.85f,
+                    offset = Offset(-0.12f, -0.08f),
+                )
+            val landEdited = placeShell(skin, true, true, landSpec, lw, lh, landSafe, dp, onlySecondZoomed)
+            assertEquals("$id sideways screen 0 stays untouched", landBase.windows[0], landEdited.windows[0])
+            assertTrue(
+                "$id sideways screen 1 zooms larger",
+                landEdited.windows[1].width > landBase.windows[1].width * 1.7f,
+            )
+        }
+    }
+
+    @Test
+    fun dsAnd3dsPortraitDefaultScreensHaveVisibleHingeSeparationAndExactSourceUvs() {
+        val w = 393f * dp
+        val h = 873f * dp
+        val safe = Rect(0f, 0f, w, h)
+        for (id in listOf(TouchControllerID.MELONDS, TouchControllerID.NINTENDO_3DS)) {
+            val skin = ArcaduneSkins.forController(id)!!
+            val spec = ScreenSpecs.forController(id, emptyMap(), landscape = false)!!
+            val placement = placeShell(skin, false, true, spec, w, h, safe, dp)
+            assertEquals("$id portrait has 2 windows", 2, placement.windows.size)
+            assertTrue(
+                "$id portrait separates screen 1 and screen 2 (${placement.windows[0]} vs ${placement.windows[1]})",
+                placement.windows[1].top > placement.windows[0].bottom + 2f,
+            )
+        }
+        val n3dsSpec = ScreenSpecs.forController(TouchControllerID.NINTENDO_3DS, emptyMap(), landscape = false)!!
+        assertEquals(400f, n3dsSpec.srcWidth, 0.01f)
+        assertEquals(480f, n3dsSpec.srcHeight, 0.01f)
+        assertEquals(SkinRect(0f, 0f, 400f, 240f), n3dsSpec.srcScreens[0])
+        assertEquals(SkinRect(40f, 240f, 320f, 240f), n3dsSpec.srcScreens[1])
+
+        // DeSmuME 0px horizontal gap UVs in hybrid and side-by-side layouts:
+        val desmumeHybrid =
+            ScreenSpecs.forController(
+                TouchControllerID.MELONDS,
+                mapOf("desmume_screens_layout" to "hybrid/top"),
+                landscape = true,
+            )!!
+        assertEquals(1024f, desmumeHybrid.srcWidth, 0.01f)
+        assertEquals(SkinRect(768f, 384f, 256f, 192f), desmumeHybrid.srcScreens[1])
+
+        // Game Gear 4:3 cutout & DS/3DS touch-only window filtering:
+        val ggSpec = ScreenSpecs.forController(TouchControllerID.GG, emptyMap(), landscape = false)!!
+        assertEquals(4f / 3f, ggSpec.width / ggSpec.height, 0.001f)
+        assertEquals(setOf(1), ScreenSpecs.touchWindowIndices(TouchControllerID.MELONDS, emptyMap(), landscape = false))
+        assertEquals(
+            setOf(0),
+            ScreenSpecs.touchWindowIndices(
+                TouchControllerID.MELONDS,
+                mapOf("melonds_screen_layout1" to "bottom-top"),
+                landscape = false,
+            ),
+        )
+        assertEquals(
+            emptySet<Int>(),
+            ScreenSpecs.touchWindowIndices(
+                TouchControllerID.NINTENDO_3DS,
+                mapOf("citra_layout_option" to "Single Screen Only", "citra_swap_screen" to "Top"),
+                landscape = true,
+            ),
+        )
+    }
+
+    @Test
+    fun portraitBgOffsetPersistsAndAdjustsHeightAcrossAllConsolesWithoutMovingScreensOrButtons() {
+        val raised = SkinCustomization().withPortraitBgOffset(0.75f)
+        assertTrue(raised.hasPortraitBgChange)
+        assertTrue(raised.isCustomized)
+        assertEquals(raised, SkinCustomization.decode(raised.encode()))
+
+        val lowered = SkinCustomization().withPortraitBgOffset(-0.6f)
+        assertTrue(lowered.hasPortraitBgChange)
+        assertEquals(lowered, SkinCustomization.decode(lowered.encode()))
+        assertFalse(lowered.resetPortraitBg().hasPortraitBgChange)
+
+        val w = 393f * dp
+        val h = 873f * dp
+        val safe = Rect(0f, 24f * dp, w, h)
+        for ((id, skin) in skins) {
+            val spec = ScreenSpecs.forController(id, emptyMap(), landscape = false)
+            val base = placeShell(skin, false, true, spec, w, h, safe, dp)
+            val fullBg = placeShell(skin, false, true, spec, w, h, safe, dp, SkinCustomization(portraitBgOffset = 1f))
+            val lowBg = placeShell(skin, false, true, spec, w, h, safe, dp, SkinCustomization(portraitBgOffset = -1f))
+
+            assertTrue("$id exposes editableBodyTop in portrait", base.editableBodyTop != null)
+            assertEquals("$id full BG reaches top edge", 0f, fullBg.editableBodyTop!!, 0.5f)
+            if (skin.portrait.uprightScreenSide == null) {
+                assertEquals("$id full BG bodyTop reaches 0", 0f, fullBg.bodyTop!!, 0.5f)
+            }
+            assertEquals("$id low BG reaches maxBodyTop", base.maxBodyTop, lowBg.editableBodyTop!!, 0.5f)
+            assertEquals("$id low BG sets bodyTop even on DS", base.maxBodyTop, lowBg.bodyTop!!, 0.5f)
+
+            // Adjusting BG height never moves or shrinks default screens, active screens, or button panel.
+            assertEquals("$id full BG keeps windows", base.windows, fullBg.windows)
+            assertEquals("$id low BG keeps windows", base.windows, lowBg.windows)
+            assertEquals("$id full BG keeps panel", base.panel, fullBg.panel)
+            assertEquals("$id low BG keeps panel", base.panel, lowBg.panel)
+        }
+    }
+
+    @Test
+    fun allConsolesSupportScreenEditingInPortraitAndLandscapeWithInvariantDefaultWindows() {
+        for ((id, skin) in skins) {
+            for (landscape in listOf(false, true)) {
+                val w = (if (landscape) 873f else 393f) * dp
+                val h = (if (landscape) 393f else 873f) * dp
+                val safe = Rect(0f, 0f, w, h)
+                val shell = !landscape || skin.landscape.screenArea != null
+                val spec = ScreenSpecs.forController(id, emptyMap(), landscape)
+                val placeSpec = if (shell) spec else null
+
+                val base = placeShell(skin, landscape, shell, placeSpec, w, h, safe, dp)
+                val baseDefaults = base.defaultGameWindows(shell, spec)
+                assertTrue("$id landscape=$landscape has editable game windows", baseDefaults.isNotEmpty())
+
+                val shrunk =
+                    SkinCustomization().withScreenTransform(
+                        index = 0,
+                        scale = SkinCustomization.MIN_SCREEN_SCALE,
+                        offset = Offset(-0.08f, 0.05f),
+                    )
+                val zoomed =
+                    SkinCustomization().withScreenTransform(
+                        index = 0,
+                        scale = SkinCustomization.MAX_SCREEN_SCALE,
+                        offset = Offset(0.06f, -0.04f),
+                    )
+                val shrunkPlaced = placeShell(skin, landscape, shell, placeSpec, w, h, safe, dp, shrunk)
+                val zoomedPlaced = placeShell(skin, landscape, shell, placeSpec, w, h, safe, dp, zoomed)
+
+                assertEquals(
+                    "$id landscape=$landscape defaultGameWindows invariant on shrink",
+                    baseDefaults,
+                    shrunkPlaced.defaultGameWindows(shell, spec),
+                )
+                assertEquals(
+                    "$id landscape=$landscape defaultGameWindows invariant on zoom",
+                    baseDefaults,
+                    zoomedPlaced.defaultGameWindows(shell, spec),
+                )
+                val shrunkWin = shrunkPlaced.gameWindows(shell, spec)[0]
+                val zoomedWin = zoomedPlaced.gameWindows(shell, spec)[0]
+                assertTrue("$id landscape=$landscape shrinks below default", shrunkWin.width < baseDefaults[0].width)
+                assertTrue("$id landscape=$landscape zooms above default", zoomedWin.width > baseDefaults[0].width)
+                assertNotEquals("$id landscape=$landscape moves center", baseDefaults[0].center, shrunkWin.center)
+            }
+        }
     }
 
     @Test

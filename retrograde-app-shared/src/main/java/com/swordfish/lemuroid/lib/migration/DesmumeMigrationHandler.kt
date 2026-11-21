@@ -6,8 +6,8 @@ import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import timber.log.Timber
 import java.io.File
 
-// DeSmuME was removed from Arcadune: its in-game saves (.dsv) are converted for melonDS when a game
-// starts, so players keep their progress.
+// Converts DeSmuME (.dsv / footer-tagged .srm) and melonDS raw (.srm) Nintendo DS battery saves
+// seamlessly when switching between melonDS and DeSmuME.
 class DesmumeMigrationHandler(
     private val directoriesManager: DirectoriesManager,
 ) {
@@ -16,14 +16,24 @@ class DesmumeMigrationHandler(
         coreID: CoreID,
         defaultData: ByteArray?,
     ): SaveDataResult {
-        if (coreID != CoreID.MELONDS) {
-            return SaveDataResult(defaultData, null)
-        }
-
         val savesDirectory = directoriesManager.getSavesDirectory()
         val baseFileName = game.fileName.substringBeforeLast(".", game.fileName)
         val srmFile = File(savesDirectory, "$baseFileName.$SRM_EXTENSION")
         val dsvFile = File(savesDirectory, "$baseFileName.$DSV_EXTENSION")
+
+        if (coreID == CoreID.DESMUME) {
+            if (srmFile.exists() && srmFile.length() > 0L &&
+                dsvFile.exists() && srmFile.lastModified() > dsvFile.lastModified()
+            ) {
+                runCatching { dsvFile.delete() }
+            }
+            return SaveDataResult(defaultData, null)
+        }
+
+        if (coreID != CoreID.MELONDS) {
+            return SaveDataResult(defaultData, null)
+        }
+
         val srmInfo = SaveCandidate(srmFile, defaultData ?: srmFile.readBytesIfValid())
         val dsvInfo = SaveCandidate(dsvFile, dsvFile.readBytesIfValid())
 
@@ -52,7 +62,7 @@ class DesmumeMigrationHandler(
 
         if (srmInfo.data != null) {
             Timber.d("Using SRM save for %s when launching melonDS", baseFileName)
-            return SaveDataResult(srmInfo.data, srmInfo.timestamp)
+            return SaveDataResult(convertDsvToRaw(srmInfo.data), srmInfo.timestamp)
         }
 
         if (dsvInfo.data != null) {

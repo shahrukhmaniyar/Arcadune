@@ -10,6 +10,7 @@
 
     <string name="controller_default">Default</string>
     <string name="controller_dualshock">DualShock</string>
+    <string name="controller_3d_pad">3D Control Pad</string>
     <string name="controller_standard">Standard</string>
     <string name="controller_landscape">Landscape</string>
     <string name="controller_portrait">Portrait</string>
@@ -71,6 +72,71 @@
     <string name="setting_citra_is_new_3ds">Console model</string>
     <string name="setting_citra_region_value">Console region</string>
     <string name="setting_citra_language">Console language</string>
+    <string name="setting_citra_use_hw_shader_cache">Hardware shader cache</string>
+
+    <string name="setting_flycast_internal_resolution">Internal resolution</string>
+    <string name="setting_flycast_auto_skip_frame">Auto frameskip</string>
+    <string name="setting_flycast_widescreen_hack">Widescreen hack</string>
+    <string name="setting_flycast_alpha_sorting">Alpha sorting</string>
+    <string name="setting_flycast_threaded_rendering">Threaded rendering</string>
+    <string name="setting_flycast_hle_bios">HLE BIOS</string>
+
+    <string name="setting_opera_high_resolution">High resolution</string>
+    <string name="setting_opera_cpu_overclock">CPU overclock</string>
+    <string name="setting_opera_active_devices">Active input devices</string>
+    <string name="setting_opera_dsp_threaded">Threaded DSP audio</string>
+    <string name="setting_opera_swi_hle">SWI HLE</string>
+    <string name="setting_opera_nvram_storage">NVRAM storage</string>
+
+    <string name="setting_yabasanshiro_resolution_mode">Resolution</string>
+    <string name="setting_yabasanshiro_frameskip">Frameskip</string>
+    <string name="setting_yabasanshiro_force_hle_bios">Force HLE BIOS</string>
+    <string name="setting_yabasanshiro_polygon_mode">Polygon mode</string>
+    <string name="setting_yabasanshiro_addon_cart">Addon cartridge</string>
+
+    <string name="setting_picodrive_frameskip">Frameskip</string>
+    <string name="setting_picodrive_sprlim">No sprite limit</string>
+    <string name="setting_picodrive_overclk68k">68k overclock</string>
+    <string name="setting_picodrive_region">Console region</string>
+
+    <string name="setting_a5200_artifacting_mode">Hi-res artifacting</string>
+    <string name="setting_a5200_mix_frames">Interframe blending</string>
+    <string name="setting_a5200_bios">BIOS selection</string>
+
+    <string name="setting_atari800_system">Atari system model</string>
+    <string name="setting_atari800_artifacting_mode">Hi-res artifacting</string>
+    <string name="setting_atari800_internalbasic">Internal BASIC</string>
+    <string name="setting_atari800_sioaccel">Fast SIO disk acceleration</string>
+
+    <string name="setting_gearcoleco_overscan">Borders</string>
+    <string name="setting_gearcoleco_no_sprite_limit">No sprite limit</string>
+
+    <string name="setting_vice_joyport">Active joystick port</string>
+    <string name="setting_vice_autoloadwarp">Autoload warp speed</string>
+    <string name="setting_vice_c64_model">C64 model</string>
+    <string name="setting_vice_drive_true_emulation">True drive emulation</string>
+
+    <string name="setting_fmsx_mode">MSX model</string>
+    <string name="setting_fmsx_video_mode">Video mode</string>
+    <string name="setting_fmsx_allsprites">Show all sprites</string>
+    <string name="setting_fmsx_mapper_type_mode">Cartridge mapper</string>
+
+    <string name="setting_armgba_skip_bios">Skip BIOS intro</string>
+    <string name="setting_armgba_color_correction">Color correction</string>
+    <string name="setting_armgba_gb_screen">GB screen palette</string>
+    <string name="setting_armgba_lcd_ghosting">LCD ghosting</string>
+    <string name="setting_armgba_threaded_video">Threaded video</string>
+    <string name="setting_gpsp_frameskip">Frameskip</string>
+    <string name="setting_gpsp_color_correction">Color correction</string>
+    <string name="setting_desmume_screens_layout">Screens layout</string>
+    <string name="setting_desmume_frameskip">Frameskip</string>
+    <string name="setting_swanstation_resolution_scale">Resolution scaling</string>
+    <string name="setting_swanstation_widescreen_hack">Widescreen hack</string>
+    <string name="setting_beetle_psx_internal_resolution">Internal resolution</string>
+    <string name="setting_beetle_psx_widescreen_hack">Widescreen hack</string>
+    <string name="setting_parallel_n64_screensize">Screen size</string>
+    <string name="setting_parallel_n64_gfxplugin">Graphics plugin</string>
+    <string name="setting_sameboy_color_correction">Color correction</string>
 
     <!-- Core settings values. Duplicated here to ease the translation process. -->
     <string name="value_gambatte_mix_frames_disabled">Disabled</string>
@@ -150,5 +216,13 @@
     <string name="value_handy_rot_none">0</string>
     <string name="value_handy_rot_90">90</string>
     <string name="value_handy_rot_270">270</string>
+
+    <string name="value_desmume_layout_topbottom">Top and bottom (side by side when sideways)</string>
+    <string name="value_desmume_layout_leftright">Left - Right</string>
+
+    <string name="setting_applewin_machine">Apple II Model</string>
+    <string name="setting_applewin_video_mode">Monitor Type</string>
+    <string name="setting_applewin_joypad_start">Start Button Key</string>
+    <string name="setting_applewin_joypad_select">Select Button Key</string>
 
 </resources>

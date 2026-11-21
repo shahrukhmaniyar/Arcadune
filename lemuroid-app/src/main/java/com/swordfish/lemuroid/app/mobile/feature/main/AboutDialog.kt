@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,6 +44,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -47,16 +52,18 @@ import com.swordfish.lemuroid.BuildConfig
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
+import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.library.GameSystem
 
 private const val REPOSITORY_URL = "https://github.com/shahrukhmaniyar/Arcadune"
+private const val PRIVACY_URL = "https://github.com/shahrukhmaniyar/Arcadune/blob/master/PRIVACY.md"
 
-/** About Arcadune (the info button of Settings): the consoles it plays, how to add games, credits. */
+/** About Arcadune (the info button of Settings): the consoles it plays, how to add games, FOSS core licenses, credits. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.82f
+    val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.84f
 
     val sheetShape = RoundedCornerShape(28.dp)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -101,6 +108,16 @@ fun AboutDialog(onDismiss: () -> Unit) {
                         }
                     }
 
+                    Section(title = stringResource(R.string.about_cores_title)) {
+                        Text(
+                            text = stringResource(R.string.about_cores_message),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ArcaduneColors.OnSurfaceDim,
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        CoreLicensesList()
+                    }
+
                     Section(title = stringResource(R.string.about_credits_title)) {
                         Text(
                             text = stringResource(R.string.about_credits_message),
@@ -110,10 +127,19 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     }
                 }
 
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 20.dp, top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_privacy_policy_button),
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_URL)))
+                            }
+                        },
+                    )
                     ArcadunePillButton(
                         label = stringResource(R.string.about_github),
                         onClick = {
@@ -183,14 +209,17 @@ private fun Section(
     }
 }
 
-/** Every console, with the emulator that plays it, on rounded rows like a settings card. */
+/** Every console, with the emulators that play it, on rounded rows like a settings card. */
 @Composable
 private fun ConsoleList() {
     val context = LocalContext.current
     val consoles =
         remember {
             GameSystem.all()
-                .map { context.getString(it.titleResId) to it.systemCoreConfigs.first().coreID.coreDisplayName }
+                .map { system ->
+                    val names = system.systemCoreConfigs.joinToString(", ") { it.coreID.coreDisplayName }
+                    context.getString(system.titleResId) to names
+                }
                 .sortedBy { it.first.lowercase() }
         }
     Column(
@@ -214,6 +243,64 @@ private fun ConsoleList() {
                     text = emulator,
                     style = MaterialTheme.typography.bodySmall,
                     color = ArcaduneColors.OnSurfaceDim,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/** Every shipped and downloadable FOSS core, its license, and a tap-to-open upstream link. */
+@Composable
+private fun CoreLicensesList() {
+    val context = LocalContext.current
+    val cores =
+        remember {
+            CoreID.values().sortedBy { it.coreDisplayName.lowercase() }
+        }
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(ArcaduneColors.SurfaceHigh),
+    ) {
+        cores.forEachIndexed { index, core ->
+            if (index > 0) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(ArcaduneColors.Surface))
+            }
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(core.upstreamUrl)))
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = core.coreDisplayName,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = ArcaduneColors.OnSurface,
+                    )
+                    Text(
+                        text =
+                            if (core.isBundledByDefault) {
+                                "${core.license} · Built-in"
+                            } else {
+                                "${core.license} · On-demand"
+                            },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ArcaduneColors.OnSurfaceDim,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = null,
+                    tint = ArcaduneColors.OnSurfaceDim,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

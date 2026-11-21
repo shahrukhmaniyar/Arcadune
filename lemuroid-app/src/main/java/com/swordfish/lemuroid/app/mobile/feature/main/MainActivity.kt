@@ -38,6 +38,8 @@ import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSetti
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosSettingsViewModel
+import com.swordfish.lemuroid.app.mobile.feature.settings.coreselection.CoresSelectionScreen
+import com.swordfish.lemuroid.app.mobile.feature.settings.coreselection.CoresSelectionViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.general.SettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.inputdevices.InputDevicesSettingsScreen
@@ -52,6 +54,7 @@ import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.shared.GameInteractor
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.GameLauncher
+import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.app.shared.input.InputDeviceManager
 import com.swordfish.lemuroid.app.shared.main.BusyActivity
 import com.swordfish.lemuroid.app.shared.main.GameLaunchTaskHandler
@@ -60,6 +63,7 @@ import com.swordfish.lemuroid.common.coroutines.safeLaunch
 import com.swordfish.lemuroid.ext.feature.review.ReviewManager
 import com.swordfish.lemuroid.lib.android.RetrogradeComponentActivity
 import com.swordfish.lemuroid.lib.bios.BiosManager
+import com.swordfish.lemuroid.lib.core.CoreUpdater
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.injection.PerActivity
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
@@ -90,6 +94,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
 
     @Inject
     lateinit var coresSelection: CoresSelection
+
+    @Inject
+    lateinit var coreUpdater: CoreUpdater
 
     @Inject
     lateinit var settingsInteractor: SettingsInteractor
@@ -123,6 +130,13 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         setContent {
             val navController = rememberNavController()
             MainScreen(navController)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.safeLaunch {
+            PlayTimeTracker.flushPendingToDatabase(applicationContext, retrogradeDb)
         }
     }
 
@@ -301,6 +315,26 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                         )
                     }
                     composable(
+                        route = MainRoute.SETTINGS_CORES_SELECTION,
+                        navController = navController,
+                        onHelpPressed = onHelpPressed,
+                        mainUIState = mainUIState,
+                    ) {
+                        CoresSelectionScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            viewModel =
+                                viewModel(
+                                    factory =
+                                        CoresSelectionViewModel.Factory(
+                                            applicationContext,
+                                            coresSelection,
+                                            coreUpdater,
+                                            directoriesManager,
+                                        ),
+                                ),
+                        )
+                    }
+                    composable(
                         route = MainRoute.SETTINGS_INPUT_DEVICES,
                         navController = navController,
                         onHelpPressed = onHelpPressed,
@@ -373,10 +407,19 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 }
             }
 
+            val liveSelectedGame =
+                selectedGameState.value?.let { current ->
+                    remember(current.id) { retrogradeDb.gameDao().selectByIdFlow(current.id) }
+                        .collectAsState(initial = current)
+                        .value ?: current
+                }
+
             MainGameContextActions(
                 selectedGameState = selectedGameState,
+                liveGame = liveSelectedGame,
                 shortcutSupported = gameInteractor.supportShortcuts(),
                 onGamePlay = { gameInteractor.onGamePlay(it) },
+                onGameQuickResume = { gameInteractor.onGameQuickResume(it) },
                 onGameRestart = { gameInteractor.onGameRestart(it) },
                 onFavoriteToggle = { game: Game, isFavorite: Boolean ->
                     gameInteractor.onFavoriteToggle(game, isFavorite)

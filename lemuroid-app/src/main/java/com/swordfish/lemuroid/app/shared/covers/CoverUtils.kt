@@ -9,7 +9,9 @@ import coil.imageLoader
 import coil.load
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
-import com.swordfish.lemuroid.common.graphics.ColorUtils
+import com.swordfish.lemuroid.BuildConfig
+import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsUserAgent
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +52,20 @@ object CoverUtils {
             }
             .okHttpClient {
                 OkHttpClient.Builder()
+                    .addInterceptor { chain ->
+                        val req = chain.request()
+                        val host = req.url.host.lowercase()
+                        if (host.endsWith("retroachievements.org")) {
+                            val ua =
+                                RetroAchievementsUserAgent.build(
+                                    appVersion = BuildConfig.VERSION_NAME,
+                                    rcheevosClause = RetroAchievementsUserAgent.DEFAULT_RCHEEVOS_CLAUSE,
+                                )
+                            chain.proceed(req.newBuilder().header("User-Agent", ua).build())
+                        } else {
+                            chain.proceed(req)
+                        }
+                    }
                     .addInterceptor(LibretroThumbnailsMirrorInterceptor(applicationContext.cacheDir))
                     .addNetworkInterceptor(ThrottleFailedThumbnailsInterceptor)
                     .addNetworkInterceptor(CoverCompressionInterceptor())
@@ -83,26 +99,7 @@ object CoverUtils {
         dim: Boolean = true,
     ): Drawable = CoverPlaceholderDrawable(context, dim)
 
-    fun getFallbackRemoteUrl(game: Game): String {
-        val color = Integer.toHexString(computeColor(game)).substring(2)
-        val title = computeTitle(game)
-        return "https://fakeimg.pl/512x512/$color/fff/?font=bebas&text=$title"
-    }
-
-    private fun computeTitle(game: Game): String {
-        val sanitizedName =
-            game.displayName()
-                .replace(Regex("\\(.*\\)"), "")
-
-        return sanitizedName.asSequence()
-            .filter { it.isDigit() or it.isUpperCase() or (it == '&') }
-            .take(3)
-            .joinToString("")
-            .ifBlank { game.displayName().firstOrNull()?.toString() ?: "?" }
-            .replaceFirstChar { it.uppercase() }
-    }
-
-    private fun computeColor(game: Game): Int {
-        return ColorUtils.randomColor(game.title)
+    fun getFallbackLocalResourceUri(context: Context): String {
+        return "android.resource://${context.packageName}/${R.mipmap.lemuroid_launcher}"
     }
 }

@@ -175,14 +175,6 @@ void Video::renderFrame() {
 
         glUseProgram(shader.gProgram);
 
-        auto vertices = isLastPass ? videoLayout.getForegroundVertices() : videoLayout.getFramebufferVertices();
-        glVertexAttribPointer(shader.gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0, vertices.data());
-        glEnableVertexAttribArray(shader.gvPositionHandle);
-
-        auto coordinates = videoLayout.getTextureCoordinates();
-        glVertexAttribPointer(shader.gvCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, coordinates.data());
-        glEnableVertexAttribArray(shader.gvCoordinateHandle);
-
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, renderer->getTexture());
         glUniform1i(shader.gTextureHandle, 0);
@@ -197,7 +189,32 @@ void Video::renderFrame() {
 
         glUniform1f(shader.gScreenDensityHandle, getScreenDensity());
 
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        auto regions = isLastPass
+            ? videoLayout.getScreenRegionsSnapshot()
+            : std::vector<VideoLayout::ScreenRegion>{};
+
+        if (!regions.empty()) {
+            glEnableVertexAttribArray(shader.gvPositionHandle);
+            glEnableVertexAttribArray(shader.gvCoordinateHandle);
+            std::array<float, 12> regionVerts {};
+            std::array<float, 12> regionTexCoords {};
+            for (const auto& region : regions) {
+                videoLayout.buildRegionQuad(region, regionVerts, regionTexCoords);
+                glVertexAttribPointer(shader.gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0, regionVerts.data());
+                glVertexAttribPointer(shader.gvCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, regionTexCoords.data());
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+            }
+        } else {
+            auto vertices = isLastPass ? videoLayout.getForegroundVertices() : videoLayout.getFramebufferVertices();
+            glVertexAttribPointer(shader.gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0, vertices.data());
+            glEnableVertexAttribArray(shader.gvPositionHandle);
+
+            auto coordinates = videoLayout.getTextureCoordinates();
+            glVertexAttribPointer(shader.gvCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, coordinates.data());
+            glEnableVertexAttribArray(shader.gvCoordinateHandle);
+
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
 
         glDisableVertexAttribArray(shader.gvPositionHandle);
         glDisableVertexAttribArray(shader.gvCoordinateHandle);
@@ -234,14 +251,22 @@ void Video::onNewFrame(const void *data, unsigned width, unsigned height, size_t
 
 void Video::updateScreenSize(unsigned width, unsigned height) {
     videoLayout.updateScreenSize(width, height);
+    isDirty = true;
 }
 
 void Video::updateViewportSize(Rect viewportRect) {
     videoLayout.updateViewportSize(viewportRect);
+    isDirty = true;
 }
 
 void Video::updateViewportAlignment(unsigned int viewportAlignment) {
     videoLayout.updateViewportAlignment(viewportAlignment);
+    isDirty = true;
+}
+
+void Video::updateScreenRegions(const std::vector<VideoLayout::ScreenRegion>& regions) {
+    videoLayout.updateScreenRegions(regions);
+    isDirty = true;
 }
 
 void Video::updateRendererSize(unsigned int width, unsigned int height) {

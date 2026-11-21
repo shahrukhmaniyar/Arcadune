@@ -2,8 +2,10 @@ package com.swordfish.lemuroid.app.shared.game
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.OnBackPressedCallback
@@ -40,12 +42,17 @@ import com.swordfish.lemuroid.lib.saves.SavesManager
 import com.swordfish.lemuroid.lib.saves.StatesManager
 import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
+import com.swordfish.touchinput.skin.SkinArtLoader
 import dagger.Lazy
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.UUID
 import javax.inject.Inject
 
 @OptIn(DelicateCoroutinesApi::class)
@@ -86,20 +93,37 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     private lateinit var baseGameScreenViewModel: BaseGameScreenViewModel
 
-    private val startGameTime = System.currentTimeMillis()
+    private lateinit var playSessionId: String
+    private var isActivityResumed = false
+    private var isGameLoaded = false
+    private var activeResumeElapsedMs: Long? = null
+    private var unflushedPlayTimeMs: Long = 0L
+    private var totalSessionPlayTimeMs: Long = 0L
+    private var sessionPlayCountRecorded = false
     private var finishTriggered = false
     private var isOpeningMenu = false
+    private var pauseIdleJob: Job? = null
 
     @Volatile
     private var handlingUncaughtException = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playSessionId =
+            savedInstanceState?.getString(STATE_PLAY_SESSION_ID)
+                ?: UUID.randomUUID().toString()
+        sessionPlayCountRecorded =
+            savedInstanceState?.getBoolean(STATE_PLAY_COUNT_RECORDED, false)
+                ?: false
+        totalSessionPlayTimeMs =
+            savedInstanceState?.getLong(STATE_TOTAL_PLAY_TIME_MS, 0L)
+                ?: 0L
         setUpExceptionsHandler()
         GameService.startService(applicationContext, intent)
         game = intent.getSerializableExtra(EXTRA_GAME) as Game
         systemCoreConfig = intent.getSerializableExtra(EXTRA_SYSTEM_CORE_CONFIG) as SystemCoreConfig
         system = GameSystem.findById(game.systemId)
+        preloadSkinArt()
 
         val viewModel by viewModels<BaseGameScreenViewModel> {
             BaseGameScreenViewModel.Factory(
@@ -125,7 +149,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
         setContent {
             AppTheme {
-                BaseGameScreen(viewModel = baseGameScreenViewModel) {
+                BaseGameScreen(viewModel = baseGameScreenViewModel, showScreenWhileLoading = showsScreenWhileLoading) {
                     GameScreen(viewModel)
                 }
             }
@@ -138,6 +162,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                 systemCoreConfig,
                 gameLoader,
                 intent.getBooleanExtra(EXTRA_LOAD_SAVE, false),
+                intent.getBooleanExtra(EXTRA_EXPLICIT_QUICK_RESUME, false),
             )
         }
 
@@ -145,7 +170,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    baseGameScreenViewModel.requestFinish()
+                    baseGameScreenViewModel.onSystemBackPressed()
                 }
             },
         )
@@ -156,10 +181,80 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     @Composable
     abstract fun GameScreen(viewModel: BaseGameScreenViewModel)
 
+    /** True when the screen (the skin) should show while the game is still loading, with a small indicator over it. */
+    protected open val showsScreenWhileLoading: Boolean = false
+
     private fun initialiseFlows() {
         launchOnState(Lifecycle.State.CREATED) {
             initializeViewModelsEffectsFlow()
         }
+        launchOnState(Lifecycle.State.CREATED) {
+            baseGameScreenViewModel.loadingState.collect { loading ->
+                if (!loading && !isGameLoaded) {
+                    isGameLoaded = true
+                    syncPlayTimeClock()
+                }
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_PLAY_SESSION_ID, playSessionId)
+        outState.putBoolean(STATE_PLAY_COUNT_RECORDED, sessionPlayCountRecorded)
+        outState.putLong(STATE_TOTAL_PLAY_TIME_MS, totalSessionPlayTimeMs)
+    }
+
+    private fun syncPlayTimeClock() {
+        if (isActivityResumed && isGameLoaded) {
+            if (activeResumeElapsedMs == null) {
+                activeResumeElapsedMs = SystemClock.elapsedRealtime()
+            }
+        } else {
+            pausePlayTimeClock()
+        }
+    }
+
+    private fun pausePlayTimeClock() {
+        val startedAt = activeResumeElapsedMs ?: return
+        activeResumeElapsedMs = null
+        val elapsed = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+        unflushedPlayTimeMs += elapsed
+        totalSessionPlayTimeMs += elapsed
+    }
+
+    private fun flushPlayTimeToJournal() {
+        if (!::game.isInitialized || !::playSessionId.isInitialized) {
+            return
+        }
+        if (isActivityResumed && isGameLoaded) {
+            val now = SystemClock.elapsedRealtime()
+            val startedAt = activeResumeElapsedMs
+            if (startedAt != null) {
+                val elapsed = (now - startedAt).coerceAtLeast(0L)
+                unflushedPlayTimeMs += elapsed
+                totalSessionPlayTimeMs += elapsed
+            }
+            activeResumeElapsedMs = now
+        }
+        if (!isGameLoaded && unflushedPlayTimeMs <= 0L) {
+            return
+        }
+        val deltaMs = unflushedPlayTimeMs
+        val playCountDelta = if (!sessionPlayCountRecorded) 1 else 0
+        if (deltaMs <= 0L && playCountDelta == 0) {
+            return
+        }
+        unflushedPlayTimeMs = 0L
+        sessionPlayCountRecorded = true
+        PlayTimeTracker.appendPendingJournal(
+            context = applicationContext,
+            sessionId = playSessionId,
+            gameId = game.id,
+            playedAtMs = System.currentTimeMillis(),
+            playCountDelta = playCountDelta,
+            playTimeDeltaMs = deltaMs,
+        )
     }
 
     private fun setUpExceptionsHandler() {
@@ -194,6 +289,9 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         if (baseGameScreenViewModel.loadingState.value) {
             return
         }
+        if (!baseGameScreenViewModel.canOpenPauseMenu()) {
+            return
+        }
 
         val coreOptions = getCoreOptions()
 
@@ -205,18 +303,25 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             systemCoreConfig.exposedAdvancedSettings
                 .mapNotNull { transformExposedSetting(it, coreOptions) }
 
+        val currentDisk =
+            if (system.hasMultiDiskSupport) {
+                baseGameScreenViewModel.retroGameView.retroGameView?.getCurrentDisk() ?: 0
+            } else {
+                0
+            }
+        val availableDisks =
+            if (system.hasMultiDiskSupport) {
+                baseGameScreenViewModel.retroGameView.retroGameView?.getAvailableDisks() ?: 0
+            } else {
+                0
+            }
+
         val intent =
             Intent(this, getDialogClass()).apply {
                 this.putExtra(GameMenuContract.EXTRA_CORE_OPTIONS, options.toTypedArray())
                 this.putExtra(GameMenuContract.EXTRA_ADVANCED_CORE_OPTIONS, advancedOptions.toTypedArray())
-                this.putExtra(
-                    GameMenuContract.EXTRA_CURRENT_DISK,
-                    baseGameScreenViewModel.retroGameView.retroGameView?.getCurrentDisk() ?: 0,
-                )
-                this.putExtra(
-                    GameMenuContract.EXTRA_DISKS,
-                    baseGameScreenViewModel.retroGameView.retroGameView?.getAvailableDisks() ?: 0,
-                )
+                this.putExtra(GameMenuContract.EXTRA_CURRENT_DISK, currentDisk)
+                this.putExtra(GameMenuContract.EXTRA_DISKS, availableDisks)
                 this.putExtra(GameMenuContract.EXTRA_GAME, game)
                 this.putExtra(GameMenuContract.EXTRA_SYSTEM_CORE_CONFIG, systemCoreConfig)
                 this.putExtra(
@@ -239,6 +344,16 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                 this.putExtra(GameMenuContract.EXTRA_TILT_ALL_CONFIGS, tiltConfigurations.toTypedArray())
             }
         isOpeningMenu = true
+        pauseIdleJob?.cancel()
+        pauseIdleJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                while (isOpeningMenu && isActive) {
+                    delay(1000L)
+                    if (isOpeningMenu) {
+                        baseGameScreenViewModel.idleAchievementsWhilePaused()
+                    }
+                }
+            }
         startActivityForResult(intent, DIALOG_REQUEST)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
@@ -319,9 +434,11 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     private fun performSuccessfulActivityFinish() {
+        pausePlayTimeClock()
+        flushPlayTimeToJournal()
         val resultIntent =
             Intent().apply {
-                putExtra(PLAY_GAME_RESULT_SESSION_DURATION, System.currentTimeMillis() - startGameTime)
+                putExtra(PLAY_GAME_RESULT_SESSION_DURATION, totalSessionPlayTimeMs)
                 putExtra(PLAY_GAME_RESULT_GAME, intent.getSerializableExtra(EXTRA_GAME))
                 putExtra(PLAY_GAME_RESULT_LEANBACK, intent.getBooleanExtra(EXTRA_LEANBACK, false))
             }
@@ -353,12 +470,37 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     private fun finishAndExitProcess() {
         onFinishTriggered()
-        GlobalScope.launch {
+        GlobalScope.launch(Dispatchers.IO) {
             delay(animationDuration().toLong())
+            baseGameScreenViewModel.retroGameView.retroGameView?.destroySynchronously()
             GameService.requestTermination()
         }
         finish()
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+    }
+
+    /**
+     * Starts reading this console's skin pictures right away, in the background, so the skin is
+     * ready when the game screen is first drawn instead of appearing after the game has loaded.
+     */
+    private fun preloadSkinArt() {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val controllers =
+            systemCoreConfig.controllerConfigs.values
+                .flatten()
+                .map { it.touchControllerID }
+                .distinct()
+        if (controllers.isEmpty()) return
+        val context = applicationContext
+        Thread(
+            {
+                // The layout first (placing the extra buttons takes a moment), then its pictures, both
+                // cached, so the game screen finds them ready instead of working them out itself.
+                controllers.forEach { id -> runCatching { com.swordfish.touchinput.skin.ArcaduneSkins.forController(id) } }
+                controllers.forEach { id -> runCatching { SkinArtLoader.load(context, id.name, landscape) } }
+            },
+            "skin-art-preload",
+        ).start()
     }
 
     open fun onFinishTriggered() {
@@ -367,10 +509,24 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     override fun onResume() {
         super.onResume()
+        isActivityResumed = true
         isOpeningMenu = false
+        pauseIdleJob?.cancel()
+        pauseIdleJob = null
+        syncPlayTimeClock()
+        baseGameScreenViewModel.syncFastForwardAudioMode()
+    }
+
+    override fun onPause() {
+        isActivityResumed = false
+        pausePlayTimeClock()
+        super.onPause()
     }
 
     override fun onStop() {
+        if (!isChangingConfigurations) {
+            flushPlayTimeToJournal()
+        }
         if (!finishTriggered && !isFinishing && !isChangingConfigurations && !isOpeningMenu) {
             baseGameScreenViewModel.requestBackgroundSave()
         }
@@ -378,11 +534,17 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     override fun onDestroy() {
-        if (!isChangingConfigurations) {
+        val terminating = !isChangingConfigurations
+        if (terminating) {
+            pausePlayTimeClock()
+            flushPlayTimeToJournal()
             baseGameScreenViewModel.onGameClosed()
-            GameService.requestTermination()
+            baseGameScreenViewModel.retroGameView.retroGameView?.destroySynchronously()
         }
         super.onDestroy()
+        if (terminating) {
+            GameService.requestTermination()
+        }
     }
 
     override fun onActivityResult(
@@ -393,9 +555,26 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == DIALOG_REQUEST) {
             isOpeningMenu = false
+            pauseIdleJob?.cancel()
+            pauseIdleJob = null
+            baseGameScreenViewModel.syncFastForwardAudioMode()
             Timber.i("Game menu dialog response: ${data?.extras.dump()}")
-            // Cheats are applied in the background, and not at all when the player is quitting.
-            if (data?.getBooleanExtra(GameMenuContract.RESULT_QUIT, false) != true) {
+            val requestedHardcoreChange =
+                if (data?.hasExtra(GameMenuContract.RESULT_SET_HARDCORE) == true) {
+                    data.getBooleanExtra(GameMenuContract.RESULT_SET_HARDCORE, false)
+                } else {
+                    null
+                }
+            if (requestedHardcoreChange != null) {
+                lifecycleScope.launch {
+                    if (requestedHardcoreChange) {
+                        baseGameScreenViewModel.enableHardcoreWithCleanRestart()
+                    } else {
+                        baseGameScreenViewModel.switchToCasualImmediate()
+                    }
+                }
+            } else if (data?.getBooleanExtra(GameMenuContract.RESULT_QUIT, false) != true) {
+                // Cheats are applied in the background, and not at all when the player is quitting.
                 baseGameScreenViewModel.applyCheats()
             }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_RESET, false) == true) {
@@ -432,19 +611,15 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                 }
             }
             if (data?.hasExtra(GameMenuContract.RESULT_ENABLE_FAST_FORWARD) == true) {
-                baseGameScreenViewModel.retroGameView.retroGameView?.apply {
-                    val fastForwardEnabled =
-                        data.getBooleanExtra(
-                            GameMenuContract.RESULT_ENABLE_FAST_FORWARD,
-                            false,
-                        )
-                    this.frameSpeed = if (fastForwardEnabled) 2 else 1
-                }
+                val fastForwardEnabled =
+                    data.getBooleanExtra(
+                        GameMenuContract.RESULT_ENABLE_FAST_FORWARD,
+                        false,
+                    )
+                baseGameScreenViewModel.setFrameSpeed(if (fastForwardEnabled) 2 else 1)
             }
             if (data?.hasExtra(GameMenuContract.RESULT_FRAME_SPEED) == true) {
-                baseGameScreenViewModel.retroGameView.retroGameView?.apply {
-                    baseGameScreenViewModel.setFrameSpeed(data.getIntExtra(GameMenuContract.RESULT_FRAME_SPEED, 1))
-                }
+                baseGameScreenViewModel.setFrameSpeed(data.getIntExtra(GameMenuContract.RESULT_FRAME_SPEED, 1))
             }
             if (data?.getBooleanExtra(GameMenuContract.RESULT_EDIT_TOUCH_CONTROLS, false) == true) {
                 baseGameScreenViewModel.showEditControls(true)
@@ -463,8 +638,12 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
         private const val EXTRA_GAME = "GAME"
         private const val EXTRA_LOAD_SAVE = "LOAD_SAVE"
+        private const val EXTRA_EXPLICIT_QUICK_RESUME = "EXPLICIT_QUICK_RESUME"
         private const val EXTRA_LEANBACK = "LEANBACK"
         private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG"
+        private const val STATE_PLAY_SESSION_ID = "STATE_PLAY_SESSION_ID"
+        private const val STATE_PLAY_COUNT_RECORDED = "STATE_PLAY_COUNT_RECORDED"
+        private const val STATE_TOTAL_PLAY_TIME_MS = "STATE_TOTAL_PLAY_TIME_MS"
 
         const val REQUEST_PLAY_GAME = 1001
         const val PLAY_GAME_RESULT_SESSION_DURATION = "PLAY_GAME_RESULT_SESSION_DURATION"
@@ -481,6 +660,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             game: Game,
             loadSave: Boolean,
             useLeanback: Boolean,
+            explicitQuickResume: Boolean = false,
         ) {
             val gameActivity =
                 if (useLeanback) {
@@ -492,6 +672,7 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                 Intent(activity, gameActivity).apply {
                     putExtra(EXTRA_GAME, game)
                     putExtra(EXTRA_LOAD_SAVE, loadSave)
+                    putExtra(EXTRA_EXPLICIT_QUICK_RESUME, explicitQuickResume)
                     putExtra(EXTRA_LEANBACK, useLeanback)
                     putExtra(EXTRA_SYSTEM_CORE_CONFIG, systemCoreConfig)
                 },

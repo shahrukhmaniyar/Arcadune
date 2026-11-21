@@ -65,6 +65,16 @@ object ShaderChooser {
             SystemID.WS -> ShaderConfig.LCD
             SystemID.WSC -> ShaderConfig.LCD
             SystemID.NINTENDO_3DS -> ShaderConfig.LCD
+            SystemID.DREAMCAST -> ShaderConfig.CRT
+            SystemID.THREEDO -> ShaderConfig.CRT
+            SystemID.SATURN -> ShaderConfig.CRT
+            SystemID.SEGA32X -> ShaderConfig.CRT
+            SystemID.ATARI5200 -> ShaderConfig.CRT
+            SystemID.ATARI800 -> ShaderConfig.CRT
+            SystemID.COLECOVISION -> ShaderConfig.CRT
+            SystemID.C64 -> ShaderConfig.CRT
+            SystemID.APPLEII -> ShaderConfig.CRT
+            SystemID.MSX -> ShaderConfig.CRT
         }
     }
 
@@ -288,6 +298,16 @@ object ShaderChooser {
             SystemID.WS -> upscale16BitsMobile
             SystemID.WSC -> upscale16BitsMobile
             SystemID.NINTENDO_3DS -> modern
+            SystemID.DREAMCAST -> modern
+            SystemID.THREEDO -> upscale32Bits
+            SystemID.SATURN -> upscale32Bits
+            SystemID.SEGA32X -> upscale16Bits
+            SystemID.ATARI5200 -> upscale8Bits
+            SystemID.ATARI800 -> upscale8Bits
+            SystemID.COLECOVISION -> upscale8Bits
+            SystemID.C64 -> upscale8Bits
+            SystemID.APPLEII -> upscale8Bits
+            SystemID.MSX -> upscale8Bits
         }
     }
 }

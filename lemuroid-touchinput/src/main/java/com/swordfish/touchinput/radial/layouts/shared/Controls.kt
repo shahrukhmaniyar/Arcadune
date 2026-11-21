@@ -112,10 +112,11 @@ const val KEYCODE_REWIND = KeyEvent.KEYCODE_MEDIA_REWIND
 /** Key the 3DS swap-screens button sends. The app handles it itself; it never reaches the emulator. */
 const val KEYCODE_SWAP_SCREENS = KeyEvent.KEYCODE_MEDIA_NEXT
 
-/** Keys of the quick buttons (Delta's action inputs): fast forward on / off, quick save, quick load. The app handles them. */
+/** Keys of the quick buttons (Delta's action inputs): fast forward on / off, quick save, quick load, exit. The app handles them. */
 const val KEYCODE_FAST_FORWARD = KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
 const val KEYCODE_QUICK_SAVE = KeyEvent.KEYCODE_F5
 const val KEYCODE_QUICK_LOAD = KeyEvent.KEYCODE_F9
+const val KEYCODE_EXIT = KeyEvent.KEYCODE_MEDIA_STOP
 
 context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable

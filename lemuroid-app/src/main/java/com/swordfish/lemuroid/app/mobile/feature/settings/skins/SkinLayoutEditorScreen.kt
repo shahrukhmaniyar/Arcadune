@@ -8,10 +8,10 @@ import android.content.res.Configuration
 import android.os.Build
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,11 +27,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -54,7 +55,9 @@ import com.swordfish.touchinput.skin.SkinArtLoader
 import com.swordfish.touchinput.skin.SkinCustomization
 import com.swordfish.touchinput.skin.SkinPalettes
 import com.swordfish.touchinput.skin.SkinVariant
+import com.swordfish.touchinput.skin.defaultFastForwardDots
 import com.swordfish.touchinput.skin.placeShell
+import com.swordfish.touchinput.skin.supportsFastForwardByDefault
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -86,7 +89,7 @@ fun SkinLayoutEditorScreen(
     val skin = remember(id, variant) { ArcaduneSkins.forController(id, variant) } ?: return
     val layout = if (landscape) skin.landscape else skin.portrait
     val key = SkinCustomizationStore.keyOf(id.name, landscape, layout)
-    val customization = remember(key) { mutableStateOf(store.load(key)) }
+    val customization = remember(key) { mutableStateOf(store.load(key, layout.defaultCustomization)) }
     val art = rememberSkinArt(id, variant, landscape)
     val consoleName = Controllers.firstOrNull { it.first == id }?.second ?: id.name
 
@@ -277,8 +280,8 @@ fun SkinLayoutEditorScreen(
                 store.setVariant(id.name, nextVariant)
             },
             onResetAll = {
-                customization.value = SkinCustomization()
-                store.save(key, SkinCustomization())
+                customization.value = layout.defaultCustomization
+                store.save(key, layout.defaultCustomization)
             },
             onDone = saveCurrentAndFinish,
         )
@@ -327,9 +330,10 @@ private fun StudioShellStage(
     val dpPx = with(density) { 1.dp.toPx() }
     val layout = if (isLandscape) skin.landscape else skin.portrait
     val shell = !isLandscape || layout.screenArea != null
+    val customization = customizationState.value
+    val spec = remember(id, isLandscape) { ScreenSpecs.forController(id, emptyMap(), isLandscape) }
     val placement =
-        remember(id, skin, isLandscape, shell, widthPx, heightPx, safeRect, dpPx) {
-            val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
+        remember(id, skin, isLandscape, shell, spec, widthPx, heightPx, safeRect, dpPx, customization) {
             placeShell(
                 skin = skin,
                 isLandscape = isLandscape,
@@ -339,54 +343,20 @@ private fun StudioShellStage(
                 height = heightPx,
                 safe = safeRect,
                 dp = dpPx,
+                customization = customization,
             )
         }
     val gameWindows =
-        remember(id, isLandscape, shell, placement) {
-            val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
-            if (shell) placement.windows else spec?.fitIn(placement.picture) ?: placement.windows
+        remember(shell, spec, placement) {
+            placement.gameWindows(shell, spec)
+        }
+    val defaultGameWindows =
+        remember(shell, spec, placement) {
+            placement.defaultGameWindows(shell, spec)
         }
 
-    Box(modifier = modifier) {
-        Spacer(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .drawWithCache {
-                        val scanStep = 3.dp.toPx()
-                        val scanColor = Color.Black.copy(alpha = 0.14f)
-                        val windowBrushes =
-                            gameWindows.map { win ->
-                                win to
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF283452), Color(0xFF13192B)),
-                                        win.topLeft,
-                                        win.bottomRight,
-                                    )
-                            }
-                        onDrawBehind {
-                            drawRect(Color.Black)
-                            for ((win, brush) in windowBrushes) {
-                                drawRect(
-                                    brush = brush,
-                                    topLeft = win.topLeft,
-                                    size = win.size,
-                                )
-                                var sy = win.top + scanStep
-                                while (sy < win.bottom) {
-                                    drawLine(
-                                        color = scanColor,
-                                        start = Offset(win.left, sy),
-                                        end = Offset(win.right, sy),
-                                        strokeWidth = 1f,
-                                    )
-                                    sy += scanStep
-                                }
-                            }
-                        }
-                    },
-        )
-
+    // Strict 3-layer stack: 1) Bottom BG -> 2) Middle Screen -> 3) Top Buttons + Studio HUD.
+    Box(modifier = modifier.background(Color.Black)) {
         if (shell) {
             ConsoleShell(
                 modifier = Modifier.fillMaxSize(),
@@ -394,7 +364,49 @@ private fun StudioShellStage(
                 screens = placement.windows,
                 bodyTop = placement.bodyTop,
                 screenPanel = placement.screenPanel,
+                layout = layout.takeIf { !isLandscape },
+                panel = placement.panel.takeIf { !isLandscape },
+                art = art.takeIf { !isLandscape },
+                cutoutScreens = false,
             )
+        }
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val scanStep = 3.dp.toPx()
+            val scanColor = Color.Black.copy(alpha = 0.14f)
+            val corner = CornerRadius(4.dp.toPx())
+            val borderStroke = Stroke(width = 1.5.dp.toPx())
+            for (win in gameWindows) {
+                val brush =
+                    Brush.linearGradient(
+                        listOf(Color(0xFF283452), Color(0xFF13192B)),
+                        win.topLeft,
+                        win.bottomRight,
+                    )
+                drawRoundRect(
+                    brush = brush,
+                    topLeft = win.topLeft,
+                    size = win.size,
+                    cornerRadius = corner,
+                )
+                var sy = win.top + scanStep
+                while (sy < win.bottom) {
+                    drawLine(
+                        color = scanColor,
+                        start = Offset(win.left, sy),
+                        end = Offset(win.right, sy),
+                        strokeWidth = 1f,
+                    )
+                    sy += scanStep
+                }
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.62f),
+                    topLeft = win.topLeft,
+                    size = win.size,
+                    cornerRadius = corner,
+                    style = borderStroke,
+                )
+            }
         }
 
         ArcaduneControllerStudio(
@@ -404,8 +416,16 @@ private fun StudioShellStage(
             onLandscapeChange = onLandscapeChange,
             skin = skin,
             rewindAvailable = true,
+            fastForwardSupported = id.supportsFastForwardByDefault(),
+            fastForwardDotsTotal = id.defaultFastForwardDots(),
             customizationState = customizationState,
             panel = placement.panel,
+            screenWindows = gameWindows,
+            defaultScreenWindows = defaultGameWindows,
+            editableBodyTop = placement.editableBodyTop,
+            defaultBodyTop = placement.defaultBodyTop,
+            minBodyTop = placement.minBodyTop,
+            maxBodyTop = placement.maxBodyTop,
             shell = shell,
             variant = variant,
             onVariantChange = onVariantChange,

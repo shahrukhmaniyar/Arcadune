@@ -18,8 +18,21 @@ object CheatPolicy {
     private val SYSTEMS_WITH_INDEPENDENT_PARTS = setOf("nes", "snes", "md", "sms", "gg", "scd", "pce")
 
     // Cores whose retro_cheat_set does nothing at all (empty function in their source): Neo Geo Pocket,
-    // Atari 2600, Atari 7800, Lynx and the MAME arcade core.
-    private val SYSTEMS_WITHOUT_CHEAT_SUPPORT = setOf("ngp", "ngc", "atari2600", "atari7800", "lynx", "mame2003plus")
+    // Atari 2600, Atari 5200, Atari 7800, Atari 8-bit, Lynx, ColecoVision, 3DO, Apple II and MAME.
+    private val SYSTEMS_WITHOUT_CHEAT_SUPPORT =
+        setOf(
+            "ngp",
+            "ngc",
+            "atari2600",
+            "atari5200",
+            "atari7800",
+            "atari800",
+            "lynx",
+            "colecovision",
+            "3do",
+            "apple2",
+            "mame2003plus",
+        )
 
     /** True when the emulator of this system has no cheat support, so no code can ever work. */
     fun systemIgnoresCheats(systemId: String): Boolean = systemId in SYSTEMS_WITHOUT_CHEAT_SUPPORT

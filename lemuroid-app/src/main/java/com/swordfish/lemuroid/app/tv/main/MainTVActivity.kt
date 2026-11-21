@@ -16,6 +16,7 @@ import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
 import com.swordfish.lemuroid.app.shared.GameInteractor
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.GameLauncher
+import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.app.shared.main.BusyActivity
 import com.swordfish.lemuroid.app.shared.main.GameLaunchTaskHandler
 import com.swordfish.lemuroid.app.tv.channel.ChannelUpdateWork
@@ -43,11 +44,21 @@ class MainTVActivity : BaseTVActivity(), BusyActivity {
     @Inject
     lateinit var gameLaunchTaskHandler: GameLaunchTaskHandler
 
+    @Inject
+    lateinit var retrogradeDb: RetrogradeDatabase
+
     var mainViewModel: MainTVViewModel? = null
 
     override fun activity(): Activity = this
 
     override fun isBusy(): Boolean = mainViewModel?.inProgress?.value ?: false
+
+    override fun onResume() {
+        super.onResume()
+        GlobalScope.safeLaunch {
+            PlayTimeTracker.flushPendingToDatabase(applicationContext, retrogradeDb)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

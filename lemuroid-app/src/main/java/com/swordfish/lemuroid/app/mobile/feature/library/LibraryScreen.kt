@@ -338,6 +338,9 @@ private fun LibraryTopBar(
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
+                .windowInsetsPadding(
+                    WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal),
+                )
                 .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         ArcaduneIconPill(
@@ -845,16 +848,26 @@ private fun pageIcon(page: LibraryViewModel.Page): Int =
         is LibraryViewModel.Page.System ->
             when (page.info.metaSystem) {
                 MetaSystemID.NES, MetaSystemID.SMS, MetaSystemID.PC_ENGINE -> R.drawable.ic_console_pad
-                MetaSystemID.SNES -> R.drawable.ic_console_snes
+                MetaSystemID.SNES, MetaSystemID.THREEDO -> R.drawable.ic_console_snes
                 MetaSystemID.N64 -> R.drawable.ic_console_n64
                 MetaSystemID.GB, MetaSystemID.GBC -> R.drawable.ic_console_gb
                 MetaSystemID.GBA, MetaSystemID.GG, MetaSystemID.NGP, MetaSystemID.WS -> R.drawable.ic_console_gba
                 MetaSystemID.NDS, MetaSystemID.NINTENDO_3DS -> R.drawable.ic_console_ds
-                MetaSystemID.GENESIS -> R.drawable.ic_console_genesis
-                MetaSystemID.PSX -> R.drawable.ic_console_psx
+                MetaSystemID.GENESIS, MetaSystemID.SATURN, MetaSystemID.SEGA32X -> R.drawable.ic_console_genesis
+                MetaSystemID.PSX, MetaSystemID.DREAMCAST -> R.drawable.ic_console_psx
                 MetaSystemID.PSP, MetaSystemID.LYNX -> R.drawable.ic_console_psp
-                MetaSystemID.ARCADE, MetaSystemID.ATARI2600, MetaSystemID.ATARI7800 -> R.drawable.ic_console_joystick
-                MetaSystemID.DOS -> R.drawable.ic_console_dos
+                MetaSystemID.ARCADE,
+                MetaSystemID.ATARI2600,
+                MetaSystemID.ATARI5200,
+                MetaSystemID.ATARI7800,
+                MetaSystemID.COLECOVISION,
+                -> R.drawable.ic_console_joystick
+                MetaSystemID.DOS,
+                MetaSystemID.ATARI800,
+                MetaSystemID.C64,
+                MetaSystemID.APPLEII,
+                MetaSystemID.MSX,
+                -> R.drawable.ic_console_dos
             }
     }
 

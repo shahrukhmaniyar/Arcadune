@@ -20,7 +20,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -243,9 +249,10 @@ private fun SaveStorageCard(
             supportingContent = { Text(text = summary) },
         )
 
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
 
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.FolderSpecial) },
             title = { Text(text = stringResource(id = R.string.saves_storage_folder_title)) },
             subtitle = { Text(text = stringResource(id = R.string.saves_storage_folder_hint, stats.displayPath)) },
             action = {
@@ -281,6 +288,7 @@ private fun ExportFolderCard(
         title = { Text(text = stringResource(id = R.string.saves_export_category)) },
     ) {
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.CreateNewFolder) },
             enabled = enabled && hasExportableSaves,
             title = { Text(text = stringResource(id = R.string.saves_export_folder_title)) },
             subtitle = {
@@ -313,6 +321,7 @@ private fun SingleGameSaveCard(
         title = { Text(text = stringResource(id = R.string.saves_single_game_category)) },
     ) {
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.UploadFile) },
             enabled = enabled && hasExportableGameSaves,
             title = { Text(text = stringResource(id = R.string.saves_single_game_export_title)) },
             subtitle = {
@@ -330,8 +339,9 @@ private fun SingleGameSaveCard(
             },
             onClick = onExportSingleSave,
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Download) },
             enabled = enabled && hasCompatibleGames,
             title = { Text(text = stringResource(id = R.string.saves_single_game_import_title)) },
             subtitle = {
@@ -362,13 +372,15 @@ private fun ZipBackupCard(
         title = { Text(text = stringResource(id = R.string.settings_category_backup)) },
     ) {
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Archive) },
             enabled = enabled,
             title = { Text(text = stringResource(id = R.string.settings_title_backup_saves)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_backup_saves)) },
             onClick = onBackup,
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Restore) },
             enabled = enabled,
             title = { Text(text = stringResource(id = R.string.settings_title_restore_saves)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_restore_saves)) },
@@ -399,6 +411,7 @@ private fun GameSavePickerDialog(
     ArcaduneDialog(
         onDismissRequest = onDismiss,
         icon = Icons.Filled.Save,
+        scrollable = false,
         title = {
             Text(
                 text =

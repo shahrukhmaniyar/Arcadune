@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.shared.coreoptions
 
 import android.content.Context
+import android.widget.Toast
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
@@ -8,10 +9,13 @@ import androidx.preference.PreferenceGroup
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
+import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 import com.swordfish.lemuroid.app.shared.settings.ControllerConfigsManager
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.lemuroid.lib.core.CoreVariablesManager
 import com.swordfish.lemuroid.lib.library.CoreID
+import com.swordfish.lemuroid.lib.library.GameSystem
 
 object CoreOptionsPreferenceHelper {
     val BOOLEAN_SET = setOf("enabled", "disabled")
@@ -21,6 +25,7 @@ object CoreOptionsPreferenceHelper {
         systemID: String,
         baseOptions: List<LemuroidCoreOption>,
         advancedOptions: List<LemuroidCoreOption>,
+        coreID: CoreID? = null,
     ) {
         if (baseOptions.isEmpty() && advancedOptions.isEmpty()) {
             return
@@ -31,8 +36,8 @@ object CoreOptionsPreferenceHelper {
         val title = context.getString(R.string.core_settings_category_preferences)
         val preferencesCategory = createCategory(preferenceScreen.context, preferenceScreen, title)
 
-        addPreferences(context, preferencesCategory, baseOptions, systemID)
-        addPreferences(context, preferencesCategory, advancedOptions, systemID)
+        addPreferences(context, preferencesCategory, baseOptions, systemID, coreID)
+        addPreferences(context, preferencesCategory, advancedOptions, systemID, coreID)
     }
 
     fun addControllers(
@@ -67,9 +72,10 @@ object CoreOptionsPreferenceHelper {
         preferenceGroup: PreferenceGroup,
         options: List<LemuroidCoreOption>,
         systemID: String,
+        coreID: CoreID?,
     ) {
         options
-            .map { convertToPreference(context, it, systemID) }
+            .map { convertToPreference(context, it, systemID, coreID) }
             .forEach { preferenceGroup.addPreference(it) }
     }
 
@@ -77,12 +83,45 @@ object CoreOptionsPreferenceHelper {
         context: Context,
         it: LemuroidCoreOption,
         systemID: String,
+        coreID: CoreID?,
     ): Preference {
-        return if (it.getEntriesValues().toSet() == BOOLEAN_SET) {
-            buildSwitchPreference(context, it, systemID)
-        } else {
-            buildListPreference(context, it, systemID)
+        val pref =
+            if (it.getEntriesValues().toSet() == BOOLEAN_SET) {
+                buildSwitchPreference(context, it, systemID)
+            } else {
+                buildListPreference(context, it, systemID)
+            }
+        if (coreID != null) {
+            val systemIdEnum = runCatching { GameSystem.findById(systemID).id }.getOrNull()
+            if (systemIdEnum != null) {
+                pref.setOnPreferenceChangeListener { _, newValue ->
+                    val candidateValue =
+                        when (newValue) {
+                            is Boolean -> if (newValue) "enabled" else "disabled"
+                            else -> newValue?.toString().orEmpty()
+                        }
+                    val hardcoreActive = RetroAchievementsSessionHolder.state.value.hardcoreActive
+                    if (hardcoreActive &&
+                        !HardcorePolicy.isCoreOptionValueAllowed(
+                            coreID,
+                            systemIdEnum,
+                            it.getKey(),
+                            candidateValue,
+                        )
+                    ) {
+                        Toast.makeText(
+                            context,
+                            R.string.ra_hardcore_core_option_locked_toast,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        false
+                    } else {
+                        true
+                    }
+                }
+            }
         }
+        return pref
     }
 
     private fun buildListPreference(

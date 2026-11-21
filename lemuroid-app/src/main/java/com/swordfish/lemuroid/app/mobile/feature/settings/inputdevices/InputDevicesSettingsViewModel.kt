@@ -86,10 +86,13 @@ class InputDevicesSettingsViewModel(
 
         return combine(devicesFlow, bindingsFlow, shortcutsFlow) { devices, allBindings, allShortcuts ->
             devices.associateWith { device ->
+                // Every shortcut the device supports is listed, also the ones nobody has set yet (quick save, quick load,
+                // fast-forward start unset), so there is always a row to tap and bind.
+                val bound = allShortcuts[device].orEmpty()
                 val shortcuts =
-                    allShortcuts[device]?.filter {
-                        it.type in device.getLemuroidInputDevice().getSupportedShortcuts()
-                    } ?: emptyList()
+                    device.getLemuroidInputDevice().getSupportedShortcuts().map { type ->
+                        bound.firstOrNull { it.type == type } ?: GameShortcut(type = type, keys = emptySet())
+                    }
                 val keys = allBindings(device).reverseLookup()
 
                 BindingsView(keys, shortcuts)

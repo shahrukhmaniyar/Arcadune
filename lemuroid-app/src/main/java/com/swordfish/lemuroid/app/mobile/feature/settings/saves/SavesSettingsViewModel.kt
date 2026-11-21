@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
+import com.swordfish.lemuroid.app.shared.game.GameProcessLock
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.saves.SavesManager
@@ -179,6 +181,10 @@ class SavesSettingsViewModel(
         game: Game,
         source: Uri,
     ) {
+        if (!HardcorePolicy.canMutateSaveFilesExternally(GameProcessLock.isHeldByAnotherProcess(appContext))) {
+            Toast.makeText(appContext, R.string.game_process_another_game_running, Toast.LENGTH_LONG).show()
+            return
+        }
         runSaveOperation(
             logTag = "Failed to import save for ${game.id}",
             failureStringRes = R.string.import_single_save_failed,
@@ -196,6 +202,10 @@ class SavesSettingsViewModel(
     }
 
     fun restoreSaves(source: Uri) {
+        if (!HardcorePolicy.canMutateSaveFilesExternally(GameProcessLock.isHeldByAnotherProcess(appContext))) {
+            Toast.makeText(appContext, R.string.game_process_another_game_running, Toast.LENGTH_LONG).show()
+            return
+        }
         runSaveOperation(
             logTag = "Saves restore failed",
             failureStringRes = R.string.restore_saves_failed,

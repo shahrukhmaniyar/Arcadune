@@ -19,15 +19,24 @@
 #define LIBRETRODROID_AUDIO_H
 
 #include <array>
+#include <atomic>
 #include <unistd.h>
 #include <oboe/Oboe.h>
 #include <oboe/FifoBuffer.h>
 
 #include "resamplers/linearresampler.h"
+#include "resamplers/wsolastretcher.h"
 
 namespace libretrodroid {
 
 class Audio: public oboe::AudioStreamDataCallback, oboe::AudioStreamErrorCallback {
+public:
+    enum FastForwardAudioMode {
+        FF_AUDIO_KEEP_PITCH = 0,
+        FF_AUDIO_CLASSIC = 1,
+        FF_AUDIO_MUTE = 2,
+    };
+
 private:
     struct AudioLatencySettings {
         unsigned bufferSizeInVideoFrames;
@@ -55,6 +64,7 @@ public:
 public:
     void write(const int16_t *data, size_t frames);
     void setPlaybackSpeed(const double newPlaybackSpeed);
+    void setFastForwardAudioMode(int mode);
 
 private:
     static int32_t roundToEven(int32_t x);
@@ -71,8 +81,12 @@ private:
     const double maxi = 0.02;
 
     LinearResampler resampler;
+    WsolaStretcher wsolaStretcher;
     std::unique_ptr<oboe::FifoBuffer> fifoBuffer = nullptr;
     std::unique_ptr<int16_t[]> temporaryAudioBuffer = nullptr;
+    std::unique_ptr<int16_t[]> streamRateScratchBuffer = nullptr;
+    int32_t nominalBufferSamples = 0;
+    int32_t maxTempStereoFrames = 0;
 
     oboe::ManagedStream stream = nullptr;
     std::unique_ptr<oboe::LatencyTuner> latencyTuner = nullptr;
@@ -85,8 +99,17 @@ private:
 
     double framesToSubmit = 0.0;
     double errorIntegral = 0.0;
+    bool ffResamplerPrimed = false;
+    float ffPrevL = 0.0f;
+    float ffPrevR = 0.0f;
+    float ffCurrL = 0.0f;
+    float ffCurrR = 0.0f;
+    double ffResamplePhase = 0.0;
+    bool wasFastForwarding = false;
+    int lastFastForwardMode = FF_AUDIO_KEEP_PITCH;
 
-    double playbackSpeed = 1.0;
+    std::atomic<double> playbackSpeed { 1.0 };
+    std::atomic<int> fastForwardAudioMode { FF_AUDIO_KEEP_PITCH };
 
     std::unique_ptr<AudioLatencySettings> audioLatencySettings;
 };

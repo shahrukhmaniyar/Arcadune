@@ -21,6 +21,7 @@ import com.swordfish.lemuroid.common.kotlin.filterNotNullValues
 import com.swordfish.lemuroid.common.kotlin.toIndexedMap
 import com.swordfish.lemuroid.common.kotlin.zipOnKeys
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
+import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.libretrodroid.Controller
@@ -28,7 +29,9 @@ import com.swordfish.libretrodroid.GLRetroView
 import com.swordfish.libretrodroid.GLRetroView.Companion.MOTION_SOURCE_ANALOG_LEFT
 import com.swordfish.libretrodroid.GLRetroView.Companion.MOTION_SOURCE_ANALOG_RIGHT
 import com.swordfish.libretrodroid.GLRetroView.Companion.MOTION_SOURCE_DPAD
+import com.swordfish.libretrodroid.Variable
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
+import com.swordfish.touchinput.radial.settings.TouchControllerID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -89,6 +92,17 @@ class GameViewModelInput(
 
     fun getControllerConfigState(): Flow<Map<Int, ControllerConfig>> {
         return controllerConfigsState
+    }
+
+    fun refreshControllerConfigs() {
+        scope.launch {
+            try {
+                val controllers = controllerConfigsManager.getControllerConfigs(system.id, systemCoreConfig)
+                controllerConfigsState.value = controllers
+            } catch (e: Exception) {
+                Timber.e(e)
+            }
+        }
     }
 
     private fun sendStickMotions(
@@ -178,6 +192,40 @@ class GameViewModelInput(
                 Timber.i("Controls setting $port to $controllerId")
                 retroGameView.retroGameView?.setControllerType(port, controllerId)
             }
+
+        val controllerVars = mutableListOf<Variable>()
+        if (systemCoreConfig.coreID == CoreID.PICODRIVE) {
+            controllers.forEach { (port, config) ->
+                if (port == 0 || port == 1) {
+                    val padType =
+                        when (config.touchControllerID) {
+                            TouchControllerID.GENESIS_6 -> "6 button pad"
+                            TouchControllerID.GENESIS_3 -> "3 button pad"
+                            else -> null
+                        }
+                    if (padType != null) {
+                        controllerVars += Variable("picodrive_input${port + 1}", padType)
+                    }
+                }
+            }
+        } else if (systemCoreConfig.coreID == CoreID.SWANSTATION) {
+            controllers.forEach { (port, config) ->
+                if (port == 0 || port == 1) {
+                    val forceAnalog =
+                        when (config.touchControllerID) {
+                            TouchControllerID.PSX_DUALSHOCK -> "true"
+                            TouchControllerID.PSX -> "false"
+                            else -> null
+                        }
+                    if (forceAnalog != null) {
+                        controllerVars += Variable("swanstation_Controller${port + 1}_ForceAnalog", forceAnalog)
+                    }
+                }
+            }
+        }
+        if (controllerVars.isNotEmpty()) {
+            retroGameView.retroGameView?.updateVariables(*controllerVars.toTypedArray())
+        }
     }
 
     private fun findControllerId(

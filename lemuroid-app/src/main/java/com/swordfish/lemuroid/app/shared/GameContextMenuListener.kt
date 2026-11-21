@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.app.shared
 import android.view.ContextMenu
 import android.view.View
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 
 class GameContextMenuListener(
@@ -14,8 +15,10 @@ class GameContextMenuListener(
         v: View,
         menuInfo: ContextMenu.ContextMenuInfo?,
     ) {
+        menu.setHeaderTitle("${game.displayName()} • ${PlayTimeTracker.formatForGame(v.context, game)}")
+
         menu.add(R.string.game_context_menu_resume).setOnMenuItemClickListener {
-            gameInteractor.onGamePlay(game)
+            gameInteractor.onGameQuickResume(game)
             true
         }
 

@@ -39,7 +39,12 @@ class SkinInputTest {
                 // A wide shoulder button, touched in its box.
                 SkinInput.Target(2, button(l, ButtonShape.SHOULDER), Rect(0f, 0f, 300f, 60f), round = false),
                 // A d-pad.
-                SkinInput.Target(3, SkinControl.Dpad(SkinRect(0f, 0f, 1f, 1f)), Rect(400f, 100f, 600f, 300f), round = true),
+                SkinInput.Target(
+                    3,
+                    SkinControl.Dpad(SkinRect(0f, 0f, 1f, 1f)),
+                    Rect(400f, 100f, 600f, 300f),
+                    round = true,
+                ),
                 // Two round buttons whose touch areas do not meet: a 20 px strip between them (200..220).
                 SkinInput.Target(4, button(y), Rect(100f, 600f, 200f, 700f), round = true),
                 SkinInput.Target(5, button(x), Rect(220f, 600f, 320f, 700f), round = true),

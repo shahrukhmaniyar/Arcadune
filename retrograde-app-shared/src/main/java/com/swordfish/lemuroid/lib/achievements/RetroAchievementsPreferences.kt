@@ -26,6 +26,7 @@ data class RetroAchievementsSettingsState(
     val enabled: Boolean = true,
     val hardcoreEnabled: Boolean = false,
     val notificationsEnabled: Boolean = true,
+    val leaderboardPopupsEnabled: Boolean = true,
     val soundEffectsEnabled: Boolean = true,
     val progressIndicatorsEnabled: Boolean = true,
     val challengeIndicatorsEnabled: Boolean = true,
@@ -39,27 +40,35 @@ data class RetroAchievementsSettingsState(
         get() = isSignedIn && enabled
 
     val isHardcoreActive: Boolean
-        get() = isHardcoreActive(RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED)
+        get() = isHardcoreActive(RetroAchievementsPreferences.isHardcoreApproved())
 
     fun isHardcoreActive(hardcoreApproved: Boolean): Boolean = hardcoreApproved && isActive && hardcoreEnabled
 }
 
 object RetroAchievementsPreferences {
     /**
-     * Flip to `true` once Arcadune's `User-Agent` is officially registered on
-     * RetroAchievements.org's approved Hardcore emulator allowlist.
+     * Public builds keep this `false` until Arcadune's `User-Agent` receives official
+     * Hardcore approval from RetroAchievements (`RAdmin`).
      */
     const val HARDCORE_SUPPORT_APPROVED = false
+
+    @Volatile
+    var buildHardcoreApprovedFlag: Boolean = HARDCORE_SUPPORT_APPROVED
+
+    @Volatile
+    var hardcoreApprovalOverrideForTesting: Boolean? = null
+
+    fun isHardcoreApproved(): Boolean = hardcoreApprovalOverrideForTesting ?: buildHardcoreApprovedFlag
 
     private const val KEY_ENABLED = "ra_enabled"
     private const val KEY_USERNAME = "ra_username"
     private const val KEY_DISPLAY_NAME = "ra_display_name"
-    private const val KEY_TOKEN = "ra_token"
     private const val KEY_AVATAR_URL = "ra_avatar_url"
     private const val KEY_SCORE = "ra_score"
     private const val KEY_SOFTCORE_SCORE = "ra_softcore_score"
     private const val KEY_HARDCORE = "ra_hardcore"
     private const val KEY_NOTIFICATIONS = "ra_notifications"
+    private const val KEY_LEADERBOARD_POPUPS = "ra_leaderboard_popups"
     private const val KEY_SOUND_EFFECTS = "ra_sound_effects"
     private const val KEY_PROGRESS_INDICATORS = "ra_progress_indicators"
     private const val KEY_CHALLENGE_INDICATORS = "ra_challenge_indicators"
@@ -69,13 +78,22 @@ object RetroAchievementsPreferences {
     private fun prefs(context: Context) = SharedPreferencesHelper.getSharedPreferences(context.applicationContext)
 
     fun observeState(context: Context): Flow<RetroAchievementsSettingsState> {
-        val flowPrefs = FlowSharedPreferences(prefs(context))
+        val sp = prefs(context)
+        val flowPrefs = FlowSharedPreferences(sp)
+
+        val tokenSignalFlow =
+            combine(
+                flowPrefs.getString(RetroAchievementsTokenStore.KEY_ENCRYPTED_TOKEN, "").asFlow(),
+                flowPrefs.getString(RetroAchievementsTokenStore.KEY_LEGACY_PLAINTEXT_TOKEN, "").asFlow(),
+            ) { _, _ ->
+                RetroAchievementsTokenStore.readToken(sp)
+            }
 
         val accountFlow =
             combine(
                 flowPrefs.getString(KEY_USERNAME, "").asFlow(),
                 flowPrefs.getString(KEY_DISPLAY_NAME, "").asFlow(),
-                flowPrefs.getString(KEY_TOKEN, "").asFlow(),
+                tokenSignalFlow,
                 flowPrefs.getString(KEY_AVATAR_URL, "").asFlow(),
                 combine(
                     flowPrefs.getInt(KEY_SCORE, 0).asFlow(),
@@ -106,20 +124,22 @@ object RetroAchievementsPreferences {
                 flowPrefs.getBoolean(KEY_NOTIFICATIONS, true).asFlow(),
                 flowPrefs.getBoolean(KEY_SOUND_EFFECTS, true).asFlow(),
                 combine(
+                    flowPrefs.getBoolean(KEY_LEADERBOARD_POPUPS, true).asFlow(),
                     flowPrefs.getBoolean(KEY_PROGRESS_INDICATORS, true).asFlow(),
                     flowPrefs.getBoolean(KEY_CHALLENGE_INDICATORS, true).asFlow(),
                     combine(
                         flowPrefs.getBoolean(KEY_ENCORE, false).asFlow(),
                         flowPrefs.getBoolean(KEY_UNOFFICIAL, false).asFlow(),
                     ) { encore, unofficial -> encore to unofficial },
-                ) { progress, challenge, (encore, unofficial) ->
-                    OverlayToggles(progress, challenge, encore, unofficial)
+                ) { lbPopups, progress, challenge, (encore, unofficial) ->
+                    OverlayToggles(lbPopups, progress, challenge, encore, unofficial)
                 },
             ) { enabled, hardcore, notifications, soundEffects, extra ->
                 TogglesSnapshot(
                     enabled = enabled,
                     hardcore = hardcore,
                     notifications = notifications,
+                    leaderboardPopups = extra.leaderboardPopups,
                     soundEffects = soundEffects,
                     progress = extra.progress,
                     challenge = extra.challenge,
@@ -134,6 +154,7 @@ object RetroAchievementsPreferences {
                 enabled = toggles.enabled,
                 hardcoreEnabled = toggles.hardcore,
                 notificationsEnabled = toggles.notifications,
+                leaderboardPopupsEnabled = toggles.leaderboardPopups,
                 soundEffectsEnabled = toggles.soundEffects,
                 progressIndicatorsEnabled = toggles.progress,
                 challengeIndicatorsEnabled = toggles.challenge,
@@ -151,7 +172,7 @@ object RetroAchievementsPreferences {
     fun readStateSync(context: Context): RetroAchievementsSettingsState {
         val sp = prefs(context)
         val username = sp.getString(KEY_USERNAME, "").orEmpty()
-        val token = sp.getString(KEY_TOKEN, "").orEmpty()
+        val token = RetroAchievementsTokenStore.readToken(sp)
         val displayName = sp.getString(KEY_DISPLAY_NAME, "").orEmpty()
         val avatarUrl = sp.getString(KEY_AVATAR_URL, "").orEmpty()
 
@@ -174,6 +195,7 @@ object RetroAchievementsPreferences {
             enabled = sp.getBoolean(KEY_ENABLED, true),
             hardcoreEnabled = sp.getBoolean(KEY_HARDCORE, false),
             notificationsEnabled = sp.getBoolean(KEY_NOTIFICATIONS, true),
+            leaderboardPopupsEnabled = sp.getBoolean(KEY_LEADERBOARD_POPUPS, true),
             soundEffectsEnabled = sp.getBoolean(KEY_SOUND_EFFECTS, true),
             progressIndicatorsEnabled = sp.getBoolean(KEY_PROGRESS_INDICATORS, true),
             challengeIndicatorsEnabled = sp.getBoolean(KEY_CHALLENGE_INDICATORS, true),
@@ -191,15 +213,16 @@ object RetroAchievementsPreferences {
         softcoreScore: Int,
         avatarUrl: String? = null,
     ) = withContext(Dispatchers.IO) {
-        prefs(context).edit()
-            .putString(KEY_USERNAME, username)
-            .putString(KEY_DISPLAY_NAME, displayName.ifBlank { username })
-            .putString(KEY_TOKEN, token)
-            .putString(KEY_AVATAR_URL, avatarUrl?.takeIf { it.isNotBlank() } ?: defaultAvatarUrl(username))
-            .putInt(KEY_SCORE, score)
-            .putInt(KEY_SOFTCORE_SCORE, softcoreScore)
-            .putBoolean(KEY_ENABLED, true)
-            .apply()
+        val editor =
+            prefs(context).edit()
+                .putString(KEY_USERNAME, username)
+                .putString(KEY_DISPLAY_NAME, displayName.ifBlank { username })
+                .putString(KEY_AVATAR_URL, avatarUrl?.takeIf { it.isNotBlank() } ?: defaultAvatarUrl(username))
+                .putInt(KEY_SCORE, score)
+                .putInt(KEY_SOFTCORE_SCORE, softcoreScore)
+                .putBoolean(KEY_ENABLED, true)
+        RetroAchievementsTokenStore.writeToken(editor, token)
+        editor.apply()
     }
 
     suspend fun updateUserStats(
@@ -224,14 +247,15 @@ object RetroAchievementsPreferences {
 
     suspend fun signOut(context: Context) =
         withContext(Dispatchers.IO) {
-            prefs(context).edit()
-                .remove(KEY_USERNAME)
-                .remove(KEY_DISPLAY_NAME)
-                .remove(KEY_TOKEN)
-                .remove(KEY_AVATAR_URL)
-                .remove(KEY_SCORE)
-                .remove(KEY_SOFTCORE_SCORE)
-                .apply()
+            val editor =
+                prefs(context).edit()
+                    .remove(KEY_USERNAME)
+                    .remove(KEY_DISPLAY_NAME)
+                    .remove(KEY_AVATAR_URL)
+                    .remove(KEY_SCORE)
+                    .remove(KEY_SOFTCORE_SCORE)
+            RetroAchievementsTokenStore.clearToken(editor)
+            editor.apply()
         }
 
     suspend fun setEnabled(
@@ -248,6 +272,11 @@ object RetroAchievementsPreferences {
         context: Context,
         value: Boolean,
     ) = setBool(context, KEY_NOTIFICATIONS, value)
+
+    suspend fun setLeaderboardPopupsEnabled(
+        context: Context,
+        value: Boolean,
+    ) = setBool(context, KEY_LEADERBOARD_POPUPS, value)
 
     suspend fun setSoundEffectsEnabled(
         context: Context,
@@ -287,6 +316,7 @@ object RetroAchievementsPreferences {
     }
 
     private data class OverlayToggles(
+        val leaderboardPopups: Boolean,
         val progress: Boolean,
         val challenge: Boolean,
         val encore: Boolean,
@@ -297,6 +327,7 @@ object RetroAchievementsPreferences {
         val enabled: Boolean,
         val hardcore: Boolean,
         val notifications: Boolean,
+        val leaderboardPopups: Boolean,
         val soundEffects: Boolean,
         val progress: Boolean,
         val challenge: Boolean,

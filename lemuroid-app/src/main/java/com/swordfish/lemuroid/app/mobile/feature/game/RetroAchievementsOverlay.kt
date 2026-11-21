@@ -1,5 +1,6 @@
 package com.swordfish.lemuroid.app.mobile.feature.game
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -48,6 +49,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +63,7 @@ import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RaGoldCol
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.shared.achievements.ChallengeIndicatorUi
 import com.swordfish.lemuroid.app.shared.achievements.HudBannerUi
+import com.swordfish.lemuroid.app.shared.achievements.LeaderboardTrackerUi
 import com.swordfish.lemuroid.app.shared.achievements.ProgressIndicatorUi
 import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 
@@ -82,6 +85,8 @@ fun RetroAchievementsOverlay(modifier: Modifier = Modifier) {
     }
 
     val safeTopInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val cornerSideInset = if (isLandscape) 136.dp else 0.dp
 
     Box(
         modifier =
@@ -94,7 +99,15 @@ fun RetroAchievementsOverlay(modifier: Modifier = Modifier) {
             ActiveChallengesCluster(
                 challenges = sessionState.activeChallenges,
                 hardcore = sessionState.hardcoreActive,
-                modifier = Alignment.TopEnd.let { Modifier.align(it) },
+                modifier = Modifier.align(Alignment.TopEnd).padding(end = cornerSideInset),
+            )
+        }
+
+        if (sessionState.leaderboardPopupsEnabled && sessionState.activeLeaderboardTrackers.isNotEmpty()) {
+            LeaderboardTrackersColumn(
+                trackers = sessionState.activeLeaderboardTrackers,
+                hardcore = sessionState.hardcoreActive,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = cornerSideInset),
             )
         }
 
@@ -151,6 +164,7 @@ private fun HudBannerCapsule(banner: HudBannerUi) {
         is HudBannerUi.AchievementUnlocked -> AchievementUnlockedCapsule(banner)
         is HudBannerUi.GameLoaded -> GameLoadedCapsule(banner)
         is HudBannerUi.GameCompleted -> GameCompletedCapsule(banner)
+        is HudBannerUi.LeaderboardNotice -> LeaderboardNoticeCapsule(banner)
         is HudBannerUi.StatusNotice -> StatusNoticeCapsule(banner)
     }
 }
@@ -274,12 +288,17 @@ private fun GameLoadedCapsule(banner: HudBannerUi.GameLoaded) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (banner.hardcore) {
-                    HudMiniPill(
-                        text = stringResource(R.string.ra_hud_hardcore_badge),
-                        color = RaGoldColor,
-                    )
-                }
+                HudMiniPill(
+                    text =
+                        stringResource(
+                            if (banner.hardcore) {
+                                R.string.ra_hud_hardcore_badge
+                            } else {
+                                R.string.ra_hud_casual_badge
+                            },
+                        ),
+                    color = accent,
+                )
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
@@ -353,6 +372,98 @@ private fun GameCompletedCapsule(banner: HudBannerUi.GameCompleted) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardNoticeCapsule(banner: HudBannerUi.LeaderboardNotice) {
+    val accent =
+        when {
+            banner.isFailed -> HudErrorTint
+            banner.isSubmitted -> RaGoldColor
+            else -> ArcaduneColors.Purple
+        }
+    val shape = RoundedCornerShape(18.dp)
+
+    Row(
+        modifier =
+            Modifier
+                .widthIn(max = 360.dp)
+                .shadow(10.dp, shape)
+                .clip(shape)
+                .background(HudGlassFill)
+                .border(1.dp, accent.copy(alpha = 0.55f), shape)
+                .padding(horizontal = 13.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            imageVector = if (banner.isFailed) Icons.Filled.ErrorOutline else Icons.Filled.EmojiEvents,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(20.dp),
+        )
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = banner.title,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = ArcaduneColors.OnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (banner.formattedScore.isNotBlank()) {
+                    HudMiniPill(text = banner.formattedScore, color = accent)
+                }
+            }
+            val detail = listOf(banner.rankInfo, banner.subtitle).filter { it.isNotBlank() }.joinToString(" • ")
+            if (detail.isNotBlank()) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ArcaduneColors.OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardTrackersColumn(
+    trackers: List<LeaderboardTrackerUi>,
+    hardcore: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val accent = if (hardcore) RaGoldColor else ArcaduneColors.Purple
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        trackers.take(4).forEach { tracker ->
+            Box(
+                modifier =
+                    Modifier
+                        .shadow(6.dp, shape)
+                        .clip(shape)
+                        .background(HudGlassFill)
+                        .border(1.dp, accent.copy(alpha = 0.45f), shape)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text = tracker.display,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = ArcaduneColors.OnSurface,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

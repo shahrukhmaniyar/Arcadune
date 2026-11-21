@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsAuthClient
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsOfflineQueue
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsSettingsState
 import kotlinx.coroutines.delay
@@ -34,6 +35,8 @@ class RetroAchievementsSettingsViewModel(
         val passwordInput: String = "",
         val isSigningIn: Boolean = false,
         val isRefreshing: Boolean = false,
+        val isSyncingOffline: Boolean = false,
+        val pendingOfflineCount: Int = 0,
         val errorMessage: String? = null,
     )
 
@@ -42,6 +45,8 @@ class RetroAchievementsSettingsViewModel(
         val passwordInput: String = "",
         val isSigningIn: Boolean = false,
         val isRefreshing: Boolean = false,
+        val isSyncingOffline: Boolean = false,
+        val pendingOfflineNonce: Int = 0,
         val errorMessage: String? = null,
     )
 
@@ -54,12 +59,18 @@ class RetroAchievementsSettingsViewModel(
             RetroAchievementsPreferences.observeState(appContext),
             formState,
         ) { settings, form ->
+            val pendingCount =
+                settings.account?.let {
+                    RetroAchievementsOfflineQueue.pendingCountForAccount(appContext, it.username)
+                } ?: 0
             UiState(
                 settings = settings,
                 usernameInput = form.usernameInput,
                 passwordInput = form.passwordInput,
                 isSigningIn = form.isSigningIn,
                 isRefreshing = form.isRefreshing,
+                isSyncingOffline = form.isSyncingOffline,
+                pendingOfflineCount = pendingCount,
                 errorMessage = form.errorMessage,
             )
         }.stateIn(
@@ -99,10 +110,12 @@ class RetroAchievementsSettingsViewModel(
                         avatarUrl = account.avatarUrl,
                     )
                     hasAutoRefreshed = true
+                    RetroAchievementsOfflineQueue.flushPending(appContext, account)
                     formState.update {
                         it.copy(
                             passwordInput = "",
                             isSigningIn = false,
+                            pendingOfflineNonce = it.pendingOfflineNonce + 1,
                             errorMessage = null,
                         )
                     }
@@ -149,7 +162,14 @@ class RetroAchievementsSettingsViewModel(
                         score = refreshed.score,
                         softcoreScore = refreshed.softcoreScore,
                     )
-                    formState.update { it.copy(isRefreshing = false, errorMessage = null) }
+                    RetroAchievementsOfflineQueue.flushPending(appContext, refreshed)
+                    formState.update {
+                        it.copy(
+                            isRefreshing = false,
+                            pendingOfflineNonce = it.pendingOfflineNonce + 1,
+                            errorMessage = null,
+                        )
+                    }
                 }
                 .onFailure { error ->
                     formState.update {
@@ -222,6 +242,27 @@ class RetroAchievementsSettingsViewModel(
     fun setChallengeIndicatorsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             RetroAchievementsPreferences.setChallengeIndicatorsEnabled(appContext, enabled)
+        }
+    }
+
+    fun setLeaderboardPopupsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            RetroAchievementsPreferences.setLeaderboardPopupsEnabled(appContext, enabled)
+        }
+    }
+
+    fun syncPendingOfflineQueue() {
+        if (formState.value.isSyncingOffline) return
+        viewModelScope.launch {
+            val account = RetroAchievementsPreferences.currentState(appContext).account ?: return@launch
+            formState.update { it.copy(isSyncingOffline = true, errorMessage = null) }
+            RetroAchievementsOfflineQueue.flushPending(appContext, account)
+            formState.update {
+                it.copy(
+                    isSyncingOffline = false,
+                    pendingOfflineNonce = it.pendingOfflineNonce + 1,
+                )
+            }
         }
     }
 }

@@ -63,6 +63,14 @@ object Migrations {
             }
         }
 
+    /** Cumulative active gameplay duration per game in milliseconds. */
+    val VERSION_12_13: Migration =
+        object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE games ADD COLUMN playTimeMs INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     /** Play counts (for sorting by most played) and the player's own collections of games. */
     val VERSION_10_11: Migration =
         object : Migration(10, 11) {
@@ -84,9 +92,7 @@ object Migrations {
             }
         }
 
-    private fun migrateGamesTableToVersion10(
-        database: SupportSQLiteDatabase,
-    ) {
+    private fun migrateGamesTableToVersion10(database: SupportSQLiteDatabase) {
         database.execSQL(
             "ALTER TABLE games ADD COLUMN customName TEXT DEFAULT NULL",
         )

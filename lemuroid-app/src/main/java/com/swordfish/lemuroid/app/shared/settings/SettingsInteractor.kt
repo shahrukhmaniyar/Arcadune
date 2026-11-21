@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.shared.settings
 
 import android.content.Context
+import com.swordfish.lemuroid.app.shared.game.GameProcessLock
 import com.swordfish.lemuroid.app.shared.library.LibraryIndexScheduler
 import com.swordfish.lemuroid.app.shared.storage.cache.CacheCleanerWork
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
@@ -19,12 +20,21 @@ class SettingsInteractor(
         SharedPreferencesHelper.getSharedPreferences(context).edit().clear().apply()
         LibraryIndexScheduler.scheduleLibrarySync(context.applicationContext)
         CacheCleanerWork.enqueueCleanCacheAll(context.applicationContext)
-        deleteDownloadedCores()
+        if (!GameProcessLock.isHeldByAnotherProcess(context.applicationContext)) {
+            deleteDownloadedCores()
+        }
     }
 
     private fun deleteDownloadedCores() {
         directoriesManager.getCoresDirectory()
             .listFiles()
-            ?.forEach { runCatching { it.deleteRecursively() } }
+            ?.forEach { entry ->
+                runCatching {
+                    entry.walkBottomUp().forEach { child ->
+                        runCatching { child.setWritable(true, true) }
+                    }
+                    entry.deleteRecursively()
+                }
+            }
     }
 }

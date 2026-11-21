@@ -35,15 +35,17 @@ object GameMenuHelper {
         screen: PreferenceScreen,
         frameSpeed: Int,
         fastForwardSupported: Boolean,
+        maxFrameSpeed: Int = 8,
     ) {
         val preference = screen.findPreference<ListPreference>(FAST_FORWARD) ?: return
         preference.isVisible = fastForwardSupported
-        val speeds = listOf(1, 2, 4, 6, 8)
-        preference.entries =
-            speeds.map { if (it == 1) screen.context.getString(R.string.game_menu_fast_forward_off) else "${it}X" }.toTypedArray()
+        val speeds = listOf(1, 2, 4, 6, 8).filter { it == 1 || it <= maxFrameSpeed }
+        val safeSpeed = if (frameSpeed in speeds) frameSpeed else speeds.lastOrNull() ?: 1
+        val offLabel = screen.context.getString(R.string.game_menu_fast_forward_off)
+        preference.entries = speeds.map { if (it == 1) offLabel else "${it}X" }.toTypedArray()
         preference.entryValues = speeds.map { it.toString() }.toTypedArray()
-        preference.setValue(frameSpeed.toString())
-        preference.summary = if (frameSpeed > 1) "${frameSpeed}X" else null
+        preference.setValue(safeSpeed.toString())
+        preference.summary = if (safeSpeed > 1) "${safeSpeed}X" else null
         preference.setOnPreferenceChangeListener { _, newValue ->
             val resultIntent =
                 Intent().apply {

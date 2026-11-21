@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
@@ -36,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -68,6 +70,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import com.swordfish.lemuroid.app.shared.game.BaseGameScreenViewModel
+import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRetroGameView
 import com.swordfish.lemuroid.app.shared.settings.HapticFeedbackMode
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.libretrodroid.LibretroDroid
@@ -84,8 +87,10 @@ import com.swordfish.touchinput.skin.ArcaduneSkinView
 import com.swordfish.touchinput.skin.ArcaduneSkins
 import com.swordfish.touchinput.skin.ConsoleShell
 import com.swordfish.touchinput.skin.ScreenSpecs
+import com.swordfish.touchinput.skin.ShellPlacement
 import com.swordfish.touchinput.skin.SkinArt
 import com.swordfish.touchinput.skin.SkinArtLoader
+import com.swordfish.touchinput.skin.SkinControl
 import com.swordfish.touchinput.skin.SkinCustomization
 import com.swordfish.touchinput.skin.SkinInput
 import com.swordfish.touchinput.skin.SkinPalettes
@@ -181,6 +186,8 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             }
         skinInput.hapticFeedback = padHapticFeedback
         val controlsVisible = touchControllerSettings != null && touchControlsVisibleState.value
+        val editingControls = remember(viewModel) { viewModel.isEditControlShown() }.collectAsState(false)
+        val renderSkin = controlsVisible || editingControls.value
         val skinTakesScreenTouches = skin != null && controlsVisible && controllerId?.hasTwoScreens() == true
         // One saved set of changes per controller, orientation and layout version, shared with Settings.
         val skinKey =
@@ -189,7 +196,15 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 SkinCustomizationStore.keyOf(controllerId!!.name, isLandscape, layout)
             }
                 ?: "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_none"
-        val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey)) }
+        val skinDefault = skin?.let { (if (isLandscape) it.landscape else it.portrait).defaultCustomization } ?: SkinCustomization()
+        val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey, skinDefault)) }
+        DisposableEffect(skinKey) {
+            onDispose {
+                if (editingControls.value) {
+                    skinStore.save(skinKey, skinCustomization.value)
+                }
+            }
+        }
         // The Console skin's designed pictures for this orientation (see SkinArt), read off the main thread.
         var skinArt by
             remember(controllerName, skinVariant.value, isLandscape) {
@@ -209,9 +224,27 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
         }
         val screenValues = remember(viewModel) { viewModel.getScreenLayout() }.collectAsState(emptyMap())
         val rewindAvailable = remember(viewModel) { viewModel.isRewindAvailable() }.collectAsState(false)
-        val editingControls = remember(viewModel) { viewModel.isEditControlShown() }.collectAsState(false)
-        // Where the upright controller panel is, so the editor shows it at the same place.
+        val fastForwardSupported = remember(viewModel) { viewModel.isFastForwardSupported() }
+        val currentFrameSpeed by viewModel.frameSpeed.collectAsState()
+        val fastForwardDotsTotal = viewModel.fastForwardSteps.size
+        val fastForwardDotsActive = viewModel.fastForwardDotsActive(currentFrameSpeed)
+        // Where the upright controller panel and game screen windows are, so the editor matches 1:1.
         val skinPanel = remember { mutableStateOf<Rect?>(null) }
+        val skinWindows = remember { mutableStateOf<List<Rect>>(emptyList()) }
+        val skinDefaultWindows = remember { mutableStateOf<List<Rect>>(emptyList()) }
+        val skinPlacement = remember { mutableStateOf<ShellPlacement?>(null) }
+        val screenRegionsState = remember { mutableStateOf(FloatArray(0)) }
+
+        val activeSkinLayout = skin?.let { if (isLandscape) it.landscape else it.portrait }
+        val isMenuHiddenOnSkin =
+            activeSkinLayout != null &&
+                controlsVisible &&
+                activeSkinLayout.controls.withIndex().none { (idx, ctrl) ->
+                    ctrl is SkinControl.Menu && !skinCustomization.value.isHidden(idx, ctrl)
+                }
+        LaunchedEffect(isMenuHiddenOnSkin) {
+            viewModel.setTouchMenuHidden(isMenuHiddenOnSkin)
+        }
 
         PadKit(
             modifier =
@@ -229,7 +262,26 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             val fullScreenPosition = remember { mutableStateOf<Rect?>(null) }
             val viewportPosition = remember { mutableStateOf<Rect?>(null) }
 
-            AndroidView(
+            // The skin is on screen from the first frame; the game view itself only exists once the
+            // game has loaded. Until then an empty stand-in gives the skin the same screen size.
+            val gameLoaded =
+                remember(viewModel) { viewModel.getGameState() }
+                    .collectAsState(GameViewModelRetroGameView.GameState.Uninitialized)
+                    .value
+                    .let {
+                        it is GameViewModelRetroGameView.GameState.Loaded ||
+                            it is GameViewModelRetroGameView.GameState.Ready
+                    }
+            if (!gameLoaded) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { fullScreenPosition.value = it.boundsInRoot() },
+                )
+            }
+
+            if (gameLoaded) AndroidView(
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -258,20 +310,40 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
 
             val fullPos = fullScreenPosition.value
             val viewPos = viewportPosition.value
-
-            LaunchedEffect(fullPos, viewPos) {
-                val gameView = viewModel.retroGameView.retroGameViewFlow()
-                if (fullPos == null || viewPos == null || fullPos.width <= 0f || fullPos.height <= 0f) {
-                    return@LaunchedEffect
-                }
-                val viewport =
+            val targetViewport =
+                if (fullPos != null && viewPos != null && fullPos.width > 0f && fullPos.height > 0f) {
                     RectF(
                         (viewPos.left - fullPos.left) / fullPos.width,
                         (viewPos.top - fullPos.top) / fullPos.height,
                         (viewPos.right - fullPos.left) / fullPos.width,
                         (viewPos.bottom - fullPos.top) / fullPos.height,
                     )
-                gameView.viewport = viewport
+                } else {
+                    null
+                }
+
+            val targetRegions = if (skin != null) screenRegionsState.value else FloatArray(0)
+
+            SideEffect {
+                val gameView = viewModel.retroGameView.retroGameView
+                if (gameView != null) {
+                    if (targetViewport != null && gameView.viewport != targetViewport) {
+                        gameView.viewport = targetViewport
+                    }
+                    if (!gameView.screenRegions.contentEquals(targetRegions)) {
+                        gameView.screenRegions = targetRegions
+                    }
+                }
+            }
+
+            LaunchedEffect(targetViewport, targetRegions) {
+                val gameView = viewModel.retroGameView.retroGameViewFlow()
+                if (targetViewport != null && gameView.viewport != targetViewport) {
+                    gameView.viewport = targetViewport
+                }
+                if (!gameView.screenRegions.contentEquals(targetRegions)) {
+                    gameView.screenRegions = targetRegions
+                }
             }
 
             if (skin != null) {
@@ -280,12 +352,23 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                     skin = skin,
                     controllerId = controllerId!!,
                     screenValues = screenValues.value,
-                    controlsVisible = controlsVisible,
+                    controlsVisible = renderSkin,
                     editingControls = editingControls.value,
                     rewindAvailable = rewindAvailable.value,
+                    fastForwardSupported = fastForwardSupported,
+                    fastForwardDotsTotal = fastForwardDotsTotal,
+                    fastForwardDotsActive = fastForwardDotsActive,
                     customization = skinCustomization.value,
                     onViewportPositioned = { viewportPosition.value = it },
                     onPanelPositioned = { skinPanel.value = it },
+                    onWindowsPositioned = { skinWindows.value = it },
+                    onDefaultWindowsPositioned = { skinDefaultWindows.value = it },
+                    onPlacementChanged = { skinPlacement.value = it },
+                    onRegionsPositioned = { nextRegions ->
+                        if (!screenRegionsState.value.contentEquals(nextRegions)) {
+                            screenRegionsState.value = nextRegions
+                        }
+                    },
                     input = skinInput,
                     gameView = fullPos,
                     takesScreenTouches = skinTakesScreenTouches,
@@ -311,7 +394,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                     val isVisible =
                         touchControllerSettings != null &&
                             currentControllerConfig != null &&
-                            touchControlsVisibleState.value
+                            (touchControlsVisibleState.value || editingControls.value)
 
                     if (isVisible) {
                         CompositionLocalProvider(
@@ -357,14 +440,24 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             )
         }
 
+        val availableControllers = remember(viewModel) { viewModel.getAvailableTouchControllerConfigs() }
         if (skin != null && editingControls.value) {
             SkinEditorOverlay(
                 isLandscape = isLandscape,
                 skin = skin,
                 rewindAvailable = rewindAvailable.value,
+                fastForwardSupported = fastForwardSupported,
+                fastForwardDotsTotal = fastForwardDotsTotal,
+                fastForwardDotsActive = fastForwardDotsActive,
                 // Kept in memory while dragging (saving on every move made dragging stutter), saved on Done.
                 customizationState = skinCustomization,
                 panel = skinPanel.value,
+                screenWindows = skinWindows.value,
+                defaultScreenWindows = skinDefaultWindows.value,
+                editableBodyTop = skinPlacement.value?.editableBodyTop,
+                defaultBodyTop = skinPlacement.value?.defaultBodyTop,
+                minBodyTop = skinPlacement.value?.minBodyTop ?: 0f,
+                maxBodyTop = skinPlacement.value?.maxBodyTop ?: 0f,
                 art = skinArt,
                 variant = skinVariant.value,
                 onVariantChange = { variant ->
@@ -373,29 +466,29 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 },
                 // Back to the console's default button positions, scale, opacity, and visibility.
                 onReset = {
-                    skinCustomization.value = SkinCustomization()
-                    skinStore.save(skinKey, SkinCustomization())
+                    skinCustomization.value = skinDefault
+                    skinStore.save(skinKey, skinDefault)
                 },
                 onDone = {
                     skinStore.save(skinKey, skinCustomization.value)
                     viewModel.showEditControls(false)
+                },
+                controllerOptions = availableControllers,
+                selectedController = currentControllerConfig,
+                onSelectController = { next ->
+                    skinStore.save(skinKey, skinCustomization.value)
+                    viewModel.selectTouchControllerConfig(next)
                 },
             )
         }
 
         val isLoading =
             viewModel.loadingState
-                .collectAsState(true)
+                .collectAsState(false)
                 .value
 
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (!editingControls.value) {
+        // No loading ring: saving and loading are quick, and the controls stay in view.
+        if (!isLoading && !editingControls.value) {
             RetroAchievementsOverlay()
         }
     }
@@ -417,9 +510,16 @@ private fun PadKitScope.SkinnedGameLayout(
     controlsVisible: Boolean,
     editingControls: Boolean,
     rewindAvailable: Boolean,
+    fastForwardSupported: Boolean,
+    fastForwardDotsTotal: Int,
+    fastForwardDotsActive: Int,
     customization: SkinCustomization,
     onViewportPositioned: (Rect) -> Unit,
     onPanelPositioned: (Rect) -> Unit,
+    onWindowsPositioned: (List<Rect>) -> Unit,
+    onDefaultWindowsPositioned: (List<Rect>) -> Unit,
+    onPlacementChanged: (ShellPlacement) -> Unit,
+    onRegionsPositioned: (FloatArray) -> Unit,
     input: SkinInput,
     gameView: Rect?,
     takesScreenTouches: Boolean,
@@ -446,18 +546,79 @@ private fun PadKitScope.SkinnedGameLayout(
         // and symmetric over the centered controller panel even on corner-cutout phones.
         val safeRect = if (isLandscape) Rect(left, top, right, height) else Rect(0f, top, width, height)
 
-        val spec = if (shell) ScreenSpecs.forController(controllerId, screenValues, isLandscape) else null
+        val effectiveCustomization = if (controlsVisible) customization else SkinCustomization()
+        val spec = ScreenSpecs.forController(controllerId, screenValues, isLandscape)
         val placement =
-            placeShell(skin, isLandscape, shell, spec, width, height, safeRect, px(1.dp))
+            placeShell(
+                skin = skin,
+                isLandscape = isLandscape,
+                shell = shell,
+                spec = if (shell) spec else null,
+                width = width,
+                height = height,
+                safe = safeRect,
+                dp = px(1.dp),
+                customization = effectiveCustomization,
+            )
         val windows = placement.windows
         val picture = placement.picture
         val panel = placement.panel
-        LaunchedEffect(panel, origin) { onPanelPositioned(panel.translate(origin)) }
+        val editorWindows = if (controlsVisible) placement.gameWindows(shell, spec) else windows
+        val defaultEditorWindows =
+            if (controlsVisible) placement.defaultGameWindows(shell, spec) else placement.defaultWindows
 
-        LaunchedEffect(picture, origin) { onViewportPositioned(picture.translate(origin)) }
-        // The DS / 3DS touch screen: fingers that start in a screen window touch the game there.
+        val regions =
+            if (shell &&
+                spec != null &&
+                spec.srcScreens.size > 1 &&
+                windows.size == spec.srcScreens.size &&
+                gameView != null &&
+                gameView.width > 0f &&
+                gameView.height > 0f &&
+                spec.srcWidth > 0f &&
+                spec.srcHeight > 0f
+            ) {
+                FloatArray(spec.srcScreens.size * 8).also { arr ->
+                    spec.srcScreens.forEachIndexed { idx, src ->
+                        val dst = windows[idx].translate(origin)
+                        val base = idx * 8
+                        arr[base] = src.x / spec.srcWidth
+                        arr[base + 1] = src.y / spec.srcHeight
+                        arr[base + 2] = src.width / spec.srcWidth
+                        arr[base + 3] = src.height / spec.srcHeight
+                        arr[base + 4] = (dst.left - gameView.left) / gameView.width
+                        arr[base + 5] = (dst.top - gameView.top) / gameView.height
+                        arr[base + 6] = dst.width / gameView.width
+                        arr[base + 7] = dst.height / gameView.height
+                    }
+                }
+            } else {
+                FloatArray(0)
+            }
+
+        val touchIndices =
+            if (takesScreenTouches) {
+                ScreenSpecs.touchWindowIndices(controllerId, screenValues, isLandscape)
+            } else {
+                emptySet()
+            }
+
+        // Update viewport, panel, screen windows, multi-region quads, and DS/3DS touch windows synchronously each frame.
         SideEffect {
-            input.touchWindows = if (takesScreenTouches) windows.map { it.translate(origin) } else emptyList()
+            onPanelPositioned(panel)
+            onViewportPositioned(picture.translate(origin))
+            onWindowsPositioned(editorWindows)
+            onDefaultWindowsPositioned(defaultEditorWindows)
+            onPlacementChanged(placement)
+            onRegionsPositioned(regions)
+            input.touchWindows =
+                if (takesScreenTouches) {
+                    windows.mapIndexedNotNull { idx, win ->
+                        if (idx in touchIndices) win.translate(origin) else null
+                    }
+                } else {
+                    emptyList()
+                }
             input.gameViewSize = gameView ?: Rect.Zero
         }
 
@@ -468,6 +629,10 @@ private fun PadKitScope.SkinnedGameLayout(
                 screens = windows,
                 bodyTop = placement.bodyTop,
                 screenPanel = placement.screenPanel,
+                layout = layout.takeIf { !isLandscape },
+                panel = panel.takeIf { !isLandscape },
+                art = art.takeIf { !isLandscape },
+                cutoutScreens = true,
             )
         }
 
@@ -482,21 +647,29 @@ private fun PadKitScope.SkinnedGameLayout(
                 pinToEdges = true,
                 customization = customization,
                 rewindAvailable = rewindAvailable,
+                fastForwardSupported = fastForwardSupported,
+                fastForwardDotsTotal = fastForwardDotsTotal,
+                fastForwardDotsActive = fastForwardDotsActive,
                 input = input,
                 shell = shell,
                 art = art,
             )
         } else if (controlsVisible && !editingControls) {
+            val above = panel.top.coerceAtLeast(0f)
             with(density) {
                 ArcaduneSkinView(
                     modifier =
                         Modifier
-                            .absoluteOffset { IntOffset(panel.left.toInt(), panel.top.toInt()) }
-                            .size(panel.width.toDp(), panel.height.toDp()),
+                            .absoluteOffset { IntOffset(panel.left.toInt(), (panel.top - above).toInt()) }
+                            .size(panel.width.toDp(), (panel.height + above).toDp()),
                     layout = layout,
                     pinToEdges = false,
                     customization = customization,
                     rewindAvailable = rewindAvailable,
+                    fastForwardSupported = fastForwardSupported,
+                    fastForwardDotsTotal = fastForwardDotsTotal,
+                    fastForwardDotsActive = fastForwardDotsActive,
+                    topExtra = above.toDp(),
                     input = input,
                     shell = true,
                     art = art,

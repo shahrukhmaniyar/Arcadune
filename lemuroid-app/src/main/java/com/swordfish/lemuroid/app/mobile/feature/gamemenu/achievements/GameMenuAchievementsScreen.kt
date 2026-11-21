@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.mobile.feature.gamemenu.achievements
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.togetherWith
@@ -11,6 +12,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -74,6 +78,7 @@ import coil.request.ImageRequest
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RaGoldColor
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconBadge
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
@@ -82,6 +87,7 @@ import com.swordfish.lemuroid.app.shared.achievements.AchievementKind
 import com.swordfish.lemuroid.app.shared.achievements.AchievementSessionStatus
 import com.swordfish.lemuroid.app.shared.achievements.AchievementUiItem
 import com.swordfish.lemuroid.app.shared.achievements.GameAchievementsUiState
+import com.swordfish.lemuroid.app.shared.achievements.LeaderboardUiItem
 import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 import java.text.DateFormat
@@ -93,6 +99,7 @@ private enum class AchievementFilter {
     LOCKED,
     UNLOCKED,
     ACTIVE,
+    LEADERBOARDS,
 }
 
 private val MissableAmber = Color(0xFFFFB454)
@@ -103,6 +110,7 @@ private val CardFill = Color(0xE61C1A27)
 fun GameMenuAchievementsScreen(
     selectedAchievementId: Int? = null,
     onSelectAchievement: (Int?) -> Unit = {},
+    onSwitchHardcoreMode: ((Boolean) -> Unit)? = null,
 ) {
     val state by RetroAchievementsSessionHolder.state.collectAsState()
 
@@ -142,7 +150,12 @@ fun GameMenuAchievementsScreen(
                     icon = Icons.Filled.EmojiEvents,
                     iconTint = ArcaduneColors.OnSurfaceDim,
                     title = stringResource(R.string.ra_empty_unsupported_system_title),
-                    body = stringResource(R.string.ra_empty_unsupported_system_body),
+                    body =
+                        state.coreUnsupportedReason.ifBlank {
+                            state.statusMessage.ifBlank {
+                                stringResource(R.string.ra_empty_unsupported_system_body)
+                            }
+                        },
                 )
 
             AchievementSessionStatus.UNSUPPORTED_GAME ->
@@ -176,7 +189,7 @@ fun GameMenuAchievementsScreen(
                 )
 
             AchievementSessionStatus.LOADED ->
-                if (state.achievements.isEmpty()) {
+                if (state.achievements.isEmpty() && state.leaderboards.isEmpty()) {
                     EmptyStatusCard(
                         icon = Icons.Filled.EmojiEvents,
                         iconTint = ArcaduneColors.Purple,
@@ -188,6 +201,7 @@ fun GameMenuAchievementsScreen(
                         state = state,
                         selectedAchievementId = selectedAchievementId,
                         onSelectAchievement = onSelectAchievement,
+                        onSwitchHardcoreMode = onSwitchHardcoreMode,
                     )
                 }
         }
@@ -199,8 +213,11 @@ private fun LoadedAchievementsContent(
     state: GameAchievementsUiState,
     selectedAchievementId: Int?,
     onSelectAchievement: (Int?) -> Unit,
+    onSwitchHardcoreMode: ((Boolean) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     var selectedFilter by rememberSaveable { mutableStateOf(AchievementFilter.ALL) }
+    var showEnableHardcoreDialog by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     val selectedItem =
@@ -217,9 +234,12 @@ private fun LoadedAchievementsContent(
     val unlockedCount = remember(state.achievements) { state.achievements.count { it.isUnlocked } }
     val lockedCount = state.achievements.size - unlockedCount
     val activeCount = remember(state.achievements) { state.achievements.count { it.isActiveChallenge } }
+    val leaderboardCount = state.leaderboards.size
 
-    LaunchedEffect(activeCount) {
+    LaunchedEffect(activeCount, leaderboardCount) {
         if (selectedFilter == AchievementFilter.ACTIVE && activeCount == 0) {
+            selectedFilter = AchievementFilter.ALL
+        } else if (selectedFilter == AchievementFilter.LEADERBOARDS && leaderboardCount == 0) {
             selectedFilter = AchievementFilter.ALL
         }
     }
@@ -234,6 +254,7 @@ private fun LoadedAchievementsContent(
                 AchievementFilter.LOCKED -> state.achievements.filter { !it.isUnlocked }
                 AchievementFilter.UNLOCKED -> state.achievements.filter { it.isUnlocked }
                 AchievementFilter.ACTIVE -> state.achievements.filter { it.isActiveChallenge }
+                AchievementFilter.LEADERBOARDS -> emptyList()
             }
         }
 
@@ -256,9 +277,60 @@ private fun LoadedAchievementsContent(
                 unlockedCount = unlockedCount,
                 lockedCount = lockedCount,
                 activeCount = activeCount,
+                leaderboardCount = leaderboardCount,
                 filteredItems = filteredItems,
                 onSelectFilter = { selectedFilter = it },
                 onSelectAchievement = { onSelectAchievement(it) },
+                onRequestModeChange =
+                    onSwitchHardcoreMode?.let { callback ->
+                        { enable ->
+                            if (enable) {
+                                if (state.coreHardcoreSupported) {
+                                    showEnableHardcoreDialog = true
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        state.coreUnsupportedReason.ifBlank {
+                                            context.getString(R.string.ra_empty_unsupported_system_body)
+                                        },
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            } else {
+                                callback(false)
+                            }
+                        }
+                    },
+            )
+        }
+    }
+
+    if (showEnableHardcoreDialog && onSwitchHardcoreMode != null) {
+        ArcaduneDialog(
+            onDismissRequest = { showEnableHardcoreDialog = false },
+            icon = Icons.Filled.Whatshot,
+            title = { Text(text = stringResource(R.string.ra_hardcore_confirm_enable_title)) },
+            dismissButton = {
+                ArcadunePillButton(
+                    label = stringResource(R.string.cancel),
+                    onClick = { showEnableHardcoreDialog = false },
+                )
+            },
+            confirmButton = {
+                ArcadunePillButton(
+                    label = stringResource(R.string.ra_hardcore_confirm_enable_confirm),
+                    highlighted = true,
+                    onClick = {
+                        showEnableHardcoreDialog = false
+                        onSwitchHardcoreMode(true)
+                    },
+                )
+            },
+        ) {
+            Text(
+                text = stringResource(R.string.ra_hardcore_confirm_enable_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ArcaduneColors.OnSurfaceDim,
             )
         }
     }
@@ -272,9 +344,11 @@ private fun AchievementsListColumn(
     unlockedCount: Int,
     lockedCount: Int,
     activeCount: Int,
+    leaderboardCount: Int,
     filteredItems: List<AchievementUiItem>,
     onSelectFilter: (AchievementFilter) -> Unit,
     onSelectAchievement: (Int) -> Unit,
+    onRequestModeChange: ((Boolean) -> Unit)? = null,
 ) {
     LazyColumn(
         state = listState,
@@ -287,7 +361,10 @@ private fun AchievementsListColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item(key = "header") {
-            GameAchievementsHeaderCard(state = state)
+            GameAchievementsHeaderCard(
+                state = state,
+                onRequestModeChange = onRequestModeChange,
+            )
         }
 
         item(key = "filters") {
@@ -297,12 +374,42 @@ private fun AchievementsListColumn(
                 lockedCount = lockedCount,
                 unlockedCount = unlockedCount,
                 activeCount = activeCount,
+                leaderboardCount = leaderboardCount,
                 hardcore = state.hardcoreActive,
                 onSelect = onSelectFilter,
             )
         }
 
-        if (filteredItems.isEmpty()) {
+        if (selectedFilter == AchievementFilter.LEADERBOARDS) {
+            if (state.leaderboards.isEmpty()) {
+                item(key = "leaderboards_empty") {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(CardFill)
+                                .border(1.dp, ArcaduneColors.GlassEdge, RoundedCornerShape(18.dp))
+                                .padding(24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ra_leaderboards_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ArcaduneColors.OnSurfaceDim,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            } else {
+                items(
+                    items = state.leaderboards,
+                    key = { "lb_${it.id}" },
+                ) { lb ->
+                    LeaderboardRowCard(item = lb, hardcoreMode = state.hardcoreActive)
+                }
+            }
+        } else if (filteredItems.isEmpty()) {
             item(key = "filter_empty") {
                 val msg =
                     when (selectedFilter) {
@@ -344,9 +451,13 @@ private fun AchievementsListColumn(
 }
 
 @Composable
-private fun GameAchievementsHeaderCard(state: GameAchievementsUiState) {
+private fun GameAchievementsHeaderCard(
+    state: GameAchievementsUiState,
+    onRequestModeChange: ((Boolean) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val accent = if (state.hardcoreActive) RaGoldColor else ArcaduneColors.Purple
+    val hardcoreApproved = RetroAchievementsPreferences.isHardcoreApproved()
     val cardShape = RoundedCornerShape(22.dp)
     val completionTarget =
         if (state.totalCount > 0) {
@@ -426,19 +537,17 @@ private fun GameAchievementsHeaderCard(state: GameAchievementsUiState) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED || state.hardcoreActive) {
-                        TagBadge(
-                            text =
-                                stringResource(
-                                    if (state.hardcoreActive) {
-                                        R.string.ra_hud_hardcore_badge
-                                    } else {
-                                        R.string.ra_hud_softcore_badge
-                                    },
-                                ),
-                            color = accent,
-                        )
-                    }
+                    TagBadge(
+                        text =
+                            stringResource(
+                                if (state.hardcoreActive) {
+                                    R.string.ra_hud_hardcore_badge
+                                } else {
+                                    R.string.ra_hud_casual_badge
+                                },
+                            ),
+                        color = accent,
+                    )
                 }
 
                 if (state.richPresence.isNotBlank()) {
@@ -473,7 +582,24 @@ private fun GameAchievementsHeaderCard(state: GameAchievementsUiState) {
             }
         }
 
-        if (RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED && state.hardcoreDowngraded) {
+        if (!state.coreHardcoreSupported && state.coreUnsupportedReason.isNotBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = RaGoldColor.copy(alpha = 0.85f),
+                    modifier = Modifier.size(15.dp),
+                )
+                Text(
+                    text = state.coreUnsupportedReason,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ArcaduneColors.OnSurfaceDim,
+                )
+            }
+        } else if (RetroAchievementsPreferences.isHardcoreApproved() && state.hardcoreDowngraded) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -489,6 +615,31 @@ private fun GameAchievementsHeaderCard(state: GameAchievementsUiState) {
                     style = MaterialTheme.typography.labelSmall,
                     color = ArcaduneColors.OnSurfaceDim,
                 )
+            }
+        }
+
+        val showModeButton =
+            onRequestModeChange != null &&
+                (state.hardcoreActive || (hardcoreApproved && state.coreHardcoreSupported))
+        if (showModeButton && onRequestModeChange != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                if (state.hardcoreActive) {
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_mode_switch_casual_action),
+                        height = 34.dp,
+                        onClick = { onRequestModeChange(false) },
+                    )
+                } else {
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_mode_enable_hardcore_action),
+                        icon = Icons.Filled.Whatshot,
+                        height = 34.dp,
+                        onClick = { onRequestModeChange(true) },
+                    )
+                }
             }
         }
 
@@ -548,6 +699,7 @@ private fun FilterChipsRow(
     lockedCount: Int,
     unlockedCount: Int,
     activeCount: Int,
+    leaderboardCount: Int,
     hardcore: Boolean,
     onSelect: (AchievementFilter) -> Unit,
 ) {
@@ -585,6 +737,84 @@ private fun FilterChipsRow(
                 accent = accent,
                 onClick = { onSelect(AchievementFilter.ACTIVE) },
             )
+        }
+        if (leaderboardCount > 0) {
+            FilterChipPill(
+                label = stringResource(R.string.ra_filter_leaderboards, leaderboardCount),
+                isSelected = selected == AchievementFilter.LEADERBOARDS,
+                accent = accent,
+                onClick = { onSelect(AchievementFilter.LEADERBOARDS) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardRowCard(
+    item: LeaderboardUiItem,
+    hardcoreMode: Boolean,
+) {
+    val accent = if (hardcoreMode) RaGoldColor else ArcaduneColors.Purple
+    val shape = RoundedCornerShape(18.dp)
+    val stateLabel =
+        when {
+            item.isAttempting -> stringResource(R.string.ra_leaderboard_state_active)
+            item.isPrimed -> stringResource(R.string.ra_leaderboard_state_primed)
+            else -> stringResource(R.string.ra_leaderboard_state_inactive)
+        }
+    val stateColor =
+        when {
+            item.isAttempting -> accent
+            item.isPrimed -> ProgressionTeal
+            else -> ArcaduneColors.OnSurfaceDim
+        }
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(CardFill)
+                .background(if (item.isAttempting) accent.copy(alpha = 0.10f) else Color.Transparent)
+                .border(
+                    width = 1.dp,
+                    color = if (item.isAttempting) accent.copy(alpha = 0.45f) else ArcaduneColors.GlassEdge,
+                    shape = shape,
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                    color = ArcaduneColors.OnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                TagBadge(text = stateLabel, color = stateColor)
+            }
+            if (item.description.isNotBlank()) {
+                Text(
+                    text = item.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ArcaduneColors.OnSurfaceDim,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (item.trackerValue.isNotBlank()) {
+            TagBadge(text = item.trackerValue, color = accent)
         }
     }
 }
@@ -638,6 +868,7 @@ private fun FilterChipPill(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AchievementRowCard(
     item: AchievementUiItem,
@@ -765,9 +996,9 @@ private fun AchievementRowCard(
                     item.rarityPercent > 0f
 
             if (hasMetaRow) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.padding(top = 2.dp),
                 ) {
                     if (item.isActiveChallenge) {
@@ -966,7 +1197,7 @@ private fun AchievementDetailPage(
                     ) {
                         val (statusLabel, statusColor) =
                             when {
-                                !RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED && item.isUnlocked ->
+                                !RetroAchievementsPreferences.isHardcoreApproved() && item.isUnlocked ->
                                     stringResource(R.string.ra_detail_status_unlocked) to
                                         if (item.isUnlockedHardcore) RaGoldColor else ArcaduneColors.Purple
                                 item.isUnlockedHardcore ->

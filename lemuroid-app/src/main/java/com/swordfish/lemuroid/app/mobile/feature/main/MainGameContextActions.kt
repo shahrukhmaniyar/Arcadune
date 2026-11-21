@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -77,6 +78,7 @@ import com.swordfish.lemuroid.app.mobile.feature.coversearch.CoverSearchActivity
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImage
+import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import timber.log.Timber
@@ -85,8 +87,10 @@ import timber.log.Timber
 @Composable
 fun MainGameContextActions(
     selectedGameState: MutableState<Game?>,
+    liveGame: Game? = selectedGameState.value,
     shortcutSupported: Boolean,
     onGamePlay: (Game) -> Unit,
+    onGameQuickResume: (Game) -> Unit = onGamePlay,
     onGameRestart: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
     onCreateShortcut: (Game) -> Unit,
@@ -96,7 +100,7 @@ fun MainGameContextActions(
     onClearCustomCoverUri: (Game) -> Unit,
 ) {
     val modalSheetState = rememberModalBottomSheetState(true)
-    val selectedGame = selectedGameState.value
+    val selectedGame = if (selectedGameState.value != null) liveGame ?: selectedGameState.value else null
 
     LaunchedEffect(selectedGame) {
         if (selectedGame != null) {
@@ -127,7 +131,7 @@ fun MainGameContextActions(
         ) {
             ContextActionContent(
                 selectedGame = selectedGame,
-                onGamePlay = onGamePlay,
+                onGameQuickResume = onGameQuickResume,
                 selectedGameState = selectedGameState,
                 onGameRestart = onGameRestart,
                 onFavoriteToggle = onFavoriteToggle,
@@ -145,7 +149,7 @@ fun MainGameContextActions(
 @Composable
 private fun ContextActionContent(
     selectedGame: Game,
-    onGamePlay: (Game) -> Unit,
+    onGameQuickResume: (Game) -> Unit,
     selectedGameState: MutableState<Game?>,
     onGameRestart: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
@@ -210,7 +214,7 @@ private fun ContextActionContent(
                 icon = Icons.Default.PlayArrow,
                 highlighted = true,
                 onClick = {
-                    onGamePlay(selectedGame)
+                    onGameQuickResume(selectedGame)
                     selectedGameState.value = null
                 },
             )
@@ -353,8 +357,11 @@ private fun ContextActionContent(
 
 @Composable
 private fun ContextActionHeader(game: Game) {
+    val context = LocalContext.current
     val systemTitle = stringResource(id = GameSystem.findById(game.systemId).shortTitleResId)
     val developer = game.developer?.takeIf { it.isNotBlank() }
+    val hasPlayTime = game.playTimeMs > 0L || game.lastPlayedAt != null || game.playCount > 0
+    val playTimeLabel = PlayTimeTracker.formatForGame(context, game)
     val cardShape = RoundedCornerShape(20.dp)
     val coverShape = RoundedCornerShape(14.dp)
 
@@ -388,7 +395,7 @@ private fun ContextActionHeader(game: Game) {
         Spacer(modifier = Modifier.width(14.dp))
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Text(
                 text = game.displayName(),
@@ -429,6 +436,27 @@ private fun ContextActionHeader(game: Game) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    tint = if (hasPlayTime) ArcaduneColors.Purple else ArcaduneColors.OnSurfaceDim,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = playTimeLabel,
+                    style =
+                        MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (hasPlayTime) FontWeight.Medium else FontWeight.Normal,
+                        ),
+                    color = if (hasPlayTime) ArcaduneColors.OnSurface else ArcaduneColors.OnSurfaceDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -19,6 +19,8 @@
 #define LIBRETRODROID_VIDEOLAYOUT_H
 
 #include <array>
+#include <mutex>
+#include <vector>
 
 #include "utils/rect.h"
 
@@ -30,6 +32,17 @@ namespace libretrodroid {
 
 class VideoLayout {
 public:
+    struct ScreenRegion {
+        float srcX = 0.0F;
+        float srcY = 0.0F;
+        float srcW = 1.0F;
+        float srcH = 1.0F;
+        float dstX = 0.0F;
+        float dstY = 0.0F;
+        float dstW = 1.0F;
+        float dstH = 1.0F;
+    };
+
     VideoLayout(bool bottomLeftOrigin, float rotation, Rect viewportRect, unsigned int viewportAlignment);
 
     void updateAspectRatio(float aspectRatio);
@@ -41,6 +54,14 @@ public:
     void updateViewportAlignment(unsigned int viewportAlignment);
 
     void updateRotation(float rotation);
+
+    void updateScreenRegions(const std::vector<ScreenRegion>& regions);
+    std::vector<ScreenRegion> getScreenRegionsSnapshot() const;
+    void buildRegionQuad(
+        const ScreenRegion& region,
+        std::array<float, 12>& outVertices,
+        std::array<float, 12>& outTexCoords
+    ) const;
 
     std::array<float, 12>& getForegroundVertices() { return foregroundVertices; }
     std::array<float, 12>& getBackgroundVertices() { return backgroundVertices; }
@@ -160,6 +181,9 @@ private:
     unsigned screenHeight = 0;
 
     unsigned viewportAlignment = V_ALIGN_CENTER;
+
+    mutable std::mutex regionsMutex;
+    std::vector<ScreenRegion> screenRegions;
 };
 
 } // namespace libretrodroid

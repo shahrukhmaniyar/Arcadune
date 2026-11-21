@@ -60,7 +60,10 @@ class SavesBackupManager(
     /** Writes a backup to [destination]. Returns the number of files in it. */
     suspend fun backup(destination: Uri): Int =
         withContext(Dispatchers.IO) {
-            val version = runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName }.getOrNull()
+            val version =
+                runCatching {
+                    appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
+                }.getOrNull()
             val stream =
                 appContext.contentResolver.openOutputStream(destination, "wt")
                     ?: throw IOException("Cannot write to the chosen location")
@@ -146,15 +149,16 @@ class SavesBackupManager(
         var current = cache.getValue("")
         for (segment in dirSegments) {
             currentKey = if (currentKey.isEmpty()) segment else "$currentKey/$segment"
-            current = cache.getOrPut(currentKey) {
-                val existingDir = current.findChild(segment) { it.isDirectory }
-                val dir =
-                    existingDir
-                        ?: current.doc.createDirectory(segment)
-                        ?: throw IOException("Cannot create folder $segment")
-                if (existingDir == null) current.putChild(dir)
-                CachedFolder(dir)
-            }
+            current =
+                cache.getOrPut(currentKey) {
+                    val existingDir = current.findChild(segment) { it.isDirectory }
+                    val dir =
+                        existingDir
+                            ?: current.doc.createDirectory(segment)
+                            ?: throw IOException("Cannot create folder $segment")
+                    if (existingDir == null) current.putChild(dir)
+                    CachedFolder(dir)
+                }
         }
         return current
     }

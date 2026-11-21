@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.swordfish.lemuroid.app.mobile.feature.game.RetroAchievementsOverlay
 import com.swordfish.lemuroid.app.shared.game.BaseGameScreenViewModel
 
 @Composable
@@ -36,5 +37,7 @@ fun TVGameScreen(viewModel: BaseGameScreenViewModel) {
         ) {
             CircularProgressIndicator()
         }
+    } else {
+        RetroAchievementsOverlay()
     }
 }

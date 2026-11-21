@@ -93,9 +93,15 @@ class SavesStorageInspectorTest {
         assertTrue(SavesStorageInspector.supportsSingleFileSave(SystemID.PSX.dbname))
         assertTrue(SavesStorageInspector.supportsSingleFileSave(SystemID.GBA.dbname))
         assertTrue(SavesStorageInspector.supportsSingleFileSave(SystemID.NDS.dbname))
+        assertTrue(SavesStorageInspector.supportsSingleFileSave(SystemID.SATURN.dbname))
+        assertTrue(SavesStorageInspector.supportsSingleFileSave(SystemID.SEGA32X.dbname))
         assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.PSP.dbname))
         assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.NINTENDO_3DS.dbname))
         assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.DOS.dbname))
+        assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.DREAMCAST.dbname))
+        assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.C64.dbname))
+        assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.APPLEII.dbname))
+        assertFalse(SavesStorageInspector.supportsSingleFileSave(SystemID.ATARI800.dbname))
     }
 
     @Test

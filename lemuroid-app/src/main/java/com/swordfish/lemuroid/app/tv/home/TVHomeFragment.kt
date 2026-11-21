@@ -67,6 +67,7 @@ class TVHomeFragment : BrowseSupportFragment() {
                         findNavController().navigate(action)
                     }
                     is TVSetting -> {
+                        if (!item.enabled) return@OnItemViewClickedListener
                         when (item.type) {
                             TVSettingType.STOP_RESCAN ->
                                 LibraryIndexScheduler.cancelLibrarySync(

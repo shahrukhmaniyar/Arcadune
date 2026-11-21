@@ -72,9 +72,10 @@
 -dontwarn com.google.errorprone.**
 -dontnote android.net.http.*
 
-## Kotlin serialization
+## Kotlin serialization (both $serializer and $$serializer for Kotlin 2.x)
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.SerializationKt
+-keep,includedescriptorclasses class com.swordfish.lemuroid.**$serializer { *; }
 -keep,includedescriptorclasses class com.swordfish.lemuroid.**$$serializer { *; }
 -keepclassmembers class com.swordfish.lemuroid.** {
     *** Companion;
@@ -83,6 +84,19 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+## Standard java.io.Serializable + cross-process Intent extras (:game <-> main)
+-keepclassmembers class * implements java.io.Serializable {
+    private static final java.io.ObjectStreamField[] serialPersistentFields;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+    java.lang.Object writeReplace();
+    java.lang.Object readResolve();
+}
+-keep class com.swordfish.lemuroid.lib.library.** { *; }
+-keep class com.swordfish.lemuroid.lib.controller.** { *; }
+-keep class com.swordfish.lemuroid.app.shared.coreoptions.** { *; }
+-keep class com.swordfish.touchinput.** { *; }
+
 ## LibretroDroid
 -keep class com.swordfish.libretrodroid.** { *; }
 
@@ -90,11 +104,11 @@
 -keep class com.swordfish.libretrodroid.LibretroDroid { public static *** resetCheat(); }
 
 # Arcadune: cheat lists are stored as JSON with kotlinx.serialization.
--keepclassmembers class com.swordfish.lemuroid.lib.cheats.** { *** Companion; }
--keepclasseswithmembers class com.swordfish.lemuroid.lib.cheats.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep class com.swordfish.lemuroid.lib.cheats.** { *; }
+-keep,includedescriptorclasses class com.swordfish.lemuroid.lib.cheats.**$serializer { *; }
 -keep,includedescriptorclasses class com.swordfish.lemuroid.lib.cheats.**$$serializer { *; }
 
-# Arcadune: RetroAchievements Connect login JSON payloads with kotlinx.serialization.
--keepclassmembers class com.swordfish.lemuroid.lib.achievements.** { *** Companion; }
--keepclasseswithmembers class com.swordfish.lemuroid.lib.achievements.** { kotlinx.serialization.KSerializer serializer(...); }
+# Arcadune: RetroAchievements Connect JSON payloads & offline queue with kotlinx.serialization.
+-keep class com.swordfish.lemuroid.lib.achievements.** { *; }
+-keep,includedescriptorclasses class com.swordfish.lemuroid.lib.achievements.**$serializer { *; }
 -keep,includedescriptorclasses class com.swordfish.lemuroid.lib.achievements.**$$serializer { *; }

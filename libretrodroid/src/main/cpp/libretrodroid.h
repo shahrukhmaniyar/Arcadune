@@ -24,6 +24,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <unordered_set>
 #include <mutex>
 #include <memory>
@@ -128,14 +129,19 @@ public:
     void handleRumbleUpdates(const std::function<void(int, float, float)> &handler);
 
     void setFrameSpeed(unsigned int speed);
+    void setFastForwardAudioMode(int mode);
 
     void setAudioEnabled(bool enabled);
 
     void setShaderConfig(ShaderManager::Config shaderConfig);
 
     void setViewportAlignment(unsigned int viewportAlignment);
+    void setScreenRegions(const std::vector<VideoLayout::ScreenRegion>& regions);
 
     void configureAchievements(const AchievementsConfig& config);
+    bool setHardcoreMode(bool enabled);
+    bool canPauseAchievements(int* outFramesRemaining = nullptr);
+    void idleAchievements();
     void completeAchievementHttpRequest(
         uint64_t requestId,
         int httpStatusCode,
@@ -153,9 +159,22 @@ public:
     uintptr_t handleGetCurrentFrameBuffer();
 
 private:
+    enum class LoadedGameMode {
+        NONE,
+        PATH,
+        BYTES,
+        VIRTUAL_FILES
+    };
+
     void updateAudioSampleRateMultiplier();
     float findDefaultAspectRatio(const retro_system_av_info &system_av_info);
     void afterGameLoad();
+    void refreshAvAndAudioLocked();
+    void recreateVideoSurfaceLocked();
+    std::vector<int8_t> captureSramVectorLocked();
+    void restoreSramVectorLocked(const std::vector<int8_t>& sram);
+    bool reloadCurrentGameIntoCoreLocked();
+    bool performCleanHardcoreRestartLocked();
 
 protected:
     static void callback_hw_video_refresh(const void *data, unsigned width, unsigned height, size_t pitch);
@@ -167,6 +186,8 @@ protected:
 
 private:
     unsigned int frameSpeed = 1;
+    bool skipVideoFrame = false;
+    int fastForwardAudioMode = Audio::FF_AUDIO_KEEP_PITCH;
     bool audioEnabled = true;
     bool preferLowLatencyAudio = false;
     bool rumbleEnabled = false;
@@ -177,6 +198,7 @@ private:
 
     Rect viewportRect = Rect(0.0F, 0.0F, 1.0F, 1.0F);
     unsigned int viewportAlignment = V_ALIGN_CENTER;
+    std::vector<VideoLayout::ScreenRegion> screenRegions;
     float screenRefreshRate = 60.0;
     int openglESVersion = 2;
     bool skipDuplicateFrames = false;
@@ -185,6 +207,18 @@ private:
 
     float defaultAspectRatio = 1.0;
     bool dirtyVideo = false;
+    bool gameLoaded = false;
+    bool sramLoadFailedSizeMismatch_ = false;
+
+    std::string coreSoFilePath_;
+    LoadedGameMode loadedGameMode_ = LoadedGameMode::NONE;
+    std::string loadedGamePath_;
+    std::vector<int8_t> pristineRomBytes_;
+    std::vector<int8_t> activeRomBytes_;
+    std::string activeGamePathCString_;
+    unsigned int lastSurfaceWidth_ = 0;
+    unsigned int lastSurfaceHeight_ = 0;
+    std::unordered_map<unsigned int, unsigned int> controllerTypes_;
 
     std::mutex coreLock;
 

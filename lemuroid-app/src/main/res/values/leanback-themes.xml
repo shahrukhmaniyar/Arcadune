@@ -24,6 +24,7 @@
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.82</item>
         <item name="android:colorPrimary">@color/main_color</item>
     </style>
 </resources>

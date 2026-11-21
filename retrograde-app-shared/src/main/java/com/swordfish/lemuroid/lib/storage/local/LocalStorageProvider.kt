@@ -101,8 +101,15 @@ class LocalStorageProvider(
         }
 
         val cacheFile = GameCacheUtils.getCacheFileForGame(LOCAL_STORAGE_CACHE_SUBFOLDER, context, game)
-        if (cacheFile.exists()) {
+        val tempFile = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+        if (cacheFile.exists() && cacheFile.length() > 0L) {
             return cacheFile
+        }
+        if (cacheFile.exists()) {
+            cacheFile.delete()
         }
 
         if (originalFile.isZipped()) {

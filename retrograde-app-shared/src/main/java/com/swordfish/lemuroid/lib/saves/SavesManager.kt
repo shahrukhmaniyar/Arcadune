@@ -62,8 +62,7 @@ class SavesManager(private val directoriesManager: DirectoriesManager) {
             saveFile.exists() && saveFile.length() > 0L
         }
 
-    fun getSaveRAMFile(game: Game): File =
-        File(directoriesManager.getSavesDirectory(), getSaveRAMFileName(game))
+    fun getSaveRAMFile(game: Game): File = File(directoriesManager.getSavesDirectory(), getSaveRAMFileName(game))
 
     suspend fun writeSaveRAMOrThrow(
         game: Game,

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -111,6 +112,7 @@ import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 
 internal val RaGoldColor = Color(0xFFF6C453)
 private val RaErrorColor = Color(0xFFFF6B6B)
+private const val PRIVACY_POLICY_URL = "https://github.com/shahrukhmaniyar/Arcadune/blob/master/PRIVACY.md"
 
 @Composable
 fun RetroAchievementsSettingsScreen(
@@ -149,6 +151,7 @@ fun RetroAchievementsSettingsScreen(
                     account = account,
                     uiState = uiState,
                     onRefresh = { viewModel.refreshAccount(silent = false) },
+                    onSyncOfflineQueue = viewModel::syncPendingOfflineQueue,
                     onRequestSignOut = { confirmSignOut = true },
                     onSetEnabled = viewModel::setEnabled,
                     onSetHardcore = viewModel::setHardcoreEnabled,
@@ -158,6 +161,7 @@ fun RetroAchievementsSettingsScreen(
                     onSetSoundEffects = viewModel::setSoundEffectsEnabled,
                     onSetProgress = viewModel::setProgressIndicatorsEnabled,
                     onSetChallenges = viewModel::setChallengeIndicatorsEnabled,
+                    onSetLeaderboardPopups = viewModel::setLeaderboardPopupsEnabled,
                 )
             }
         }
@@ -360,45 +364,52 @@ private fun SignedOutContent(
                         uiState.usernameInput.isNotBlank() &&
                         uiState.passwordInput.isNotEmpty()
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    ArcadunePillButton(
-                        label =
-                            stringResource(
-                                if (uiState.isSigningIn) {
-                                    R.string.ra_signing_in_button
-                                } else {
-                                    R.string.ra_sign_in_button
-                                },
-                            ),
-                        icon = if (uiState.isSigningIn) null else Icons.AutoMirrored.Filled.Login,
-                        highlighted = true,
-                        enabled = canSubmit,
-                        height = 48.dp,
-                        modifier = Modifier.weight(1.15f),
-                        onClick = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                            onSignIn()
-                        },
-                    )
-
-                    if (uiState.isSigningIn) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.5.dp,
-                            color = ArcaduneColors.Purple,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ArcadunePillButton(
+                            label =
+                                stringResource(
+                                    if (uiState.isSigningIn) {
+                                        R.string.ra_signing_in_button
+                                    } else {
+                                        R.string.ra_sign_in_button
+                                    },
+                                ),
+                            icon = if (uiState.isSigningIn) null else Icons.AutoMirrored.Filled.Login,
+                            highlighted = true,
+                            enabled = canSubmit,
+                            height = 48.dp,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                onSignIn()
+                            },
                         )
-                    } else {
+
+                        if (uiState.isSigningIn) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.5.dp,
+                                color = ArcaduneColors.Purple,
+                            )
+                        }
+                    }
+
+                    if (!uiState.isSigningIn) {
                         ArcadunePillButton(
                             label = stringResource(R.string.ra_create_account_button),
                             icon = Icons.AutoMirrored.Filled.OpenInNew,
                             highlighted = false,
-                            height = 48.dp,
-                            modifier = Modifier.weight(1f),
+                            height = 44.dp,
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 openExternalUrl(context, "https://retroachievements.org/createaccount.php")
                             },
@@ -421,6 +432,12 @@ private fun SignedOutContent(
                         text = stringResource(R.string.ra_security_note),
                         style = MaterialTheme.typography.labelSmall,
                         color = ArcaduneColors.OnSurfaceDim,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_privacy_policy_button),
+                        height = 32.dp,
+                        onClick = { openExternalUrl(context, PRIVACY_POLICY_URL) },
                     )
                 }
             }
@@ -432,6 +449,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
     account: RetroAchievementsAccount,
     uiState: RetroAchievementsSettingsViewModel.UiState,
     onRefresh: () -> Unit,
+    onSyncOfflineQueue: () -> Unit,
     onRequestSignOut: () -> Unit,
     onSetEnabled: (Boolean) -> Unit,
     onSetHardcore: (Boolean) -> Unit,
@@ -441,6 +459,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
     onSetSoundEffects: (Boolean) -> Unit,
     onSetProgress: (Boolean) -> Unit,
     onSetChallenges: (Boolean) -> Unit,
+    onSetLeaderboardPopups: (Boolean) -> Unit,
 ) {
     val settings = uiState.settings
 
@@ -583,7 +602,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
                         )
                     }
 
-                    if (RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED) {
+                    if (RetroAchievementsPreferences.isHardcoreApproved()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -608,6 +627,37 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
                             accentColor = RaGoldColor,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                    }
+
+                    AnimatedVisibility(visible = uiState.pendingOfflineCount > 0) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(RaGoldColor.copy(alpha = 0.12f))
+                                    .border(1.dp, RaGoldColor.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text =
+                                    stringResource(
+                                        R.string.ra_offline_queue_pending_summary,
+                                        uiState.pendingOfflineCount,
+                                    ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ArcaduneColors.OnSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            ArcadunePillButton(
+                                label = stringResource(R.string.ra_offline_queue_sync_now),
+                                enabled = !uiState.isSyncingOffline,
+                                height = 32.dp,
+                                onClick = onSyncOfflineQueue,
+                            )
+                        }
                     }
 
                     AnimatedVisibility(visible = !uiState.errorMessage.isNullOrBlank()) {
@@ -643,50 +693,49 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
                 onCheckedChange = onSetEnabled,
             )
             ArcaduneRowDivider(startIndent = 68.dp)
-            if (RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED) {
-                RaSwitchRow(
-                    icon = Icons.Filled.Whatshot,
-                    iconTint =
-                        if (settings.hardcoreEnabled && settings.enabled) {
-                            RaGoldColor
-                        } else {
-                            ArcaduneColors.OnSurface
-                        },
-                    title = stringResource(R.string.ra_pref_hardcore_title),
-                    subtitle = stringResource(R.string.ra_pref_hardcore_subtitle),
-                    checked = settings.hardcoreEnabled,
-                    enabled = settings.enabled,
-                    onCheckedChange = onSetHardcore,
-                )
-                AnimatedVisibility(visible = settings.enabled && settings.hardcoreEnabled) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(start = 68.dp, end = 16.dp, bottom = 12.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(RaGoldColor.copy(alpha = 0.10f))
-                                .border(1.dp, RaGoldColor.copy(alpha = 0.30f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Info,
-                            contentDescription = null,
-                            tint = RaGoldColor,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            text = stringResource(R.string.ra_hardcore_registration_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ArcaduneColors.OnSurfaceDim,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+            val hardcoreApproved = RetroAchievementsPreferences.isHardcoreApproved()
+            RaSwitchRow(
+                icon = Icons.Filled.Whatshot,
+                iconTint =
+                    if (hardcoreApproved && settings.hardcoreEnabled && settings.enabled) {
+                        RaGoldColor
+                    } else {
+                        ArcaduneColors.OnSurface
+                    },
+                title = stringResource(R.string.ra_pref_hardcore_title),
+                subtitle = stringResource(R.string.ra_pref_hardcore_subtitle),
+                checked = settings.isHardcoreActive,
+                enabled = settings.enabled && hardcoreApproved,
+                onCheckedChange = onSetHardcore,
+            )
+            AnimatedVisibility(visible = settings.enabled && !hardcoreApproved) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 68.dp, end = 16.dp, bottom = 12.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(RaGoldColor.copy(alpha = 0.10f))
+                            .border(1.dp, RaGoldColor.copy(alpha = 0.30f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = null,
+                        tint = RaGoldColor,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.ra_hardcore_registration_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ArcaduneColors.OnSurfaceDim,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                ArcaduneRowDivider(startIndent = 68.dp)
             }
+            ArcaduneRowDivider(startIndent = 68.dp)
             RaSwitchRow(
                 icon = Icons.Filled.Replay,
                 title = stringResource(R.string.ra_pref_encore_title),
@@ -746,16 +795,41 @@ private fun androidx.compose.foundation.lazy.LazyListScope.signedInItems(
                 enabled = settings.enabled,
                 onCheckedChange = onSetChallenges,
             )
+            ArcaduneRowDivider(startIndent = 68.dp)
+            RaSwitchRow(
+                icon = Icons.Filled.Leaderboard,
+                title = stringResource(R.string.ra_pref_leaderboard_popups_title),
+                subtitle = stringResource(R.string.ra_pref_leaderboard_popups_subtitle),
+                checked = settings.leaderboardPopupsEnabled,
+                enabled = settings.enabled,
+                onCheckedChange = onSetLeaderboardPopups,
+            )
         }
     }
 
     item(key = "ra_hint") {
-        Text(
-            text = stringResource(R.string.ra_changes_next_launch_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = ArcaduneColors.OnSurfaceDim,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
+        val context = LocalContext.current
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.ra_changes_next_launch_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = ArcaduneColors.OnSurfaceDim,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                ArcadunePillButton(
+                    label = stringResource(R.string.ra_privacy_policy_button),
+                    icon = Icons.AutoMirrored.Filled.OpenInNew,
+                    height = 34.dp,
+                    onClick = { openExternalUrl(context, PRIVACY_POLICY_URL) },
+                )
+            }
+        }
     }
 }
 
@@ -767,10 +841,10 @@ private fun ModeStatusPill(
     val (label, color) =
         when {
             !enabled -> stringResource(R.string.tilt_configuration_disabled) to ArcaduneColors.OnSurfaceDim
-            !RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED ->
-                stringResource(R.string.ra_status_active_badge) to RaGoldColor
+            !RetroAchievementsPreferences.isHardcoreApproved() ->
+                stringResource(R.string.ra_status_active_badge) to ArcaduneColors.Purple
             hardcore -> stringResource(R.string.ra_hud_hardcore_badge) to RaGoldColor
-            else -> stringResource(R.string.ra_hud_softcore_badge) to ArcaduneColors.Purple
+            else -> stringResource(R.string.ra_hud_casual_badge) to ArcaduneColors.Purple
         }
     val shape = RoundedCornerShape(999.dp)
     Box(

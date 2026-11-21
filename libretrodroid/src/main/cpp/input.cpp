@@ -215,6 +215,20 @@ void Input::onMotionEvent(int port, int motionSource, float xAxis, float yAxis) 
     }
 }
 
+void Input::clearAll() {
+    for (auto &pad : pads) {
+        pad.pressedKeys.clear();
+        pad.dpadXAxis = 0;
+        pad.dpadYAxis = 0;
+        pad.joypadLeftXAxis = 0.0f;
+        pad.joypadLeftYAxis = 0.0f;
+        pad.joypadRightXAxis = 0.0f;
+        pad.joypadRightYAxis = 0.0f;
+        pad.pointerScreenXAxis = -1.0f;
+        pad.pointerScreenYAxis = -1.0f;
+    }
+}
+
 template<typename... T>
 bool Input::anyPressed(unsigned int port, unsigned int id, T &... args) const {
     return anyPressed(port, id) || anyPressed(port, args...);

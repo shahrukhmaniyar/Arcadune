@@ -33,14 +33,19 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,11 +66,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RaGoldColor
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import com.swordfish.lemuroid.app.shared.GameMenuContract
 import com.swordfish.lemuroid.app.shared.achievements.AchievementSessionStatus
 import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 import kotlin.reflect.KFunction1
 
 /**
@@ -81,6 +90,12 @@ fun GameMenuHomeScreen(
 ) {
     val context = LocalContext.current
     val achState by RetroAchievementsSessionHolder.state.collectAsState()
+    var showEnableHardcoreDialog by rememberSaveable { mutableStateOf(false) }
+    val hardcoreApproved = RetroAchievementsPreferences.isHardcoreApproved()
+    val raActiveSession =
+        achState.status != AchievementSessionStatus.DISABLED &&
+            achState.status != AchievementSessionStatus.NOT_SIGNED_IN &&
+            achState.status != AchievementSessionStatus.UNSUPPORTED_SYSTEM
     val achievementsBadge =
         when {
             achState.status == AchievementSessionStatus.LOADED && achState.totalCount > 0 ->
@@ -95,9 +110,78 @@ fun GameMenuHomeScreen(
         modifier =
             Modifier
                 .fillMaxSize()
+                .then(
+                    if (achState.hardcoreActive) {
+                        Modifier.background(Color(0xD90A0812))
+                    } else {
+                        Modifier
+                    },
+                )
                 .safeDrawingPadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
+        if (raActiveSession) {
+            val modeAccent = if (achState.hardcoreActive) RaGoldColor else ArcaduneColors.Purple
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xE61C1A27))
+                            .border(1.dp, modeAccent.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text =
+                            stringResource(
+                                if (achState.hardcoreActive) {
+                                    R.string.ra_hud_hardcore_badge
+                                } else {
+                                    R.string.ra_hud_casual_badge
+                                },
+                            ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = modeAccent,
+                    )
+                }
+
+                if (achState.hardcoreActive) {
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_mode_switch_casual_action),
+                        height = 32.dp,
+                        onClick = {
+                            onResult { putExtra(GameMenuContract.RESULT_SET_HARDCORE, false) }
+                        },
+                    )
+                } else if (hardcoreApproved) {
+                    ArcadunePillButton(
+                        label = stringResource(R.string.ra_mode_enable_hardcore_action),
+                        icon = Icons.Filled.Whatshot,
+                        height = 32.dp,
+                        onClick = {
+                            if (achState.coreHardcoreSupported) {
+                                showEnableHardcoreDialog = true
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    achState.coreUnsupportedReason.ifBlank {
+                                        context.getString(R.string.ra_empty_unsupported_system_body)
+                                    },
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
+                    )
+                }
+            }
+        }
         // Held upright the tiles go three to a row, sideways five (so nine tiles are 5 and 4); they
         // grow to fill a wider screen, and shrink on a short one so every row stays in view.
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -150,8 +234,25 @@ fun GameMenuHomeScreen(
                         ) {
                             navController.navigateToRoute(GameMenuRoute.ACHIEVEMENTS)
                         }
-                        MenuTile(stringResource(R.string.game_menu_cheats), rememberVectorPainter(Icons.Filled.Star)) {
-                            navController.navigateToRoute(GameMenuRoute.CHEATS)
+                        MenuTile(
+                            text = stringResource(R.string.game_menu_cheats),
+                            icon = rememberVectorPainter(Icons.Filled.Star),
+                            supportingText =
+                                if (achState.hardcoreActive) {
+                                    stringResource(R.string.game_menu_hardcore_badge)
+                                } else {
+                                    null
+                                },
+                        ) {
+                            if (achState.hardcoreActive) {
+                                Toast.makeText(
+                                    context,
+                                    R.string.ra_hardcore_cheats_disabled_toast,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            } else {
+                                navController.navigateToRoute(GameMenuRoute.CHEATS)
+                            }
                         }
                         if (gameMenuRequest.fastForwardSupported) {
                             MenuTile(
@@ -229,6 +330,36 @@ fun GameMenuHomeScreen(
                 icon = rememberVectorPainter(Icons.Filled.PlayArrow),
                 highlighted = true,
                 onClick = { onResult { } },
+            )
+        }
+    }
+
+    if (showEnableHardcoreDialog) {
+        ArcaduneDialog(
+            onDismissRequest = { showEnableHardcoreDialog = false },
+            icon = Icons.Filled.Whatshot,
+            title = { Text(text = stringResource(R.string.ra_hardcore_confirm_enable_title)) },
+            dismissButton = {
+                ArcadunePillButton(
+                    label = stringResource(R.string.cancel),
+                    onClick = { showEnableHardcoreDialog = false },
+                )
+            },
+            confirmButton = {
+                ArcadunePillButton(
+                    label = stringResource(R.string.ra_hardcore_confirm_enable_confirm),
+                    highlighted = true,
+                    onClick = {
+                        showEnableHardcoreDialog = false
+                        onResult { putExtra(GameMenuContract.RESULT_SET_HARDCORE, true) }
+                    },
+                )
+            },
+        ) {
+            Text(
+                text = stringResource(R.string.ra_hardcore_confirm_enable_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ArcaduneColors.OnSurfaceDim,
             )
         }
     }

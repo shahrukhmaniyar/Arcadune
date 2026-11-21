@@ -15,6 +15,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
+import com.swordfish.lemuroid.app.shared.game.GameProcessLock
 import com.swordfish.lemuroid.app.utils.android.createSyncForegroundInfo
 import com.swordfish.lemuroid.lib.injection.AndroidWorkerInjection
 import com.swordfish.lemuroid.lib.injection.WorkerKey
@@ -40,6 +42,11 @@ class SaveSyncWork(context: Context, workerParams: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         AndroidWorkerInjection.inject(this)
+
+        if (!HardcorePolicy.canMutateSaveFilesExternally(GameProcessLock.isHeldByAnotherProcess(applicationContext))) {
+            Timber.i("Deferring SaveSyncWork while game process is active")
+            return Result.retry()
+        }
 
         if (!shouldPerformSaveSync()) {
             return Result.success()
@@ -89,7 +96,8 @@ class SaveSyncWork(context: Context, workerParams: WorkerParameters) :
                 NotificationsManager.SAVE_SYNC_NOTIFICATION_ID,
                 notificationsManager.saveSyncNotification(),
             )
-        setForegroundAsync(foregroundInfo)
+        runCatching { setForegroundAsync(foregroundInfo) }
+            .onFailure { Timber.w(it, "Unable to promote SaveSyncWork to foreground") }
     }
 
     companion object {

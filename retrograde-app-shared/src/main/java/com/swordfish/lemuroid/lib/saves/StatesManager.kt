@@ -100,7 +100,7 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
         withContext(Dispatchers.IO) {
             (0 until MAX_STATES)
                 .map { getStateFile(getSlotSaveFileName(game, it), coreID.coreName) }
-                .map { SaveInfo(it.exists(), it.lastModified()) }
+                .map { SaveInfo(it.exists() && it.length() > 0L, it.lastModified()) }
                 .toList()
         }
 
@@ -131,11 +131,12 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
         fileName: String,
         coreName: String,
         saveState: SaveState,
-    ) {
-        runCatchingWithRetry(FILE_ACCESS_RETRIES) {
+    ): Boolean {
+        // True when the files are on disk, so callers can say so (a failed write used to go unnoticed).
+        return runCatchingWithRetry(FILE_ACCESS_RETRIES) {
             writeStateToDisk(fileName, coreName, saveState.state)
             writeMetadataToDisk(fileName, coreName, saveState.metadata)
-        }
+        }.isSuccess
     }
 
     private fun writeMetadataToDisk(

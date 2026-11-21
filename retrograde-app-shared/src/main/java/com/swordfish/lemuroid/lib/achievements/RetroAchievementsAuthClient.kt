@@ -14,8 +14,13 @@ import java.util.concurrent.TimeUnit
 class RetroAchievementsAuthException(message: String) : Exception(message)
 
 object RetroAchievementsAuthClient {
-    private const val DOREQUEST_URL = "https://retroachievements.org/dorequest.php"
-    private const val USER_AGENT = "Arcadune/1.0.9 (Android)"
+    const val DEFAULT_DOREQUEST_URL = "https://retroachievements.org/dorequest.php"
+
+    @Volatile
+    var endpointUrl: String = DEFAULT_DOREQUEST_URL
+
+    @Volatile
+    var appVersion: String = RetroAchievementsUserAgent.DEFAULT_APP_VERSION
 
     private val json =
         Json {
@@ -100,7 +105,8 @@ object RetroAchievementsAuthClient {
 
         if (!parsed.success || parsed.token.isNullOrBlank()) {
             val reason =
-                parsed.error?.takeIf { it.isNotBlank() }
+                RetroAchievementsUserAgent.redactSecrets(parsed.error)
+                    .takeIf { it.isNotBlank() }
                     ?: "Invalid username or password."
             return Result.failure(RetroAchievementsAuthException(reason))
         }
@@ -122,10 +128,15 @@ object RetroAchievementsAuthClient {
         fallbackUsername: String,
         formBody: FormBody,
     ): Result<RetroAchievementsAccount> {
+        val userAgent =
+            RetroAchievementsUserAgent.build(
+                appVersion = appVersion,
+                rcheevosClause = RetroAchievementsUserAgent.DEFAULT_RCHEEVOS_CLAUSE,
+            )
         val request =
             Request.Builder()
-                .url(DOREQUEST_URL)
-                .header("User-Agent", USER_AGENT)
+                .url(endpointUrl)
+                .header("User-Agent", userAgent)
                 .post(formBody)
                 .build()
 
@@ -146,13 +157,16 @@ object RetroAchievementsAuthClient {
                     )
                 }
             }
-        } catch (e: IOException) {
+        } catch (_: IOException) {
             Result.failure(
                 RetroAchievementsAuthException("Check your internet connection and try again."),
             )
         } catch (e: Exception) {
             Result.failure(
-                RetroAchievementsAuthException(e.message ?: "Unable to sign in right now."),
+                RetroAchievementsAuthException(
+                    RetroAchievementsUserAgent.redactSecrets(e.message)
+                        .ifBlank { "Unable to sign in right now." },
+                ),
             )
         }
     }

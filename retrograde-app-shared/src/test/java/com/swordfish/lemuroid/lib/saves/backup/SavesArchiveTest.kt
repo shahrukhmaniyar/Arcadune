@@ -72,7 +72,10 @@ class SavesArchiveTest {
 
         assertEquals(2, restored)
         assertArrayEquals("save data".toByteArray(), File(target.getValue("saves"), "Wario Land 4.srm").readBytes())
-        assertArrayEquals("state data".toByteArray(), File(target.getValue("states"), "fceumm/Contra.state").readBytes())
+        assertArrayEquals(
+            "state data".toByteArray(),
+            File(target.getValue("states"), "fceumm/Contra.state").readBytes(),
+        )
     }
 
     @Test
@@ -138,7 +141,10 @@ class SavesArchiveTest {
     fun absoluteAndBackslashPathsAreRejected() {
         for (name in listOf("/etc/evil.txt", "saves\\..\\evil.txt")) {
             try {
-                SavesArchive.read(ByteArrayInputStream(zipOf(withInfo = true, name to "x")), roots("t" + name.hashCode()))
+                SavesArchive.read(
+                    ByteArrayInputStream(zipOf(withInfo = true, name to "x")),
+                    roots("t" + name.hashCode()),
+                )
                 fail("unsafe name should be rejected: $name")
             } catch (expected: SavesArchive.InvalidBackupException) {
                 // expected

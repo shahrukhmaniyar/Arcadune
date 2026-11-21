@@ -47,6 +47,9 @@ public:
     void deinitialize();
     int openDuplicateFD(const char* path);
     void resetAllOffsets();
+    size_t getVirtualFileCount() const;
+    std::string getVirtualFilePath(size_t index) const;
+    int getVirtualFileFD(size_t index) const;
 
 private:
     VFS() {}

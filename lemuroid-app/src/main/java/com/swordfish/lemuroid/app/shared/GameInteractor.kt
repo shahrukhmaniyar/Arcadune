@@ -38,7 +38,29 @@ class GameInteractor(
         if (!ensureNotificationsPermissionAvailable()) {
             return
         }
-        gameLauncher.launchGameAsync(activity.activity(), game, true, useLeanback)
+        gameLauncher.launchGameAsync(
+            activity = activity.activity(),
+            game = game,
+            loadSave = true,
+            leanback = useLeanback,
+            explicitQuickResume = false,
+        )
+    }
+
+    fun onGameQuickResume(game: Game) {
+        if (!ensureNotBusy()) {
+            return
+        }
+        if (!ensureNotificationsPermissionAvailable()) {
+            return
+        }
+        gameLauncher.launchGameAsync(
+            activity = activity.activity(),
+            game = game,
+            loadSave = true,
+            leanback = useLeanback,
+            explicitQuickResume = true,
+        )
     }
 
     fun onGameRestart(game: Game) {
@@ -48,7 +70,13 @@ class GameInteractor(
         if (!ensureNotificationsPermissionAvailable()) {
             return
         }
-        gameLauncher.launchGameAsync(activity.activity(), game, false, useLeanback)
+        gameLauncher.launchGameAsync(
+            activity = activity.activity(),
+            game = game,
+            loadSave = false,
+            leanback = useLeanback,
+            explicitQuickResume = false,
+        )
     }
 
     fun onFavoriteToggle(

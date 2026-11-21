@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
@@ -32,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +50,7 @@ import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.main.MainRoute
 import com.swordfish.lemuroid.app.mobile.feature.main.navigateToRoute
 import com.swordfish.lemuroid.app.mobile.feature.settings.achievements.RaGoldColor
+import com.swordfish.lemuroid.app.mobile.feature.settings.skins.prewarmControllerGallery
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneAccent
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconBadge
@@ -72,6 +76,11 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     navController: NavController,
 ) {
+    val appContext = LocalContext.current.applicationContext
+    LaunchedEffect(Unit) {
+        prewarmControllerGallery(appContext)
+    }
+
     val state = viewModel.uiState.collectAsState().value
 
     val scanInProgress =
@@ -132,7 +141,7 @@ fun SettingsScreen(
             }
         }
         item(key = "general") {
-            GeneralSettings()
+            GeneralSettings(navController = navController)
         }
         item(key = "input") {
             InputSettings(navController = navController)
@@ -186,7 +195,7 @@ private fun RetroAchievementsSettings(
             account == null -> stringResource(R.string.settings_ra_signed_out_subtitle)
             !achievementsState.enabled ->
                 stringResource(R.string.settings_ra_signed_in_disabled_subtitle, account.displayName)
-            !RetroAchievementsPreferences.HARDCORE_SUPPORT_APPROVED ->
+            !RetroAchievementsPreferences.isHardcoreApproved() ->
                 stringResource(
                     R.string.settings_ra_signed_in_active_subtitle,
                     account.displayName,
@@ -306,12 +315,19 @@ private fun InputSettings(navController: NavController) {
 }
 
 @Composable
-private fun GeneralSettings() {
+private fun GeneralSettings(navController: NavController) {
     LemuroidCardSettingsGroup(
         title = { Text(text = stringResource(id = R.string.settings_category_general)) },
     ) {
+        LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.DeveloperBoard) },
+            title = { Text(text = stringResource(id = R.string.settings_title_open_cores_selection)) },
+            subtitle = { Text(text = stringResource(id = R.string.cores_selection_subtitle)) },
+            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_CORES_SELECTION) },
+        )
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsSwitch(
-            icon = { ArcaduneIconBadge(icon = Icons.Filled.Save) },
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Autorenew) },
             state = booleanPreferenceState(R.string.pref_key_autosave, true),
             title = { Text(text = stringResource(id = R.string.settings_title_enable_autosave)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_autosave)) },

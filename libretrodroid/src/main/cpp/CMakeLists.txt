@@ -92,6 +92,8 @@ add_library(libretrodroid SHARED
         resamplers/linearresampler.cpp
         resamplers/sincresampler.h
         resamplers/sincresampler.cpp
+        resamplers/wsolastretcher.h
+        resamplers/wsolastretcher.cpp
         fpssync.h
         fpssync.cpp
         environment.h

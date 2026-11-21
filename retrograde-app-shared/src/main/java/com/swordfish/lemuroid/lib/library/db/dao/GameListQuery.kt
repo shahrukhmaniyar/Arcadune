@@ -17,7 +17,7 @@ enum class GameSortOrder {
         return when (this) {
             NAME -> byName
             RECENTLY_PLAYED -> "games.lastPlayedAt IS NULL, games.lastPlayedAt DESC, $byName"
-            MOST_PLAYED -> "games.playCount DESC, games.lastPlayedAt DESC, $byName"
+            MOST_PLAYED -> "games.playTimeMs DESC, games.playCount DESC, games.lastPlayedAt DESC, $byName"
             FAVORITES_FIRST -> "games.isFavorite DESC, $byName"
         }
     }

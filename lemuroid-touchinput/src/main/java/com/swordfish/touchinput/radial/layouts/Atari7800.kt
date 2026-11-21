@@ -26,7 +26,9 @@ fun PadKitScope.Atari7800Left(
     BaseLayoutLeft(
         settings = settings,
         modifier = modifier,
-        primaryDial = { LemuroidControlCross(id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD)) },
+        primaryDial = {
+            LemuroidControlCross(id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD_AND_LEFT_STICK))
+        },
         secondaryDials = {
             SecondaryButtonSelect()
             SecondaryButtonMenuPlaceholder(settings)

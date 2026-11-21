@@ -67,8 +67,25 @@ public:
     );
 
     void deinitialize();
+    void prepareForCoreReload();
 
     void updateVariable(const std::string &key, const std::string &value);
+
+    void setHardcoreContext(bool active, const std::string &libraryName, uint32_t consoleId);
+    bool isHardcoreActive() const;
+    static bool isSettingAllowedInHardcore(
+        const std::string &libraryName,
+        uint32_t consoleId,
+        const std::string &key,
+        const std::string &value
+    );
+    static std::string resolveHardcoreSafeValue(
+        const std::string &libraryName,
+        uint32_t consoleId,
+        const std::string &key,
+        const std::string &currentValue,
+        const std::string &description
+    );
 
     void setLanguage(const std::string &androidLanguage);
 
@@ -86,6 +103,7 @@ public:
     retro_hw_context_reset_t getHwContextDestroy() const;
 
     struct retro_disk_control_callback* getRetroDiskControlCallback() const;
+    std::string getDiskImagePath(unsigned index) const;
 
     int getPixelFormat() const;
     bool isUseHwAcceleration() const;
@@ -110,6 +128,7 @@ public:
     const std::vector<std::vector<struct Controller>> &getControllers() const;
 
     const struct retro_memory_map* getMemoryMap() const;
+    uint64_t getMemoryMapGeneration() const;
 
 private:
     bool environment_handle_set_variables(const struct retro_variable* received);
@@ -124,6 +143,8 @@ private:
     retro_hw_context_reset_t hw_context_reset = nullptr;
     retro_hw_context_reset_t hw_context_destroy = nullptr;
     struct retro_disk_control_callback *retro_disk_control_callback = nullptr;
+    bool hasDiskControlExt_ = false;
+    struct retro_disk_control_ext_callback diskControlExtCallback_ {};
 
     std::string savesDirectory;
     std::string systemDirectory;
@@ -131,6 +152,11 @@ private:
     unsigned language = RETRO_LANGUAGE_ENGLISH;
     bool useVirtualFileSystem = false;
     bool enableMicrophone = false;
+
+    bool hardcoreActive_ = false;
+    std::string hardcoreLibraryName_;
+    uint32_t hardcoreConsoleId_ = 0;
+    std::unordered_map<std::string, std::string> hardcoreEffectiveValues_;
 
     int pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
     bool useHWAcceleration = false;
@@ -154,6 +180,7 @@ private:
     std::vector<std::vector<struct Controller>> controllers;
 
     bool hasMemoryMap = false;
+    uint64_t memoryMapGeneration_ = 0;
     struct retro_memory_map memoryMap {};
     std::vector<struct retro_memory_descriptor> memoryDescriptors;
     std::vector<std::unique_ptr<char[]>> memoryAddrspaces;

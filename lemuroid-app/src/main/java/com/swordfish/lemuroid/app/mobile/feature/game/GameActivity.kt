@@ -9,6 +9,9 @@ import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.BaseGameScreenViewModel
 
 class GameActivity : BaseGameActivity() {
+    // The console skin shows at once while the game loads, instead of a spinner on an empty screen.
+    override val showsScreenWhileLoading: Boolean = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android holds finger moves back until the next frame is drawn, then hands them over in a

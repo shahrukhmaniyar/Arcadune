@@ -48,8 +48,9 @@ class CoverManagerViewModel(
         val checked: Int = 0,
         val total: Int = 0,
         val missing: List<Game> = emptyList(),
+        val loaded: Boolean = false,
     ) {
-        val done: Boolean get() = total > 0 && checked >= total
+        val done: Boolean get() = loaded && checked >= total
     }
 
     private val mutableState = MutableStateFlow(UiState())
@@ -70,7 +71,13 @@ class CoverManagerViewModel(
 
     private suspend fun check(games: List<Game>) =
         withContext(Dispatchers.Default) {
-            mutableState.update { it.copy(total = games.size, checked = games.count { game -> isKnown(game) }) }
+            mutableState.update {
+                it.copy(
+                    total = games.size,
+                    checked = games.count { game -> isKnown(game) },
+                    loaded = true,
+                )
+            }
             publish(games)
 
             val unknown = games.filterNot { isKnown(it) }

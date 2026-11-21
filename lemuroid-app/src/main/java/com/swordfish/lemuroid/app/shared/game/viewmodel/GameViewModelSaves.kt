@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
 import com.swordfish.lemuroid.common.graphics.GraphicsUtils
 import com.swordfish.lemuroid.common.graphics.takeScreenshot
 import com.swordfish.lemuroid.lib.library.GameSystem
@@ -33,6 +34,8 @@ class GameViewModelSaves(
     private val statesManager: StatesManager,
     private val statesPreviewManager: StatesPreviewManager,
     private val sideEffects: GameViewModelSideEffects,
+    private val fence: HardcorePolicy.TransitionFence = HardcorePolicy.TransitionFence(),
+    private val isTransitionInProgress: () -> Boolean = { false },
     private val isHardcoreActive: () -> Boolean = { false },
 ) {
     private var currentQuickSave: SaveState? = null
@@ -43,6 +46,7 @@ class GameViewModelSaves(
     )
 
     suspend fun saveSlot(index: Int) {
+        if (!HardcorePolicy.canSaveState(isTransitionInProgress())) return
         getCurrentSaveState()?.let {
             statesManager.setSlotSave(game, it, systemCoreConfig.coreID, index)
             runCatching {
@@ -51,8 +55,17 @@ class GameViewModelSaves(
         }
     }
 
+    private fun canLoadStateForEpoch(commandEpoch: Long): Boolean =
+        HardcorePolicy.canLoadSaveState(
+            hardcoreActive = isHardcoreActive(),
+            transitionInProgress = isTransitionInProgress(),
+            commandEpoch = commandEpoch,
+            currentEpoch = fence.currentEpoch(),
+        )
+
     suspend fun loadSlot(index: Int) {
-        if (isHardcoreActive()) {
+        val commandEpoch = fence.currentEpoch()
+        if (!canLoadStateForEpoch(commandEpoch)) {
             sideEffects.showToast(appContext.getString(R.string.ra_hardcore_load_disabled_toast))
             return
         }
@@ -60,11 +73,17 @@ class GameViewModelSaves(
             statesManager.getSlotSave(game, systemCoreConfig.coreID, index)?.let {
                 val loaded =
                     withContext(Dispatchers.IO) {
-                        loadSaveState(it)
+                        loadSaveState(it, commandEpoch)
                     }
 
                 if (!loaded) {
-                    sideEffects.showToast(appContext.getString(R.string.game_toast_load_state_failed))
+                    val toastRes =
+                        if (isHardcoreActive() || !fence.isEpochValid(commandEpoch)) {
+                            R.string.ra_hardcore_load_disabled_toast
+                        } else {
+                            R.string.game_toast_load_state_failed
+                        }
+                    sideEffects.showToast(appContext.getString(toastRes))
                 }
             }
         } catch (e: Throwable) {
@@ -101,11 +120,19 @@ class GameViewModelSaves(
     suspend fun restoreAutoSaveAsync(saveState: SaveState) {
         // PPSSPP and Mupen64 initialize some state while rendering the first frame, so we have to wait before restoring
         // the autosave. Do not change thread here. Stick to the GL one to avoid issues with PPSSPP.
-        if (isHardcoreActive() || !isAutoSaveEnabled()) return
+        val commandEpoch = fence.currentEpoch()
+        if (!canLoadStateForEpoch(commandEpoch) ||
+            !isAutoSaveEnabled()
+        ) {
+            return
+        }
 
         try {
             retroGameView.waitGLEvent<GLRetroView.GLRetroEvents.FrameRendered>()
-            restoreQuickSave(saveState)
+            if (!canLoadStateForEpoch(commandEpoch)) {
+                return
+            }
+            restoreQuickSave(saveState, commandEpoch)
         } catch (e: Throwable) {
             Timber.e(e, "Error while loading auto-save")
         }
@@ -126,7 +153,9 @@ class GameViewModelSaves(
     }
 
     private suspend fun isAutoSaveEnabled(): Boolean {
-        return systemCoreConfig.statesSupported && settingsManager.autoSave()
+        return systemCoreConfig.statesSupported &&
+            systemCoreConfig.autoSaveSupported &&
+            settingsManager.autoSave()
     }
 
     private suspend fun takeScreenshotPreview(index: Int) {
@@ -166,16 +195,29 @@ class GameViewModelSaves(
     }
 
     // Now that we wait for the first rendered frame this is probably no longer needed, but we'll keep it just to be sure
-    private suspend fun restoreQuickSave(saveState: SaveState) {
+    private suspend fun restoreQuickSave(
+        saveState: SaveState,
+        commandEpoch: Long,
+    ) {
         var times = 10
 
-        while (!loadSaveState(saveState) && times > 0) {
+        while (
+            canLoadStateForEpoch(commandEpoch) &&
+            !loadSaveState(saveState, commandEpoch) &&
+            times > 0
+        ) {
             delay(200)
             times--
         }
     }
 
-    private fun loadSaveState(saveState: SaveState): Boolean {
+    private fun loadSaveState(
+        saveState: SaveState,
+        commandEpoch: Long,
+    ): Boolean {
+        if (!canLoadStateForEpoch(commandEpoch)) {
+            return false
+        }
         val retroGameView = retroGameView.retroGameView ?: return false
 
         if (systemCoreConfig.statesVersion != saveState.metadata.version) {
@@ -189,28 +231,55 @@ class GameViewModelSaves(
             retroGameView.changeDisk(saveState.metadata.diskIndex)
         }
 
+        if (!canLoadStateForEpoch(commandEpoch)) {
+            return false
+        }
         return retroGameView.unserializeState(saveState.state)
     }
 
     /** Saves the quick save on disk too (like Delta's), so it is still there the next time the game starts. */
     suspend fun saveQuickSave() {
-        val state = getCurrentSaveState() ?: return
+        if (!HardcorePolicy.canSaveState(isTransitionInProgress())) return
+        val state =
+            runCatching { getCurrentSaveState() }
+                .onFailure { Timber.e(it, "Error while capturing the quick save") }
+                .getOrNull()
+        if (state == null) {
+            sideEffects.showToast(appContext.getString(R.string.game_toast_quick_save_failed))
+            return
+        }
+        // Kept in memory first, so Quick Load works for the rest of this session whatever happens to the file.
         currentQuickSave = state
-        sideEffects.showToast(appContext.getString(R.string.game_toast_quick_save_saved))
-        runCatching { statesManager.setQuickSave(game, systemCoreConfig.coreID, state) }
-            .onFailure { Timber.e(it, "Error while writing the quick save") }
+        val onDisk =
+            runCatching { statesManager.setQuickSave(game, systemCoreConfig.coreID, state) }
+                .onFailure { Timber.e(it, "Error while writing the quick save") }
+                .getOrDefault(false)
+        // Only say "Quick saved" once it is true: a failed write must not look like a success.
+        val message = if (onDisk) R.string.game_toast_quick_save_saved else R.string.game_toast_quick_save_not_stored
+        sideEffects.showToast(appContext.getString(message))
     }
 
     /** Loads the quick save (from disk when this session has none), the way a slot is loaded. */
     suspend fun loadQuickSave() {
-        if (isHardcoreActive()) {
+        val commandEpoch = fence.currentEpoch()
+        if (!canLoadStateForEpoch(commandEpoch)) {
             sideEffects.showToast(appContext.getString(R.string.ra_hardcore_load_disabled_toast))
             return
         }
         try {
-            val state = currentQuickSave ?: statesManager.getQuickSave(game, systemCoreConfig.coreID) ?: return
-            val loaded = withContext(Dispatchers.IO) { loadSaveState(state) }
-            val message = if (loaded) R.string.game_toast_quick_save_loaded else R.string.game_toast_load_state_failed
+            val state = currentQuickSave ?: statesManager.getQuickSave(game, systemCoreConfig.coreID)
+            if (state == null) {
+                // Pressing Quick Load before any Quick Save used to do nothing at all.
+                sideEffects.showToast(appContext.getString(R.string.game_toast_no_quick_save))
+                return
+            }
+            val loaded = withContext(Dispatchers.IO) { loadSaveState(state, commandEpoch) }
+            val message =
+                when {
+                    loaded -> R.string.game_toast_quick_save_loaded
+                    isHardcoreActive() || !fence.isEpochValid(commandEpoch) -> R.string.ra_hardcore_load_disabled_toast
+                    else -> R.string.game_toast_load_state_failed
+                }
             sideEffects.showToast(appContext.getString(message))
         } catch (e: Throwable) {
             val errorMessageId =

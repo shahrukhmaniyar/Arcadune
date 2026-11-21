@@ -43,6 +43,7 @@ class PPSSPPAssetsManager : CoreID.AssetsManager {
         coreAssetsDirectory.deleteRecursively()
         coreAssetsDirectory.mkdirs()
 
+        val canonicalRoot = coreAssetsDirectory.canonicalPath + File.separator
         response.body()?.use { zipInputStream ->
             while (true) {
                 val entry = zipInputStream.nextEntry ?: break
@@ -52,10 +53,19 @@ class PPSSPPAssetsManager : CoreID.AssetsManager {
                         coreAssetsDirectory,
                         entry.name,
                     )
+                val canonicalDest = destFile.canonicalPath
+                if (canonicalDest != coreAssetsDirectory.canonicalPath &&
+                    !canonicalDest.startsWith(canonicalRoot)
+                ) {
+                    throw SecurityException("Blocked zip-slip entry in PPSSPP assets: ${entry.name}")
+                }
                 if (entry.isDirectory) {
                     destFile.mkdirs()
                 } else {
-                    zipInputStream.copyTo(destFile.outputStream())
+                    destFile.parentFile?.mkdirs()
+                    destFile.outputStream().use { out ->
+                        zipInputStream.copyTo(out)
+                    }
                 }
             }
         }

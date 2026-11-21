@@ -68,6 +68,9 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
                 intent.extras?.getBoolean(GameMenuContract.EXTRA_FAST_FORWARD_SUPPORTED)
                     ?: throw InvalidParameterException("Missing EXTRA_FAST_FORWARD_SUPPORTED")
 
+            val maxFrameSpeed =
+                intent.extras?.getInt(GameMenuContract.EXTRA_MAX_FRAME_SPEED, 8) ?: 8
+
             val fragment =
                 TVGameMenuFragmentWrapper(
                     statesManager,
@@ -82,9 +85,14 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
                     audioEnabled,
                     frameSpeed,
                     fastForwardSupported,
+                    maxFrameSpeed,
                 )
             supportFragmentManager.beginTransaction().replace(android.R.id.content, fragment)
                 .commit()
+        } else {
+            // Non-default fragment constructors cannot be re-instantiated by FragmentManager on process death.
+            finish()
+            return
         }
     }
 
@@ -106,6 +114,7 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
         private val audioEnabled: Boolean,
         private val frameSpeed: Int,
         private val fastForwardSupported: Boolean,
+        private val maxFrameSpeed: Int = 8,
     ) : BaseSettingsFragmentWrapper() {
         override fun createFragment(): Fragment {
             return TVGameMenuFragment(
@@ -121,6 +130,7 @@ class TVGameMenuActivity : TVBaseSettingsActivity() {
                 audioEnabled,
                 frameSpeed,
                 fastForwardSupported,
+                maxFrameSpeed,
             )
         }
     }

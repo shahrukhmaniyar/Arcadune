@@ -142,6 +142,24 @@ void VFS::resetAllOffsets() {
     }
 }
 
+size_t VFS::getVirtualFileCount() const {
+    return virtualFiles.size();
+}
+
+std::string VFS::getVirtualFilePath(size_t index) const {
+    if (index >= virtualFiles.size()) {
+        return {};
+    }
+    return virtualFiles[index].getFileName();
+}
+
+int VFS::getVirtualFileFD(size_t index) const {
+    if (index >= virtualFiles.size()) {
+        return -1;
+    }
+    return virtualFiles[index].getFD();
+}
+
 struct retro_vfs_file_handle* VFS::virtualOpen(const char *path, unsigned int mode, unsigned int hints) {
     LOGV("VFS Calling open: %s %i", path, mode);
 

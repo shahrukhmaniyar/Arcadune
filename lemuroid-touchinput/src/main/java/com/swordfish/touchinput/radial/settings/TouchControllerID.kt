@@ -77,6 +77,16 @@ enum class TouchControllerID {
     WS_LANDSCAPE,
     WS_PORTRAIT,
     NINTENDO_3DS,
+    DREAMCAST,
+    SATURN,
+    SATURN_3D,
+    THREEDO,
+    ATARI5200,
+    ATARI800,
+    COLECOVISION,
+    C64,
+    APPLEII,
+    MSX,
     ;
 
     class Config(
@@ -235,6 +245,43 @@ enum class TouchControllerID {
                     Config(
                         { modifier, settings -> Nintendo3DSLeft(modifier, settings) },
                         { modifier, settings -> Nintendo3DSRight(modifier, settings) },
+                    )
+
+                DREAMCAST,
+                SATURN_3D,
+                ->
+                    Config(
+                        { modifier, settings -> PSXDualShockLeft(modifier, settings) },
+                        { modifier, settings -> PSXDualShockRight(modifier, settings) },
+                    )
+
+                SATURN ->
+                    Config(
+                        { modifier, settings -> Genesis6Left(modifier, settings) },
+                        { modifier, settings -> Genesis6Right(modifier, settings) },
+                    )
+
+                THREEDO ->
+                    Config(
+                        { modifier, settings -> Genesis3Left(modifier, settings) },
+                        { modifier, settings -> Genesis3Right(modifier, settings) },
+                    )
+
+                ATARI5200,
+                ATARI800,
+                COLECOVISION,
+                C64,
+                APPLEII,
+                ->
+                    Config(
+                        { modifier, settings -> Atari7800Left(modifier, settings) },
+                        { modifier, settings -> Atari7800Right(modifier, settings) },
+                    )
+
+                MSX ->
+                    Config(
+                        { modifier, settings -> SNESLeft(modifier, settings) },
+                        { modifier, settings -> SNESRight(modifier, settings) },
                     )
             }
         }

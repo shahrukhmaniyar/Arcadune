@@ -45,7 +45,8 @@ class CoreUpdateWork(context: Context, workerParams: WorkerParameters) :
                 notificationsManager.installingCoresNotification(),
             )
 
-        setForegroundAsync(foregroundInfo)
+        runCatching { setForegroundAsync(foregroundInfo) }
+            .onFailure { Timber.w(it, "Unable to promote CoreUpdateWork to foreground") }
 
         try {
             val cores =

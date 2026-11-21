@@ -35,6 +35,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE id = :id")
     suspend fun selectById(id: Int): Game?
 
+    @Query("SELECT * FROM games WHERE id = :id")
+    fun selectByIdFlow(id: Int): Flow<Game?>
+
     @Query("SELECT * FROM games WHERE fileUri = :fileUri")
     fun selectByFileUri(fileUri: String): Game?
 
@@ -66,10 +69,14 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE lastPlayedAt IS NULL LIMIT :limit")
     fun selectFirstNotPlayed(limit: Int): Flow<List<Game>>
 
-    @Query("SELECT * FROM games WHERE systemId = :systemId ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC")
+    @Query(
+        "SELECT * FROM games WHERE systemId = :systemId ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
+    )
     fun selectBySystem(systemId: String): PagingSource<Int, Game>
 
-    @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC")
+    @Query(
+        "SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
+    )
     fun selectBySystems(systemIds: List<String>): PagingSource<Int, Game>
 
     @Query("SELECT DISTINCT systemId FROM games ORDER BY systemId ASC")
@@ -101,6 +108,21 @@ interface GameDao {
     suspend fun markPlayed(
         id: Int,
         playedAt: Long,
+    )
+
+    @Query(
+        "UPDATE games SET " +
+            "lastPlayedAt = CASE WHEN lastPlayedAt IS NULL OR :playedAt > lastPlayedAt " +
+            "THEN :playedAt ELSE lastPlayedAt END, " +
+            "playCount = playCount + :playCountDelta, " +
+            "playTimeMs = playTimeMs + :playTimeDeltaMs " +
+            "WHERE id = :id",
+    )
+    suspend fun recordPlaySession(
+        id: Int,
+        playedAt: Long,
+        playCountDelta: Int,
+        playTimeDeltaMs: Long,
     )
 
     @Query("UPDATE games SET lastIndexedAt = :lastIndexedAt WHERE id IN (:ids)")

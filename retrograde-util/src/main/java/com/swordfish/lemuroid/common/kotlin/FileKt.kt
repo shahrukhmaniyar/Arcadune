@@ -19,12 +19,17 @@
 
 package com.swordfish.lemuroid.common.kotlin
 
-import android.util.AtomicFile
 import androidx.documentfile.provider.DocumentFile
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.BufferedOutputStream
+import java.io.FilterOutputStream
+import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.io.PushbackInputStream
 import java.security.MessageDigest
 import java.util.zip.CRC32
@@ -34,7 +39,8 @@ import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
 
 private const val CRC32_BYTE_ARRAY_SIZE = 16 * 1024
-private const val GZIP_INPUT_STREAM_BUFFER_SIZE = 8 * 1024
+private const val GZIP_INPUT_STREAM_BUFFER_SIZE = 64 * 1024
+private const val ATOMIC_WRITE_BUFFER_SIZE = 64 * 1024
 
 fun InputStream.calculateCrc32(): String =
     this.use { fileStream ->
@@ -56,10 +62,24 @@ fun File.calculateMd5(): String {
 }
 
 fun InputStream.writeToFile(file: File) {
-    this.use { inputStream ->
-        file.outputStream().use { outputStream ->
-            inputStream.copyTo(outputStream)
+    file.parentFile?.mkdirs()
+    val tempFile = File(file.parentFile, "${file.name}.tmp")
+    try {
+        this.use { inputStream ->
+            tempFile.outputStream().use { outputStream ->
+                inputStream.copyTo(outputStream)
+                outputStream.fd.sync()
+            }
         }
+        if (file.exists() && !file.delete()) {
+            throw IOException("Failed to replace existing file: ${file.absolutePath}")
+        }
+        if (!tempFile.renameTo(file)) {
+            throw IOException("Failed to move temporary file to: ${file.absolutePath}")
+        }
+    } catch (e: Throwable) {
+        tempFile.delete()
+        throw e
     }
 }
 
@@ -68,25 +88,46 @@ fun ZipInputStream.extractEntryToFile(
     gameFile: File,
 ) {
     this.use { inputStream ->
+        var matchedEntrySize = -1L
         while (true) {
-            val entry = inputStream.nextEntry
-            if (entry.name == entryName) break
+            val entry =
+                inputStream.nextEntry
+                    ?: throw IOException("Zip entry '$entryName' not found for ${gameFile.name}")
+            if (entry.name == entryName) {
+                matchedEntrySize = entry.size
+                break
+            }
         }
         inputStream.writeToFile(gameFile)
+        if (matchedEntrySize > 0L && gameFile.length() != matchedEntrySize) {
+            val actualSize = gameFile.length()
+            gameFile.delete()
+            throw IOException(
+                "Zip entry size mismatch for '$entryName': expected $matchedEntrySize, got $actualSize",
+            )
+        }
     }
 }
 
-fun File.isZipped() = extension == "zip"
+fun File.isZipped() = extension.equals("zip", ignoreCase = true)
 
-fun DocumentFile.isZipped() = type == "application/zip"
+fun DocumentFile.isZipped(): Boolean {
+    val mime = type?.lowercase()
+    if (mime == "application/zip" || mime == "application/x-zip-compressed") {
+        return true
+    }
+    return name?.substringAfterLast('.', "")?.equals("zip", ignoreCase = true) == true
+}
 
 /** Returns the uncompressed input stream if gzip compressed. */
-private fun InputStream.uncompressedInputStream(): InputStream {
+internal fun InputStream.uncompressedInputStream(): InputStream {
     val pb = PushbackInputStream(this, 2)
     val signature = ByteArray(2)
     val len = pb.read(signature)
-    pb.unread(signature, 0, len)
-    return if (signature[0] == 0x1f.toByte() && signature[1] == 0x8b.toByte()) {
+    if (len > 0) {
+        pb.unread(signature, 0, len)
+    }
+    return if (len == 2 && signature[0] == 0x1f.toByte() && signature[1] == 0x8b.toByte()) {
         GZIPInputStream(pb, GZIP_INPUT_STREAM_BUFFER_SIZE)
     } else {
         pb
@@ -94,7 +135,7 @@ private fun InputStream.uncompressedInputStream(): InputStream {
 }
 
 /** Read bytes from input stream. If the stream is compressed with GZIP the uncompressed data is returned.*/
-private fun readBytesUncompressedStream(inputStream: InputStream): ByteArray =
+internal fun readBytesUncompressedStream(inputStream: InputStream): ByteArray =
     inputStream.use { input ->
         val b = ByteArray(GZIP_INPUT_STREAM_BUFFER_SIZE)
         val os = ByteArrayOutputStream()
@@ -107,59 +148,110 @@ private fun readBytesUncompressedStream(inputStream: InputStream): ByteArray =
         return os.toByteArray()
     }
 
-/** Write bytes to file using AtomicFile to prevent corruption. */
-fun File.writeBytesAtomic(data: ByteArray) {
-    val atomicFile = AtomicFile(this)
-    val outputStream = atomicFile.startWrite()
-    try {
-        outputStream.use { it.write(data) }
-        atomicFile.finishWrite(outputStream)
-    } catch (e: Throwable) {
-        atomicFile.failWrite(outputStream)
-        throw e
+private fun File.writeStreamAtomic(writer: (OutputStream) -> Unit) {
+    parentFile?.mkdirs()
+    val newFile = File(parentFile, "$name.new")
+    val legacyBackupFile = File(parentFile, "$name.bak")
+    if (legacyBackupFile.exists()) {
+        if (!exists()) {
+            legacyBackupFile.renameTo(this)
+        } else {
+            legacyBackupFile.delete()
+        }
     }
-}
-
-/** Read text from file using AtomicFile. */
-fun File.readTextAtomic(): String {
-    val atomicFile = AtomicFile(this)
-    return atomicFile.openRead().bufferedReader().use { it.readText() }
-}
-
-/** Write text to file using AtomicFile. */
-fun File.writeTextAtomic(text: String) {
-    val atomicFile = AtomicFile(this)
-    val outputStream = atomicFile.startWrite()
     try {
-        outputStream.writer().use { it.write(text) }
-        atomicFile.finishWrite(outputStream)
-    } catch (e: Throwable) {
-        atomicFile.failWrite(outputStream)
-        throw e
-    }
-}
+        FileOutputStream(newFile).use { fos ->
+            // Buffered, and passing whole arrays through: a plain FilterOutputStream writes an
+            // array one byte at a time (one system call per byte), which made saving a game state
+            // take 20+ seconds when leaving a game.
+            val buffered = BufferedOutputStream(fos, ATOMIC_WRITE_BUFFER_SIZE)
+            val nonClosingOut =
+                object : FilterOutputStream(buffered) {
+                    override fun write(
+                        b: ByteArray,
+                        off: Int,
+                        len: Int,
+                    ) {
+                        out.write(b, off, len)
+                    }
 
-/** Write bytes to file using GZIP compression via AtomicFile. */
-fun File.writeBytesCompressedAtomic(array: ByteArray) {
-    val atomicFile = AtomicFile(this)
-    val outputStream = atomicFile.startWrite()
-    try {
-        ByteArrayInputStream(array).use { input ->
-            GZIPOutputStream(outputStream).use { usedOutput ->
-                input.copyTo(usedOutput)
+                    override fun close() {
+                        flush()
+                    }
+                }
+            writer(nonClosingOut)
+            buffered.flush()
+            fos.flush()
+            runCatching { fos.fd.sync() }
+        }
+        if (!newFile.renameTo(this)) {
+            if (exists() && !delete()) {
+                throw IOException("Failed to replace existing file: $absolutePath")
+            }
+            if (!newFile.renameTo(this)) {
+                throw IOException("Failed to atomically commit $newFile to $absolutePath")
             }
         }
-        atomicFile.finishWrite(outputStream)
     } catch (e: Throwable) {
-        atomicFile.failWrite(outputStream)
+        newFile.delete()
         throw e
     }
 }
 
-/** Read bytes using AtomicFile. If the file is compressed with GZIP the uncompressed data is returned. */
+private fun File.openAtomicInputStream(): InputStream {
+    val legacyBackupFile = File(parentFile, "$name.bak")
+    if (legacyBackupFile.exists()) {
+        delete()
+        legacyBackupFile.renameTo(this)
+    }
+    val incompleteNewFile = File(parentFile, "$name.new")
+    if (incompleteNewFile.exists()) {
+        incompleteNewFile.delete()
+    }
+    return FileInputStream(this)
+}
+
+/** Write bytes to file atomically (via `.new` + `fd.sync()` + rename) to prevent corruption. */
+fun File.writeBytesAtomic(data: ByteArray) {
+    writeStreamAtomic { out -> out.write(data) }
+}
+
+/** Read text from file atomically (recovering any legacy `.bak` file if needed). */
+fun File.readTextAtomic(): String {
+    return openAtomicInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
+}
+
+/** Write text to file atomically. */
+fun File.writeTextAtomic(text: String) {
+    writeBytesAtomic(text.toByteArray(Charsets.UTF_8))
+}
+
+internal fun ByteArray.isZstdCompressed(): Boolean {
+    return size >= 4 &&
+        this[0] == 0x28.toByte() &&
+        this[1] == 0xB5.toByte() &&
+        this[2] == 0x2F.toByte() &&
+        this[3] == 0xFD.toByte()
+}
+
+/** Write bytes to file using GZIP compression atomically (skips GZIP when payload is already ZSTD-compressed). */
+fun File.writeBytesCompressedAtomic(array: ByteArray) {
+    if (array.isZstdCompressed()) {
+        writeBytesAtomic(array)
+        return
+    }
+    writeStreamAtomic { out ->
+        ByteArrayInputStream(array).use { input ->
+            GZIPOutputStream(out).use { gzipOutput ->
+                input.copyTo(gzipOutput)
+            }
+        }
+    }
+}
+
+/** Read bytes atomically. If the file is compressed with GZIP the uncompressed data is returned. */
 fun File.readBytesUncompressedAtomic(): ByteArray {
-    val atomicFile = AtomicFile(this)
-    return atomicFile.openRead().use { input ->
+    return openAtomicInputStream().use { input ->
         readBytesUncompressedStream(input.uncompressedInputStream())
     }
 }

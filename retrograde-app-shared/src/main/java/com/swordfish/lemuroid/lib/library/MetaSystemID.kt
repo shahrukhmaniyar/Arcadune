@@ -113,6 +113,56 @@ enum class MetaSystemID(val titleResId: Int, val imageResId: Int, val systemIDs:
         R.drawable.game_system_3ds,
         listOf(SystemID.NINTENDO_3DS),
     ),
+    DREAMCAST(
+        R.string.game_system_title_dreamcast,
+        R.drawable.game_system_dreamcast,
+        listOf(SystemID.DREAMCAST),
+    ),
+    THREEDO(
+        R.string.game_system_title_3do,
+        R.drawable.game_system_3do,
+        listOf(SystemID.THREEDO),
+    ),
+    SATURN(
+        R.string.game_system_title_saturn,
+        R.drawable.game_system_saturn,
+        listOf(SystemID.SATURN),
+    ),
+    SEGA32X(
+        R.string.game_system_title_sega32x,
+        R.drawable.game_system_sega32x,
+        listOf(SystemID.SEGA32X),
+    ),
+    ATARI5200(
+        R.string.game_system_title_atari5200,
+        R.drawable.game_system_atari5200,
+        listOf(SystemID.ATARI5200),
+    ),
+    ATARI800(
+        R.string.game_system_title_atari800,
+        R.drawable.game_system_atari800,
+        listOf(SystemID.ATARI800),
+    ),
+    COLECOVISION(
+        R.string.game_system_title_colecovision,
+        R.drawable.game_system_colecovision,
+        listOf(SystemID.COLECOVISION),
+    ),
+    C64(
+        R.string.game_system_title_c64,
+        R.drawable.game_system_c64,
+        listOf(SystemID.C64),
+    ),
+    APPLEII(
+        R.string.game_system_title_apple2,
+        R.drawable.game_system_apple2,
+        listOf(SystemID.APPLEII),
+    ),
+    MSX(
+        R.string.game_system_title_msx,
+        R.drawable.game_system_msx,
+        listOf(SystemID.MSX),
+    ),
     ;
 
     fun color(): Int {
@@ -147,6 +197,16 @@ enum class MetaSystemID(val titleResId: Int, val imageResId: Int, val systemIDs:
                 SystemID.WS -> WS
                 SystemID.WSC -> WS
                 SystemID.NINTENDO_3DS -> NINTENDO_3DS
+                SystemID.DREAMCAST -> DREAMCAST
+                SystemID.THREEDO -> THREEDO
+                SystemID.SATURN -> SATURN
+                SystemID.SEGA32X -> SEGA32X
+                SystemID.ATARI5200 -> ATARI5200
+                SystemID.ATARI800 -> ATARI800
+                SystemID.COLECOVISION -> COLECOVISION
+                SystemID.C64 -> C64
+                SystemID.APPLEII -> APPLEII
+                SystemID.MSX -> MSX
             }
         }
     }

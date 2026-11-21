@@ -41,7 +41,7 @@ fun UpdateNotice(modifier: Modifier = Modifier) {
         }
     if (!visible) return
     ArcaduneGlassCard(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = modifier.fillMaxWidth(),
         cornerRadius = 22.dp,
     ) {
         UpdateContent(state = state, showNotes = false, modifier = Modifier.padding(18.dp))

@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.lib.storage
 
 import android.net.Uri
+import com.swordfish.lemuroid.common.files.FileUtils
 
 data class BaseStorageFile(
     val name: String,
@@ -9,7 +10,7 @@ data class BaseStorageFile(
     val path: String? = null,
 ) {
     val extension: String
-        get() = name.substringAfterLast('.', "")
+        get() = FileUtils.extractExtension(name)
 
     val extensionlessName: String
         get() = name.substringBeforeLast('.', "")

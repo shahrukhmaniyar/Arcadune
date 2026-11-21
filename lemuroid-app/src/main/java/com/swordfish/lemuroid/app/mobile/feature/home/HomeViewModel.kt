@@ -150,7 +150,7 @@ class HomeViewModel(
                     flowOf(false)
                 } else {
                     combine(
-                        coresSelection.getSelectedCores(),
+                        coresSelection.getAllSelectedCores(),
                         dsGamesCount(db),
                     ) { cores, dsCount ->
                         cores.any { it.coreConfig.supportsMicrophone } &&

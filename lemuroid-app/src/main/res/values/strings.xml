@@ -124,6 +124,11 @@
     <string name="game_settings_scope_console">All console games</string>
     <string name="game_settings_value_on">On</string>
     <string name="game_settings_value_off">Off</string>
+    <string name="core_option_more">More</string>
+    <string name="core_option_key_none">None</string>
+    <string name="apple2_model_recommended">Apple //e (Recommended)</string>
+    <string name="apple2_model_enhanced">Apple //e (Enhanced)</string>
+    <string name="apple2_model_original">Apple II (Original)</string>
     <string name="settings_title_rewind">Rewind</string>
     <string name="settings_description_rewind">Hold the rewind button to go back up to 30 seconds. On older consoles (NES, SNES, Game Boy, GBA, Sega, PC Engine and more)</string>
     <string name="library_title">Library</string>
@@ -136,7 +141,9 @@
     <string name="about_start_step_scan">Arcadune finds your games and their covers. Tap Rescan after adding new ones.</string>
     <string name="about_start_step_missing">A game is missing? Unzip it, or put it in a folder named after its console:</string>
     <string name="about_credits_title">Credits</string>
-    <string name="about_credits_message">Arcadune is free software under the GNU GPL v3, modified from Lemuroid by Swordfish90. Emulators come from the Libretro project under their own licenses, and achievements are powered by rcheevos (MIT).</string>
+    <string name="about_credits_message">Arcadune is free software under the GNU GPL v3, modified from Lemuroid by Swordfish90. Emulators come from the Libretro project under their own licenses (built from shahrukhmaniyar/ArcaduneCores), and achievements are powered by rcheevos (MIT).</string>
+    <string name="about_cores_title">Emulator Cores &amp; Licenses</string>
+    <string name="about_cores_message">Every shipped and on-demand Libretro core, its license, and its upstream project (tap any row to open):</string>
     <string name="about_github">GitHub</string>
     <string name="about_close">Close</string>
     <string name="update_title">Updates</string>
@@ -252,6 +259,9 @@
     <string name="cover_search_failed">Could not download this image. Try another one.</string>
     <string name="game_context_menu_remove_custom_artwork">Remove custom artwork</string>
     <string name="game_context_menu_custom_name_dialog_title">Set custom name</string>
+    <string name="game_playtime_never">Not played yet</string>
+    <string name="game_playtime_under_minute">&lt; 1m played</string>
+    <string name="game_playtime_played_format">%1$s played</string>
 
     <string name="home_notification_title">Enable notifications</string>
     <string name="home_notification_message">Arcadune uses notifications to let you know when a game or operation is running in background.</string>
@@ -288,6 +298,10 @@
     <string name="game_toast_load_state_failed">Cannot load this state</string>
     <string name="game_toast_quick_save_loaded">Quick loaded</string>
     <string name="game_toast_quick_save_saved">Quick saved</string>
+    <string name="game_toast_states_not_supported">Save states are not available on this console</string>
+    <string name="game_toast_quick_save_failed">Quick save failed</string>
+    <string name="game_toast_quick_save_not_stored">Quick saved for this session, but it could not be written to storage</string>
+    <string name="game_toast_no_quick_save">No quick save yet. Use Quick Save first</string>
 
     <string name="empty_view_default">No Items</string>
 
@@ -341,6 +355,7 @@
 
     <string name="gamepad_binding_update_title">Associate \"RetroPad %1$s\"</string>
     <string name="gamepad_binding_update_description">Press a button on your \"%1$s\"</string>
+    <string name="shortcut_not_set">Not set</string>
     <string name="shortcut_binding_update_title">Associate \"Shortcut %1$s\"</string>
     <string name="shortcut_binding_update_description">Press the first, then second button to bind a combo on your \"%1$s\"</string>
 
@@ -451,7 +466,7 @@
     <string name="settings_ra_signed_out_subtitle">Sign in to earn trophies across classic games</string>
     <string name="settings_ra_signed_in_active_subtitle">%1$s \u2022 %2$,d pts</string>
     <string name="settings_ra_signed_in_hardcore_subtitle">%1$s \u2022 %2$,d pts \u2022 Hardcore</string>
-    <string name="settings_ra_signed_in_softcore_subtitle">%1$s \u2022 %2$,d pts \u2022 Softcore</string>
+    <string name="settings_ra_signed_in_softcore_subtitle">%1$s \u2022 %2$,d pts \u2022 Casual</string>
     <string name="settings_ra_signed_in_disabled_subtitle">%1$s \u2022 Paused</string>
 
     <string name="ra_login_hero_title">Earn Trophies on Classic Games</string>
@@ -467,7 +482,7 @@
 
     <string name="ra_profile_total_points">%1$,d Achievement pts</string>
     <string name="ra_profile_hardcore_points">%1$,d Hardcore pts</string>
-    <string name="ra_profile_softcore_points">%1$,d Softcore pts</string>
+    <string name="ra_profile_softcore_points">%1$,d Casual pts</string>
     <string name="ra_status_active_badge">ACTIVE</string>
     <string name="ra_profile_refresh">Refresh points</string>
     <string name="ra_profile_open_web">Open profile on RetroAchievements.org</string>
@@ -494,14 +509,14 @@
     <string name="ra_pref_progress_subtitle">Show live progress pills when advancing multi-step achievements</string>
     <string name="ra_pref_challenges_title">Active Challenge Badges</string>
     <string name="ra_pref_challenges_subtitle">Show subtle corner icons while a boss or stage challenge is active</string>
-    <string name="ra_hardcore_registration_note">RetroAchievements.org requires official emulator registration for Hardcore unlocks. Until Arcadune is registered on their allowlist, sessions automatically run in Softcore Mode so your trophies still save.</string>
+    <string name="ra_hardcore_registration_note">RetroAchievements.org requires official emulator registration for Hardcore unlocks. Until Arcadune is registered on their allowlist, sessions automatically run in Casual Mode so your trophies still save.</string>
     <string name="ra_changes_next_launch_hint">Gameplay mode changes take effect the next time you start or restart a game.</string>
 
     <string name="ra_hardcore_load_disabled_toast">Load State is disabled while Hardcore Mode is active</string>
     <string name="ra_cheats_hardcore_banner">Cheats are paused while RetroAchievements Hardcore Mode is active.</string>
 
     <string name="ra_hud_hardcore_badge">HARDCORE</string>
-    <string name="ra_hud_softcore_badge">SOFTCORE</string>
+    <string name="ra_hud_softcore_badge">CASUAL</string>
     <string name="ra_hud_unlocked_header">ACHIEVEMENT UNLOCKED</string>
     <string name="ra_hud_hardcore_unlocked_header">HARDCORE UNLOCK</string>
     <string name="ra_hud_mastered_header">GAME MASTERED</string>
@@ -540,11 +555,11 @@
     <string name="ra_empty_error_title">Couldn\u2019t load achievements</string>
     <string name="ra_filter_empty_unlocked">No achievements unlocked yet \u2014 keep playing!</string>
     <string name="ra_filter_empty_locked">Every achievement unlocked! Legendary run.</string>
-    <string name="ra_menu_hardcore_fallback_note">Softcore active \u2022 Hardcore requires RetroAchievements emulator registration</string>
+    <string name="ra_menu_hardcore_fallback_note">Casual Mode active \u2022 Hardcore requires RetroAchievements emulator registration</string>
     <string name="ra_detail_title">Achievement Details</string>
     <string name="ra_detail_status_unlocked">Unlocked</string>
     <string name="ra_detail_status_hardcore">Unlocked in Hardcore</string>
-    <string name="ra_detail_status_softcore">Unlocked in Softcore</string>
+    <string name="ra_detail_status_softcore">Unlocked in Casual Mode</string>
     <string name="ra_detail_status_locked">Locked</string>
     <string name="ra_detail_unlocked_on">Unlocked %1$s</string>
     <string name="ra_detail_stat_points">Points</string>
@@ -553,5 +568,60 @@
     <string name="ra_kind_standard">Standard</string>
     <string name="ra_detail_progress_label">Current Progress</string>
     <string name="ra_detail_open_web">Open on RetroAchievements.org</string>
+
+    <string name="skin_editor_hide_button">Hide button</string>
+    <string name="skin_editor_buttons">Buttons</string>
+    <string name="skin_editor_controller_type">Controller</string>
+    <string name="skin_editor_reset_screen_pos">Center screen</string>
+    <string name="skin_editor_bg_height">Background height</string>
+    <string name="skin_gallery_active_badge">Active</string>
+    <string name="skin_gallery_use_controller">Use</string>
+    <string name="game_menu_ff_audio_label">Fast-Forward Audio</string>
+    <string name="game_menu_ff_audio_keep_pitch">Keep Pitch</string>
+    <string name="game_menu_ff_audio_classic">Classic</string>
+    <string name="game_menu_ff_audio_mute">Mute</string>
+
+    <string name="ra_hud_casual_badge">CASUAL</string>
+    <string name="ra_mode_hardcore_label">Hardcore Mode</string>
+    <string name="ra_mode_casual_label">Casual Mode</string>
+    <string name="ra_mode_enable_hardcore_action">Enable Hardcore</string>
+    <string name="ra_mode_switch_casual_action">Switch to Casual</string>
+    <string name="ra_hardcore_confirm_enable_title">Enable Hardcore Mode?</string>
+    <string name="ra_hardcore_confirm_enable_message">Enabling Hardcore Mode restarts the game from a clean boot. Unsaved progress will be lost, cheats and rewind will be cleared, and loading save states will be disabled. Ordinary in-game saves (SRAM / memory cards) are preserved.</string>
+    <string name="ra_hardcore_confirm_enable_confirm">Restart in Hardcore</string>
+    <string name="ra_hardcore_restart_success_toast">Hardcore Mode enabled \u2022 Clean boot complete</string>
+    <string name="ra_hardcore_restart_failed_toast">Could not verify a clean Hardcore reset. Staying in Casual Mode.</string>
+    <string name="ra_casual_switched_toast">Switched to Casual Mode</string>
+    <string name="ra_quick_resume_casual_title">Casual Mode Active</string>
+    <string name="ra_quick_resume_casual_subtitle">Quick Resume restored your saved state in Casual Mode</string>
+    <string name="ra_hardcore_pause_cooldown_toast">Hardcore pause cooldown: wait %1$ds</string>
+    <string name="ra_hardcore_core_option_locked_toast">This option value is locked while Hardcore Mode is active</string>
+    <string name="ra_hardcore_cheats_disabled_toast">Cheats are disabled while Hardcore Mode is active</string>
+    <string name="ra_pref_leaderboard_popups_title">Leaderboard Popups</string>
+    <string name="ra_pref_leaderboard_popups_subtitle">Show attempt banners and live score trackers (leaderboards remain active when hidden)</string>
+    <string name="ra_filter_leaderboards">Leaderboards (%1$d)</string>
+    <string name="ra_leaderboards_empty">No active leaderboards for this game.</string>
+    <string name="ra_leaderboard_state_active">Attempting</string>
+    <string name="ra_leaderboard_state_primed">Ready</string>
+    <string name="ra_leaderboard_state_inactive">Standby</string>
+    <string name="ra_offline_queue_pending_summary">%1$d offline achievement/leaderboard submission(s) queued for sync</string>
+    <string name="ra_offline_queue_sync_now">Sync queued unlocks now</string>
+    <string name="ra_privacy_policy_button">Privacy Policy</string>
+    <string name="tv_game_ra_mode_title">RetroAchievements Mode</string>
+
+    <string name="cores_selection_subtitle">Default cores built-in \u2022 Alternate cores download on select</string>
+    <string name="cores_selection_banner_title">Built-in Defaults &amp; On-Demand Alternates</string>
+    <string name="cores_selection_banner_body">Default cores come packaged inside Arcadune for instant offline play. Selecting an alternate core downloads it on demand from Arcadune\u2019s server and caches it locally.</string>
+    <string name="cores_selection_cache_summary">%1$d alternate core(s) downloaded \u2022 %2$s</string>
+    <string name="cores_selection_section_consoles">Consoles (%1$d)</string>
+    <string name="cores_selection_badge_builtin">Built-in</string>
+    <string name="cores_selection_badge_default_builtin">Default \u2022 Built-in</string>
+    <string name="cores_selection_badge_download_on_select">Download on select</string>
+    <string name="cores_selection_badge_downloaded">Downloaded \u2022 %1$s</string>
+    <string name="cores_selection_badge_downloading">Downloading\u2026</string>
+    <string name="cores_selection_badge_retry">Tap to retry</string>
+    <string name="cores_selection_badge_unsupported_arch">64-bit ARM required</string>
+    <string name="cores_selection_delete_cached_cd">Delete downloaded core</string>
+    <string name="cores_selection_download_failed_toast">Could not download %1$s. Check your connection and tap to retry.</string>
 
 </resources>

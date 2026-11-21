@@ -11,9 +11,13 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.game.GameService
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
+import com.swordfish.lemuroid.app.shared.GameMenuContract
 import com.swordfish.lemuroid.app.shared.achievements.GameViewModelAchievements
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
+import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelCheats
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelInput
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRetroGameView
@@ -27,16 +31,19 @@ import com.swordfish.lemuroid.app.shared.rumble.RumbleManager
 import com.swordfish.lemuroid.app.shared.settings.ControllerConfigsManager
 import com.swordfish.lemuroid.app.shared.settings.HapticFeedbackMode
 import com.swordfish.lemuroid.common.longAnimationDuration
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.lemuroid.lib.core.CoreVariablesManager
 import com.swordfish.lemuroid.lib.game.GameLoader
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.lib.saves.SavesCoherencyEngine
 import com.swordfish.lemuroid.lib.saves.SavesManager
 import com.swordfish.lemuroid.lib.saves.StatesManager
 import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
 import com.swordfish.libretrodroid.GLRetroView
+import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_EXIT
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_FAST_FORWARD
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_LOAD
 import com.swordfish.touchinput.radial.layouts.shared.KEYCODE_QUICK_SAVE
@@ -46,25 +53,30 @@ import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 import gg.padkit.inputevents.InputEvent
 import gg.padkit.inputstate.InputState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import kotlin.math.ceil
 
 class BaseGameScreenViewModel(
     private val appContext: Context,
     private val game: Game,
-    settingsManager: SettingsManager,
+    private val settingsManager: SettingsManager,
     inputDeviceManager: InputDeviceManager,
     controllerConfigsManager: ControllerConfigsManager,
-    system: GameSystem,
-    systemCoreConfig: SystemCoreConfig,
+    private val system: GameSystem,
+    private val systemCoreConfig: SystemCoreConfig,
     private val sharedPreferences: SharedPreferences,
-    savesManager: SavesManager,
-    statesManager: StatesManager,
+    private val savesManager: SavesManager,
+    private val statesManager: StatesManager,
     statesPreviewManager: StatesPreviewManager,
     coreVariablesManager: CoreVariablesManager,
     rumbleManager: RumbleManager,
@@ -104,6 +116,8 @@ class BaseGameScreenViewModel(
     }
 
     private val sideEffects = GameViewModelSideEffects(viewModelScope)
+    private val transitionFence = HardcorePolicy.TransitionFence()
+    private val savesCoherencyEngine = SavesCoherencyEngine(savesManager, statesManager)
 
     // What the quick buttons may do for this game: fast forward, and quick save / load.
     private val fastForwardSupported = system.fastForwardSupport
@@ -124,16 +138,26 @@ class BaseGameScreenViewModel(
         GameViewModelAchievements(
             appContext,
             system,
+            systemCoreConfig,
             retroGameView,
             viewModelScope,
+            onExternalSdkResetRequested = {
+                // Native LibretroDroid::step() consumes externalSdkResetRequested_ and performs the clean core restart on GLThread.
+                viewModelScope.launch {
+                    RetroAchievementsSessionHolder.refreshFromNative()
+                }
+            },
         )
     private val cheats =
         GameViewModelCheats(
-            appContext,
-            game,
-            retroGameView,
-            viewModelScope,
-        ) { achievements.isHardcoreEnforced }
+            appContext = appContext,
+            game = game,
+            retroGameView = retroGameView,
+            scope = viewModelScope,
+            fence = transitionFence,
+            isTransitionInProgress = { RetroAchievementsSessionHolder.state.value.hardcoreTransitionInProgress },
+            isHardcoreActive = { achievements.isHardcoreEnforced },
+        )
     private val rewind =
         GameViewModelRewind(
             system,
@@ -166,21 +190,57 @@ class BaseGameScreenViewModel(
         )
     private val saves =
         GameViewModelSaves(
-            appContext,
-            system,
-            game,
-            systemCoreConfig,
-            retroGameView,
-            settingsManager,
-            savesManager,
-            statesManager,
-            statesPreviewManager,
-            sideEffects,
-        ) { achievements.isHardcoreEnforced }
+            appContext = appContext,
+            system = system,
+            game = game,
+            systemCoreConfig = systemCoreConfig,
+            retroGameView = retroGameView,
+            settingsManager = settingsManager,
+            savesManager = savesManager,
+            statesManager = statesManager,
+            statesPreviewManager = statesPreviewManager,
+            sideEffects = sideEffects,
+            fence = transitionFence,
+            isTransitionInProgress = { RetroAchievementsSessionHolder.state.value.hardcoreTransitionInProgress },
+            isHardcoreActive = { achievements.isHardcoreEnforced },
+        )
 
     val loadingState = MutableStateFlow(false)
+    private val _frameSpeed = MutableStateFlow(1)
+    val frameSpeed: StateFlow<Int> = _frameSpeed.asStateFlow()
+    val fastForwardSteps: List<Int> =
+        if (fastForwardSupported) {
+            GameMenuContract.speedsUpTo(maxFrameSpeed).filter { it > 1 }
+        } else {
+            emptyList()
+        }
     private val stateMutex = Mutex()
     private var cachedLastFrameSpeed: Int? = null
+    private val touchMenuHidden = MutableStateFlow(false)
+    private var fastForwardButtonPressed = false
+    private var exitButtonPressed = false
+
+    fun isFastForwardSupported(): Boolean = fastForwardSupported
+
+    fun fastForwardDotsActive(speed: Int): Int =
+        if (speed <= 1 || fastForwardSteps.isEmpty()) {
+            0
+        } else {
+            fastForwardSteps.count { it <= speed }.coerceIn(1, fastForwardSteps.size)
+        }
+
+    fun setTouchMenuHidden(hidden: Boolean) {
+        touchMenuHidden.value = hidden
+    }
+
+    fun syncFastForwardAudioMode() {
+        val mode =
+            sharedPreferences.getInt(
+                GameMenuContract.PREF_FAST_FORWARD_AUDIO_MODE,
+                GLRetroView.FAST_FORWARD_AUDIO_KEEP_PITCH,
+            )
+        retroGameView.retroGameView?.fastForwardAudioMode = mode
+    }
 
     private suspend inline fun withLoading(block: () -> Unit) {
         stateMutex.withLock {
@@ -225,6 +285,12 @@ class BaseGameScreenViewModel(
         lifecycle: LifecycleOwner,
     ): GLRetroView {
         val (gameData, result) = retroGameView.createRetroView(context, lifecycle)
+        result.fastForwardAudioMode =
+            sharedPreferences.getInt(
+                GameMenuContract.PREF_FAST_FORWARD_AUDIO_MODE,
+                GLRetroView.FAST_FORWARD_AUDIO_KEEP_PITCH,
+            )
+        result.frameSpeed = _frameSpeed.value
         cheats.applyWhenReady()
         viewModelScope.launch {
             gameData.quickSaveData?.let {
@@ -240,18 +306,142 @@ class BaseGameScreenViewModel(
         systemCoreConfig: SystemCoreConfig,
         gameLoader: GameLoader,
         requestLoadSave: Boolean,
+        explicitQuickResume: Boolean = false,
     ) {
         Timber.i("Calling load game: $game")
-        val achievementsConfig = achievements.buildNativeConfig()
+        val autoSaveEnabled =
+            systemCoreConfig.statesSupported &&
+                systemCoreConfig.autoSaveSupported &&
+                settingsManager.autoSave()
+        val hasAutoSaveSnapshot =
+            if (requestLoadSave && explicitQuickResume && autoSaveEnabled) {
+                withContext(Dispatchers.IO) {
+                    val info = statesManager.getAutoSaveInfo(game, systemCoreConfig.coreID)
+                    if (!info.exists ||
+                        savesCoherencyEngine.shouldDiscardAutoSaveState(game, systemCoreConfig.coreID)
+                    ) {
+                        false
+                    } else {
+                        statesManager.getAutoSave(game, systemCoreConfig.coreID)?.metadata?.version ==
+                            systemCoreConfig.statesVersion
+                    }
+                }
+            } else {
+                false
+            }
+        val (achievementsConfig, launchDecision) =
+            achievements.buildNativeConfig(
+                requestedLoadSave = requestLoadSave && autoSaveEnabled,
+                explicitQuickResume = explicitQuickResume,
+                hasAutoSaveSnapshot = hasAutoSaveSnapshot,
+            )
         retroGameView.initialize(
             applicationContext,
             game,
             systemCoreConfig,
             gameLoader,
-            requestLoadSave,
+            launchDecision.loadQuickSaveSnapshot,
             achievementsConfig,
         )
     }
+
+    fun canOpenPauseMenu(): Boolean {
+        if (!achievements.isHardcoreEnforced) return true
+        val remainingFrames = retroGameView.retroGameView?.canPauseAchievements() ?: 0
+        if (!HardcorePolicy.canPause(true, remainingFrames)) {
+            val remainingSeconds = ceil(remainingFrames / 60.0).toInt().coerceAtLeast(1)
+            sideEffects.showToast(
+                appContext.getString(R.string.ra_hardcore_pause_cooldown_toast, remainingSeconds),
+            )
+            return false
+        }
+        return true
+    }
+
+    fun idleAchievementsWhilePaused() {
+        retroGameView.retroGameView?.idleAchievements()
+    }
+
+    /**
+     * Enables RetroAchievements Hardcore Mode on a running session by fencing async commands,
+     * purging rewind/cheats/queued inputs, preserving ordinary SRAM, performing a clean core
+     * reload from unpatched boot media, and resuming Hardcore evaluation only after the clean
+     * reset succeeds.
+     */
+    suspend fun enableHardcoreWithCleanRestart() =
+        withLoading {
+            RetroAchievementsPreferences.setHardcoreEnabled(appContext, true)
+            if (!RetroAchievementsPreferences.isHardcoreApproved()) {
+                RetroAchievementsSessionHolder.updateState { it.copy(hardcoreActive = false) }
+                sideEffects.showToast(appContext.getString(R.string.ra_hardcore_registration_note))
+                return@withLoading
+            }
+            if (!achievements.isCoreHardcoreCompliant) {
+                RetroAchievementsSessionHolder.updateState { it.copy(hardcoreActive = false) }
+                sideEffects.showToast(achievements.coreUnsupportedReason)
+                return@withLoading
+            }
+
+            val view = retroGameView.retroGameView ?: return@withLoading
+            transitionFence.bumpEpoch()
+            achievements.setTransitionInProgress(true)
+            try {
+                rewind.clearAndDisable()
+                touchControls.cancelPendingInputs()
+                setFrameSpeed(1)
+                cheats.clearForHardcoreNow()
+
+                runCatching {
+                    val sram = withContext(Dispatchers.IO) { view.serializeSRAM(true) }
+                    if (sram.isNotEmpty()) {
+                        savesManager.setSaveRAM(game, sram)
+                    }
+                }.onFailure { Timber.w(it, "Could not flush SRAM before Hardcore clean restart") }
+
+                val restartedCleanly =
+                    withContext(Dispatchers.IO) {
+                        view.setHardcoreMode(true, true)
+                    }
+
+                syncFastForwardAudioMode()
+                view.frameSpeed = _frameSpeed.value
+                RetroAchievementsSessionHolder.refreshFromNative()
+
+                if (restartedCleanly) {
+                    sideEffects.showToast(appContext.getString(R.string.ra_hardcore_restart_success_toast))
+                } else {
+                    RetroAchievementsSessionHolder.updateState { it.copy(hardcoreActive = false) }
+                    val failMsg = appContext.getString(R.string.ra_hardcore_restart_failed_toast)
+                    achievements.showStatusBanner(
+                        title = appContext.getString(R.string.ra_mode_casual_label),
+                        subtitle = failMsg,
+                        isError = true,
+                    )
+                    sideEffects.showToast(failMsg)
+                }
+            } finally {
+                achievements.setTransitionInProgress(false)
+            }
+        }
+
+    /** Leaves Hardcore Mode immediately without restarting the game. */
+    suspend fun switchToCasualImmediate() =
+        withLoading {
+            RetroAchievementsPreferences.setHardcoreEnabled(appContext, false)
+            transitionFence.bumpEpoch()
+            val view = retroGameView.retroGameView
+            if (view != null) {
+                withContext(Dispatchers.IO) {
+                    view.setHardcoreMode(false, true)
+                }
+            }
+            RetroAchievementsSessionHolder.updateState {
+                it.copy(hardcoreActive = false, hardcoreTransitionInProgress = false)
+            }
+            RetroAchievementsSessionHolder.refreshFromNative()
+            cheats.apply()
+            sideEffects.showToast(appContext.getString(R.string.ra_casual_switched_toast))
+        }
 
     /** Applies the cheats the player has switched on in the game menu. */
     fun applyCheats() = cheats.apply()
@@ -286,6 +476,18 @@ class BaseGameScreenViewModel(
         return touchControls.getTouchControllerConfig()
     }
 
+    fun getAvailableTouchControllerConfigs(): List<ControllerConfig> {
+        return systemCoreConfig.controllerConfigs[0]
+            .orEmpty()
+            .distinctBy { it.touchControllerID }
+    }
+
+    fun selectTouchControllerConfig(config: ControllerConfig) {
+        val prefKey = ControllerConfigsManager.getSharedPreferencesId(system.id.dbname, systemCoreConfig.coreID, 0)
+        sharedPreferences.edit().putString(prefKey, config.name).apply()
+        inputs.refreshControllerConfigs()
+    }
+
     fun changeTiltConfiguration(tiltConfig: TiltConfiguration) {
         tilt.changeTiltConfiguration(tiltConfig)
     }
@@ -310,7 +512,11 @@ class BaseGameScreenViewModel(
 
     fun saveQuickSave() {
         Timber.d("Saving quick save")
-        if (loadingState.value || !statesSupported) return
+        if (!statesSupported) {
+            sideEffects.showToast(appContext.getString(R.string.game_toast_states_not_supported))
+            return
+        }
+        if (loadingState.value) return
         viewModelScope.launch {
             withLoading {
                 saves.saveQuickSave()
@@ -320,7 +526,11 @@ class BaseGameScreenViewModel(
 
     fun loadQuickSave() {
         Timber.d("Loading quick save")
-        if (loadingState.value || !statesSupported) return
+        if (!statesSupported) {
+            sideEffects.showToast(appContext.getString(R.string.game_toast_states_not_supported))
+            return
+        }
+        if (loadingState.value) return
         viewModelScope.launch {
             withLoading {
                 saves.loadQuickSave()
@@ -330,13 +540,14 @@ class BaseGameScreenViewModel(
 
     /** Sets the game speed (1 is normal) and remembers the last fast one, which the button turns back on. */
     fun setFrameSpeed(requested: Int) {
-        // Never above what this system's core survives (the N64 core crashes at 8X).
-        val speed = requested.coerceIn(1, maxFrameSpeed)
+        // Never above what this system's core survives (the N64 core crashes at 8X), and never < 1x slowdown.
+        val speed = HardcorePolicy.clampFrameSpeed(requested, maxFrameSpeed)
+        _frameSpeed.value = speed
         retroGameView.retroGameView?.frameSpeed = speed
         if (speed > 1) {
             cachedLastFrameSpeed = speed
             sharedPreferences.edit().putInt(
-                com.swordfish.lemuroid.app.shared.GameMenuContract.PREF_LAST_FRAME_SPEED,
+                GameMenuContract.PREF_LAST_FRAME_SPEED,
                 speed,
             ).apply()
         }
@@ -345,35 +556,28 @@ class BaseGameScreenViewModel(
     /** Turns fast-forward off, or on at the speed last used (2X the first time). */
     fun toggleFastForward() {
         Timber.d("Toggling fast forward")
-        val current = retroGameView.retroGameView?.frameSpeed ?: return
+        val current = retroGameView.retroGameView?.frameSpeed ?: _frameSpeed.value
         val last =
             cachedLastFrameSpeed ?: sharedPreferences
-                .getInt(com.swordfish.lemuroid.app.shared.GameMenuContract.PREF_LAST_FRAME_SPEED, 2)
+                .getInt(GameMenuContract.PREF_LAST_FRAME_SPEED, 2)
                 .also { cachedLastFrameSpeed = it }
         setFrameSpeed(if (current > 1) 1 else last)
     }
 
-    private var fastForwardHold: kotlinx.coroutines.Job? = null
-    private var fastForwardHeldLong = false
+    /** Cycles through all supported speeds for this core (1x -> 2x -> 4x -> 6x -> 8x -> 1x). */
+    fun cycleFastForward() {
+        if (!fastForwardSupported) return
+        val current = retroGameView.retroGameView?.frameSpeed ?: _frameSpeed.value
+        val next = GameMenuContract.nextFrameSpeed(current, maxFrameSpeed)
+        setFrameSpeed(next)
+    }
 
-    /** A tap on the fast-forward button toggles it; holding it opens the speed picker. */
+    /** Each tap on the on-screen Fast Forward button cycles to the next supported speed immediately. */
     private fun onFastForwardButton(pressed: Boolean) {
-        if (pressed) {
-            if (fastForwardHold?.isActive == true || fastForwardHeldLong) return
-            fastForwardHold =
-                viewModelScope.launch {
-                    delay(FAST_FORWARD_HOLD_MS)
-                    fastForwardHeldLong = true
-                    sideEffects.showMenu(
-                        tilt,
-                        inputs,
-                        com.swordfish.lemuroid.app.shared.GameMenuContract.START_ROUTE_FAST_FORWARD,
-                    )
-                }
-        } else {
-            fastForwardHold?.cancel()
-            if (!fastForwardHeldLong) toggleFastForward()
-            fastForwardHeldLong = false
+        val wasPressed = fastForwardButtonPressed
+        fastForwardButtonPressed = pressed
+        if (pressed && !wasPressed) {
+            cycleFastForward()
         }
     }
 
@@ -391,10 +595,33 @@ class BaseGameScreenViewModel(
         if (loadingState.value) return
         viewModelScope.launch {
             withLoading {
+                // Only the quick part happens here: the emulator hands over a copy of its save data.
                 val snapshot = saves.captureSaveSnapshot(true)
-                saves.writeSaveSnapshot(snapshot)
+                // Compressing and writing it to disk happens after the game window has closed. The
+                // game process stays alive until it is done (see GameService), so nothing is lost.
+                GameService.schedule { saves.writeSaveSnapshot(snapshot) }
                 sideEffects.requestSuccessfulFinish()
             }
+        }
+    }
+
+    /** Opens the pause menu on system Back if the touch Menu button was hidden, otherwise exits cleanly. */
+    fun onSystemBackPressed() {
+        if (touchMenuHidden.value) {
+            if (loadingState.value) return
+            viewModelScope.launch {
+                sideEffects.showMenu(tilt, inputs)
+            }
+        } else {
+            requestFinish()
+        }
+    }
+
+    private fun onExitButton(pressed: Boolean) {
+        val wasPressed = exitButtonPressed
+        exitButtonPressed = pressed
+        if (!pressed && wasPressed) {
+            requestFinish()
         }
     }
 
@@ -416,10 +643,18 @@ class BaseGameScreenViewModel(
 
         fun pressed(key: Int) = appEvents.any { it is InputEvent.Button && it.id == key && it.pressed }
         if (pressed(KEYCODE_SWAP_SCREENS)) retroGameView.swapScreens()
-        // The quick buttons act when pressed, like Delta's.
+        // Process all button transitions in order so rapid 1-frame taps never miss.
         if (fastForwardSupported) {
-            appEvents.lastOrNull { it is InputEvent.Button && it.id == KEYCODE_FAST_FORWARD }
-                ?.let { onFastForwardButton((it as InputEvent.Button).pressed) }
+            appEvents.forEach { ev ->
+                if (ev is InputEvent.Button && ev.id == KEYCODE_FAST_FORWARD) {
+                    onFastForwardButton(ev.pressed)
+                }
+            }
+        }
+        appEvents.forEach { ev ->
+            if (ev is InputEvent.Button && ev.id == KEYCODE_EXIT) {
+                onExitButton(ev.pressed)
+            }
         }
         if (pressed(KEYCODE_QUICK_SAVE)) saveQuickSave()
         if (pressed(KEYCODE_QUICK_LOAD)) loadQuickSave()
@@ -459,5 +694,11 @@ class BaseGameScreenViewModel(
 
 /** Keys of skin buttons the app handles itself (rewind, swap screens, the quick buttons); they never reach the emulator. */
 private val APP_KEYS =
-    setOf(KEYCODE_REWIND, KEYCODE_SWAP_SCREENS, KEYCODE_FAST_FORWARD, KEYCODE_QUICK_SAVE, KEYCODE_QUICK_LOAD)
-private const val FAST_FORWARD_HOLD_MS = 450L
+    setOf(
+        KEYCODE_REWIND,
+        KEYCODE_SWAP_SCREENS,
+        KEYCODE_FAST_FORWARD,
+        KEYCODE_EXIT,
+        KEYCODE_QUICK_SAVE,
+        KEYCODE_QUICK_LOAD,
+    )

@@ -19,6 +19,10 @@ object SavesStorageInspector {
             SystemID.PSP.dbname,
             SystemID.NINTENDO_3DS.dbname,
             SystemID.DOS.dbname,
+            SystemID.DREAMCAST.dbname,
+            SystemID.ATARI800.dbname,
+            SystemID.C64.dbname,
+            SystemID.APPLEII.dbname,
         )
 
     data class SavesStorageStats(

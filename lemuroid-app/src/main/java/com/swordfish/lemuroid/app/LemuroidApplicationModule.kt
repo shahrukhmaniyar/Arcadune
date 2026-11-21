@@ -148,6 +148,7 @@ abstract class LemuroidApplicationModule {
                     Migrations.VERSION_9_10,
                     Migrations.VERSION_10_11,
                     Migrations.VERSION_11_12,
+                    Migrations.VERSION_12_13,
                 )
                 .fallbackToDestructiveMigration()
                 .build()
@@ -276,6 +277,7 @@ abstract class LemuroidApplicationModule {
             directoriesManager: DirectoriesManager,
             biosManager: BiosManager,
             desmumeMigrationHandler: DesmumeMigrationHandler,
+            coreUpdater: CoreUpdater,
         ) = GameLoader(
             lemuroidLibrary,
             statesManager,
@@ -286,6 +288,7 @@ abstract class LemuroidApplicationModule {
             directoriesManager,
             biosManager,
             desmumeMigrationHandler,
+            coreUpdater,
         )
 
         @Provides

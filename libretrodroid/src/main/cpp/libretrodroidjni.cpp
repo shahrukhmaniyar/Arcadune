@@ -266,7 +266,9 @@ JNIEXPORT jbyteArray JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_seri
         auto [data, size] = LibretroDroid::getInstance().serializeState();
 
         jbyteArray result = env->NewByteArray(size);
-        env->SetByteArrayRegion(result, 0, size, data);
+        if (size > 0 && data != nullptr) {
+            env->SetByteArrayRegion(result, 0, size, data);
+        }
         delete[] data;
 
         return result;
@@ -338,7 +340,9 @@ JNIEXPORT jbyteArray JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_seri
         auto [data, size] = LibretroDroid::getInstance().serializeSRAM();
 
         jbyteArray result = env->NewByteArray(size);
-        env->SetByteArrayRegion(result, 0, size, (jbyte *) data);
+        if (size > 0 && data != nullptr) {
+            env->SetByteArrayRegion(result, 0, size, (jbyte *) data);
+        }
         delete[] data;
 
         return result;
@@ -507,14 +511,19 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_loadGameFr
 ) {
     try {
         size_t size = env->GetArrayLength(gameFileBytes);
-        auto* data = new int8_t[size];
-        env->GetByteArrayRegion(
-            gameFileBytes,
-            0,
-            size,
-            reinterpret_cast<int8_t*>(data)
+        std::vector<int8_t> data(size);
+        if (size > 0) {
+            env->GetByteArrayRegion(
+                gameFileBytes,
+                0,
+                static_cast<jsize>(size),
+                reinterpret_cast<jbyte*>(data.data())
+            );
+        }
+        LibretroDroid::getInstance().loadGameFromBytes(
+            data.empty() ? nullptr : data.data(),
+            size
         );
-        LibretroDroid::getInstance().loadGameFromBytes(data, size);
     } catch (std::exception &exception) {
         LOGE("Error in loadGameFromBytes: %s", exception.what());
         JavaUtils::throwRetroException(env, ERROR_LOAD_GAME);
@@ -635,6 +644,14 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setFrameSp
     LibretroDroid::getInstance().setFrameSpeed(speed);
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setFastForwardAudioMode(
+    JNIEnv* env,
+    jclass obj,
+    jint mode
+) {
+    LibretroDroid::getInstance().setFastForwardAudioMode(mode);
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setAudioEnabled(
     JNIEnv* env,
     jclass obj,
@@ -670,6 +687,39 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setViewpor
     LibretroDroid::getInstance().setViewportAlignment(viewportAlignment);
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setScreenRegions(
+    JNIEnv* env,
+    jclass /*obj*/,
+    jfloatArray regionsFlat
+) {
+    std::vector<VideoLayout::ScreenRegion> regions;
+    if (regionsFlat != nullptr) {
+        jsize len = env->GetArrayLength(regionsFlat);
+        jsize count = len / 8;
+        if (count > 0) {
+            regions.reserve(static_cast<size_t>(count));
+            jfloat* raw = env->GetFloatArrayElements(regionsFlat, nullptr);
+            if (raw != nullptr) {
+                for (jsize i = 0; i < count; ++i) {
+                    const jsize base = i * 8;
+                    VideoLayout::ScreenRegion r {};
+                    r.srcX = raw[base + 0];
+                    r.srcY = raw[base + 1];
+                    r.srcW = raw[base + 2];
+                    r.srcH = raw[base + 3];
+                    r.dstX = raw[base + 4];
+                    r.dstY = raw[base + 5];
+                    r.dstW = raw[base + 6];
+                    r.dstH = raw[base + 7];
+                    regions.push_back(r);
+                }
+                env->ReleaseFloatArrayElements(regionsFlat, raw, JNI_ABORT);
+            }
+        }
+    }
+    LibretroDroid::getInstance().setScreenRegions(regions);
+}
+
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_refreshAspectRatio(
     JNIEnv* env,
     jclass obj
@@ -686,7 +736,12 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_configureA
     jint consoleId,
     jboolean hardcoreEnabled,
     jboolean encoreEnabled,
-    jboolean unofficialEnabled
+    jboolean unofficialEnabled,
+    jstring serverHost,
+    jstring appVersion,
+    jstring osRelease,
+    jboolean coreHardcoreAllowed,
+    jstring coreUnsupportedReason
 ) {
     AchievementsConfig config {};
     config.enabled = enabled == JNI_TRUE;
@@ -696,7 +751,60 @@ JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_configureA
     config.hardcoreEnabled = hardcoreEnabled == JNI_TRUE;
     config.encoreEnabled = encoreEnabled == JNI_TRUE;
     config.unofficialEnabled = unofficialEnabled == JNI_TRUE;
+    config.serverHost = serverHost != nullptr ? JniString(env, serverHost).stdString() : std::string();
+    config.appVersion = appVersion != nullptr ? JniString(env, appVersion).stdString() : std::string();
+    config.osRelease = osRelease != nullptr ? JniString(env, osRelease).stdString() : std::string();
+    config.coreHardcoreAllowed = coreHardcoreAllowed == JNI_TRUE;
+    config.coreUnsupportedReason =
+        coreUnsupportedReason != nullptr ? JniString(env, coreUnsupportedReason).stdString() : std::string();
     LibretroDroid::getInstance().configureAchievements(config);
+}
+
+JNIEXPORT jboolean JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setHardcoreMode(
+    JNIEnv* /*env*/,
+    jclass /*obj*/,
+    jboolean enabled
+) {
+    return LibretroDroid::getInstance().setHardcoreMode(enabled == JNI_TRUE) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_canPauseAchievements(
+    JNIEnv* /*env*/,
+    jclass /*obj*/
+) {
+    int remainingFrames = 0;
+    bool allowed = LibretroDroid::getInstance().canPauseAchievements(&remainingFrames);
+    if (allowed) {
+        return 0;
+    }
+    return remainingFrames > 0 ? static_cast<jint>(remainingFrames) : 1;
+}
+
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_idleAchievements(
+    JNIEnv* /*env*/,
+    jclass /*obj*/
+) {
+    LibretroDroid::getInstance().idleAchievements();
+}
+
+JNIEXPORT jboolean JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_isCoreSettingAllowedInHardcore(
+    JNIEnv* env,
+    jclass /*obj*/,
+    jstring libraryName,
+    jint consoleId,
+    jstring key,
+    jstring value
+) {
+    std::string libStr = libraryName != nullptr ? JniString(env, libraryName).stdString() : std::string();
+    std::string keyStr = key != nullptr ? JniString(env, key).stdString() : std::string();
+    std::string valStr = value != nullptr ? JniString(env, value).stdString() : std::string();
+    bool allowed = Environment::isSettingAllowedInHardcore(
+        libStr,
+        static_cast<uint32_t>(consoleId),
+        keyStr,
+        valStr
+    );
+    return allowed ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_completeAchievementHttpRequest(
@@ -790,8 +898,10 @@ JNIEXPORT jobject JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getAchi
     NativeAchievementsSnapshot snap = LibretroDroid::getInstance().captureAchievementsSnapshot();
 
     jclass defClass = env->FindClass("com/swordfish/libretrodroid/AchievementDef");
+    jclass lbClass = env->FindClass("com/swordfish/libretrodroid/LeaderboardDef");
+    jclass trackerClass = env->FindClass("com/swordfish/libretrodroid/LeaderboardTracker");
     jclass snapClass = env->FindClass("com/swordfish/libretrodroid/AchievementsSnapshot");
-    if (defClass == nullptr || snapClass == nullptr) {
+    if (defClass == nullptr || lbClass == nullptr || trackerClass == nullptr || snapClass == nullptr) {
         return nullptr;
     }
 
@@ -800,10 +910,20 @@ JNIEXPORT jobject JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getAchi
         "<init>",
         "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIIJLjava/lang/String;FFFI)V"
     );
+    jmethodID lbCtor = env->GetMethodID(
+        lbClass,
+        "<init>",
+        "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIZ)V"
+    );
+    jmethodID trackerCtor = env->GetMethodID(
+        trackerClass,
+        "<init>",
+        "(ILjava/lang/String;)V"
+    );
     jmethodID snapCtor = env->GetMethodID(
         snapClass,
         "<init>",
-        "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIZ[Lcom/swordfish/libretrodroid/AchievementDef;)V"
+        "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIZ[Lcom/swordfish/libretrodroid/AchievementDef;[Lcom/swordfish/libretrodroid/LeaderboardDef;[Lcom/swordfish/libretrodroid/LeaderboardTracker;)V"
     );
 
     jobjectArray defsArray = env->NewObjectArray(
@@ -851,10 +971,61 @@ JNIEXPORT jobject JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getAchi
         env->DeleteLocalRef(item);
     }
 
+    jobjectArray lbsArray = env->NewObjectArray(
+        static_cast<jsize>(snap.leaderboards.size()),
+        lbClass,
+        nullptr
+    );
+    for (size_t i = 0; i < snap.leaderboards.size(); i++) {
+        const auto& lb = snap.leaderboards[i];
+        jstring jTitle = safeJStringFromUtf8(env, lb.title);
+        jstring jDesc = safeJStringFromUtf8(env, lb.description);
+        jstring jTrackerVal = safeJStringFromUtf8(env, lb.trackerValue);
+
+        jobject item = env->NewObject(
+            lbClass,
+            lbCtor,
+            static_cast<jint>(lb.id),
+            jTitle,
+            jDesc,
+            jTrackerVal,
+            static_cast<jint>(lb.state),
+            static_cast<jint>(lb.format),
+            lb.lowerIsBetter ? JNI_TRUE : JNI_FALSE
+        );
+        env->SetObjectArrayElement(lbsArray, static_cast<jsize>(i), item);
+
+        env->DeleteLocalRef(jTitle);
+        env->DeleteLocalRef(jDesc);
+        env->DeleteLocalRef(jTrackerVal);
+        env->DeleteLocalRef(item);
+    }
+
+    jobjectArray trackersArray = env->NewObjectArray(
+        static_cast<jsize>(snap.leaderboardTrackers.size()),
+        trackerClass,
+        nullptr
+    );
+    for (size_t i = 0; i < snap.leaderboardTrackers.size(); i++) {
+        const auto& tr = snap.leaderboardTrackers[i];
+        jstring jDisplay = safeJStringFromUtf8(env, tr.display);
+        jobject item = env->NewObject(
+            trackerClass,
+            trackerCtor,
+            static_cast<jint>(tr.id),
+            jDisplay
+        );
+        env->SetObjectArrayElement(trackersArray, static_cast<jsize>(i), item);
+        env->DeleteLocalRef(jDisplay);
+        env->DeleteLocalRef(item);
+    }
+
     jstring jStatusMsg = safeJStringFromUtf8(env, snap.statusMessage);
     jstring jGameTitle = safeJStringFromUtf8(env, snap.gameTitle);
     jstring jGameBadge = safeJStringFromUtf8(env, snap.gameBadgeUrl);
+    jstring jGameHash = safeJStringFromUtf8(env, snap.gameHash);
     jstring jRichPresence = safeJStringFromUtf8(env, snap.richPresence);
+    jstring jUserAgent = safeJStringFromUtf8(env, snap.userAgent);
 
     jobject result = env->NewObject(
         snapClass,
@@ -864,21 +1035,31 @@ JNIEXPORT jobject JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getAchi
         static_cast<jint>(snap.gameId),
         jGameTitle,
         jGameBadge,
+        jGameHash,
         jRichPresence,
+        jUserAgent,
         static_cast<jint>(snap.totalCount),
         static_cast<jint>(snap.unlockedCount),
         static_cast<jint>(snap.totalPoints),
         static_cast<jint>(snap.unlockedPoints),
         snap.hardcoreActive ? JNI_TRUE : JNI_FALSE,
-        defsArray
+        defsArray,
+        lbsArray,
+        trackersArray
     );
 
     env->DeleteLocalRef(jStatusMsg);
     env->DeleteLocalRef(jGameTitle);
     env->DeleteLocalRef(jGameBadge);
+    env->DeleteLocalRef(jGameHash);
     env->DeleteLocalRef(jRichPresence);
+    env->DeleteLocalRef(jUserAgent);
     env->DeleteLocalRef(defsArray);
+    env->DeleteLocalRef(lbsArray);
+    env->DeleteLocalRef(trackersArray);
     env->DeleteLocalRef(defClass);
+    env->DeleteLocalRef(lbClass);
+    env->DeleteLocalRef(trackerClass);
     env->DeleteLocalRef(snapClass);
 
     return result;

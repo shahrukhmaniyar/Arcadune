@@ -22,9 +22,10 @@ package com.swordfish.lemuroid.ext.feature.core
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Build
+import android.os.Process
 import com.swordfish.lemuroid.common.files.safeDelete
 import com.swordfish.lemuroid.common.kotlin.writeToFile
+import com.swordfish.lemuroid.lib.core.CoreLibraryLocator
 import com.swordfish.lemuroid.lib.core.CoreUpdater
 import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
@@ -33,27 +34,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import timber.log.Timber
 import java.io.File
+import java.io.IOException
 
 class CoreUpdaterImpl(
     private val directoriesManager: DirectoriesManager,
     retrofit: Retrofit,
 ) : CoreUpdater {
-    // Version of Arcadune's hosted cores (the "cores-<version>" release on GitHub).
-    companion object {
-        private const val CORES_VERSION = "1"
-
-        // Phone chips we publish cores for. Other chips (PC emulators) are not supported.
-        private val HOSTED_ABIS = setOf("arm64-v8a", "armeabi-v7a")
-    }
-
-    // Cores are hosted on Arcadune's own GitHub releases (one file per core and phone chip).
-    private val baseUri = Uri.parse("https://github.com/shahrukhmaniyar/Arcadune/")
-
     private val api = retrofit.create(CoreUpdater.CoreManagerApi::class.java)
+    private val downloadMutex = Mutex()
 
     override suspend fun downloadCores(
         context: Context,
@@ -70,7 +64,9 @@ class CoreUpdaterImpl(
         context: Context,
         coreID: CoreID,
     ) {
-        findBundledLibrary(context, coreID) ?: downloadCoreFromGithub(coreID)
+        withContext(Dispatchers.IO) {
+            CoreLibraryLocator.findBundledLibrary(context, coreID)
+        } ?: downloadCoreFromGithub(coreID)
     }
 
     private suspend fun retrieveAssets(
@@ -81,40 +77,57 @@ class CoreUpdaterImpl(
             .retrieveAssetsIfNeeded(api, directoriesManager, sharedPreferences)
     }
 
-    private suspend fun downloadCoreFromGithub(coreID: CoreID): File {
-        Timber.i("Downloading core $coreID from github")
+    private suspend fun downloadCoreFromGithub(coreID: CoreID): File =
+        downloadMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val coresDirectory =
+                    CoreLibraryLocator.getVersionedCoresDirectory(directoriesManager).apply {
+                        mkdirs()
+                    }
+                val destFile = CoreLibraryLocator.getDownloadedCoreFile(directoriesManager, coreID)
+                if (CoreLibraryLocator.isValidElfSharedLibrary(destFile)) {
+                    return@withContext CoreLibraryLocator.ensureReadOnlyForDynamicLoad(destFile)
+                }
 
-        val mainCoresDirectory = directoriesManager.getCoresDirectory()
-        val coresDirectory =
-            File(mainCoresDirectory, CORES_VERSION).apply {
-                mkdirs()
+                Timber.i("Downloading core $coreID from Arcadune GitHub releases")
+                val abi = CoreLibraryLocator.selectSupportedAbi()
+                val uri = CoreLibraryLocator.buildDownloadUri(abi, coreID)
+                val tempFile =
+                    File(
+                        coresDirectory,
+                        "${coreID.libretroFileName}.${Process.myPid()}.${System.nanoTime()}.tmp",
+                    )
+
+                try {
+                    downloadFile(uri, tempFile)
+                    if (!CoreLibraryLocator.isValidElfSharedLibrary(tempFile)) {
+                        throw IOException("Downloaded core ${coreID.coreName} is not a valid Android ELF binary")
+                    }
+                    CoreLibraryLocator.withCrossProcessCoreLock(directoriesManager) {
+                        runCatching {
+                            CoreLibraryLocator.deleteOutdatedCores(directoriesManager)
+                        }
+                        if (CoreLibraryLocator.isValidElfSharedLibrary(destFile)) {
+                            tempFile.safeDelete()
+                            CoreLibraryLocator.ensureReadOnlyForDynamicLoad(destFile)
+                        } else {
+                            if (destFile.exists()) {
+                                runCatching { destFile.setWritable(true, true) }
+                                destFile.safeDelete()
+                            }
+                            if (!tempFile.renameTo(destFile)) {
+                                tempFile.copyTo(destFile, overwrite = true)
+                                tempFile.safeDelete()
+                            }
+                            CoreLibraryLocator.ensureReadOnlyForDynamicLoad(destFile)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    tempFile.safeDelete()
+                    throw e
+                }
             }
-
-        val libFileName = coreID.libretroFileName
-        val destFile = File(coresDirectory, libFileName)
-
-        if (destFile.exists()) {
-            return destFile
         }
-
-        runCatching {
-            deleteOutdatedCores(mainCoresDirectory, CORES_VERSION)
-        }
-
-        val abi = Build.SUPPORTED_ABIS.firstOrNull { it in HOSTED_ABIS } ?: Build.SUPPORTED_ABIS.first()
-        val uri =
-            baseUri.buildUpon()
-                .appendEncodedPath("releases/download/cores-$CORES_VERSION/${abi}__$libFileName")
-                .build()
-
-        try {
-            downloadFile(uri, destFile)
-            return destFile
-        } catch (e: Throwable) {
-            destFile.safeDelete()
-            throw e
-        }
-    }
 
     private suspend fun downloadFile(
         uri: Uri,
@@ -123,29 +136,11 @@ class CoreUpdaterImpl(
         val response = api.downloadFile(uri.toString())
 
         if (!response.isSuccessful) {
-            Timber.e("Download core response was unsuccessful")
-            throw Exception(response.errorBody()?.string() ?: "Download error")
+            Timber.e("Download core response was unsuccessful (${response.code()}) for $uri")
+            throw IOException("Failed to download core (HTTP ${response.code()})")
         }
 
-        response.body()?.writeToFile(destFile)
-    }
-
-    private suspend fun findBundledLibrary(
-        context: Context,
-        coreID: CoreID,
-    ): File? =
-        withContext(Dispatchers.IO) {
-            File(context.applicationInfo.nativeLibraryDir)
-                .walkBottomUp()
-                .firstOrNull { it.name == coreID.libretroFileName }
-        }
-
-    private fun deleteOutdatedCores(
-        mainCoresDirectory: File,
-        applicationVersion: String,
-    ) {
-        mainCoresDirectory.listFiles()
-            ?.filter { it.name != applicationVersion }
-            ?.forEach { it.deleteRecursively() }
+        val body = response.body() ?: throw IOException("Empty core download response body")
+        body.writeToFile(destFile)
     }
 }

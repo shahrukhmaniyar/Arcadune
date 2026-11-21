@@ -20,7 +20,8 @@ class CoreVariablesManager(private val sharedPreferences: Lazy<SharedPreferences
         game: Game? = null,
     ): List<CoreVariable> {
         val defaultMap = convertCoreVariablesToMap(systemCoreConfig.defaultSettings)
-        val coreVariables = retrieveCustomCoreVariables(systemCoreConfig, computeSharedPreferencesPrefix(systemID.dbname))
+        val coreVariables =
+            retrieveCustomCoreVariables(systemCoreConfig, computeSharedPreferencesPrefix(systemID.dbname))
         val gameVariables =
             if (game != null && hasGameSettings(game)) {
                 retrieveCustomCoreVariables(systemCoreConfig, computeGamePrefix(game.systemId, game.fileName))

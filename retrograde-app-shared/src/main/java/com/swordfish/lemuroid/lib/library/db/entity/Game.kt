@@ -56,9 +56,11 @@ data class Game(
     val customCoverUri: String? = null,
     @ColumnInfo(defaultValue = "0")
     val playCount: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val playTimeMs: Long = 0L,
 ) : Serializable {
-
     fun displayName(): String = customName ?: title
+
     /**
      * A custom image wins. Otherwise a renamed game looks for its cover under the new name, and
      * keeps the cover it originally had as a fallback.

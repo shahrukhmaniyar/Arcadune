@@ -157,13 +157,17 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
         originalDocument: DocumentFile,
     ): RomFiles {
         val cacheFile = GameCacheUtils.getCacheFileForGame(SAF_CACHE_SUBFOLDER, context, game)
-        if (cacheFile.exists()) {
+        cleanupStaleTempFile(cacheFile)
+        if (cacheFile.exists() && cacheFile.length() > 0L) {
             return RomFiles.Standard(listOf(cacheFile))
+        }
+        if (cacheFile.exists()) {
+            cacheFile.delete()
         }
 
         val stream =
             ZipInputStream(
-                context.contentResolver.openInputStream(originalDocument.uri),
+                context.contentResolver.openInputStream(originalDocument.uri)!!,
             )
         stream.extractEntryToFile(game.fileName, cacheFile)
         return RomFiles.Standard(listOf(cacheFile))
@@ -196,12 +200,18 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
                 game,
                 dataFile,
             )
+        val dataUri = Uri.parse(dataFile.fileUri)
+        val expectedSize = DocumentFile.fromSingleUri(context, dataUri)?.length() ?: -1L
+        cleanupStaleTempFile(cacheFile)
 
-        if (cacheFile.exists()) {
+        if (isValidCachedFile(cacheFile, expectedSize)) {
             return cacheFile
         }
+        if (cacheFile.exists()) {
+            cacheFile.delete()
+        }
 
-        val stream = context.contentResolver.openInputStream(Uri.parse(dataFile.fileUri))!!
+        val stream = context.contentResolver.openInputStream(dataUri)!!
         stream.writeToFile(cacheFile)
         return cacheFile
     }
@@ -218,14 +228,36 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
         originalDocument: DocumentFile,
     ): File {
         val cacheFile = GameCacheUtils.getCacheFileForGame(SAF_CACHE_SUBFOLDER, context, game)
+        val expectedSize = originalDocument.length()
+        cleanupStaleTempFile(cacheFile)
 
-        if (cacheFile.exists()) {
+        if (isValidCachedFile(cacheFile, expectedSize)) {
             return cacheFile
+        }
+        if (cacheFile.exists()) {
+            cacheFile.delete()
         }
 
         val stream = context.contentResolver.openInputStream(originalDocument.uri)!!
         stream.writeToFile(cacheFile)
         return cacheFile
+    }
+
+    private fun isValidCachedFile(
+        cacheFile: File,
+        expectedSize: Long,
+    ): Boolean {
+        if (!cacheFile.exists() || cacheFile.length() <= 0L) {
+            return false
+        }
+        return expectedSize <= 0L || cacheFile.length() == expectedSize
+    }
+
+    private fun cleanupStaleTempFile(cacheFile: File) {
+        val tempFile = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
     }
 
     override fun getInputStream(uri: Uri): InputStream? {

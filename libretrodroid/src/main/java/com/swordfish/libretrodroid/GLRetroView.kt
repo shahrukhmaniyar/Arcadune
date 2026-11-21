@@ -40,6 +40,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.properties.Delegates
@@ -56,13 +58,21 @@ class GLRetroView(
         LibretroDroid.setFrameSpeed(value)
     }
 
+    var fastForwardAudioMode: Int by Delegates.observable(FAST_FORWARD_AUDIO_KEEP_PITCH) { _, _, value ->
+        LibretroDroid.setFastForwardAudioMode(value)
+    }
+
     var shader: ShaderConfig by Delegates.observable(data.shader) { _, _, value ->
         LibretroDroid.setShaderConfig(buildShader(value))
     }
 
     var viewport: RectF by Delegates.observable(RectF(0f, 0f, 1f, 1f)) { _, _, value ->
-        runOnEmulationThread(true) {
+        if (Thread.currentThread().name.startsWith("GLThread")) {
             LibretroDroid.setViewport(value.left, value.top, value.width(), value.height())
+        } else {
+            queueEvent {
+                LibretroDroid.setViewport(value.left, value.top, value.width(), value.height())
+            }
         }
     }
 
@@ -70,11 +80,24 @@ class GLRetroView(
         LibretroDroid.setViewportAlignment(value.value)
     }
 
+    var screenRegions: FloatArray by Delegates.observable(FloatArray(0)) { _, old, value ->
+        if (old.contentEquals(value)) return@observable
+        val copy = value.copyOf()
+        if (Thread.currentThread().name.startsWith("GLThread")) {
+            LibretroDroid.setScreenRegions(copy)
+        } else {
+            queueEvent {
+                LibretroDroid.setScreenRegions(copy)
+            }
+        }
+    }
+
     private val openGLESVersion: Int
 
     private var isGameLoaded = false
     private var isEmulationReady = false
     private var isAborted = false
+    private val isDestroyed = AtomicBoolean(false)
 
     private val retroGLEventsSubject = MutableSharedFlow<GLRetroEvents>(1)
     private val retroGLIssuesErrors = MutableSharedFlow<Int>(1)
@@ -95,6 +118,38 @@ class GLRetroView(
     fun onCreate(lifecycleOwner: LifecycleOwner) =
         catchExceptions {
             lifecycle = lifecycleOwner.lifecycle
+            val achConfig = data.achievementsConfig
+            if (achConfig != null) {
+                LibretroDroid.configureAchievements(
+                    achConfig.enabled,
+                    achConfig.username,
+                    achConfig.token,
+                    achConfig.consoleId,
+                    achConfig.hardcoreEnabled,
+                    achConfig.encoreEnabled,
+                    achConfig.unofficialEnabled,
+                    achConfig.serverHost,
+                    achConfig.appVersion,
+                    achConfig.osRelease,
+                    achConfig.coreHardcoreAllowed,
+                    achConfig.coreUnsupportedReason,
+                )
+            } else {
+                LibretroDroid.configureAchievements(
+                    false,
+                    "",
+                    "",
+                    0,
+                    false,
+                    false,
+                    false,
+                    "",
+                    "",
+                    "",
+                    true,
+                    "",
+                )
+            }
             LibretroDroid.create(
                 openGLESVersion,
                 data.coreFilePath,
@@ -111,29 +166,48 @@ class GLRetroView(
                 getDeviceLanguage(),
             )
             LibretroDroid.setRumbleEnabled(data.rumbleEventsEnabled)
+            LibretroDroid.setFastForwardAudioMode(fastForwardAudioMode)
             LibretroDroid.setViewportAlignment(data.viewportAlignment.value)
-            val achConfig = data.achievementsConfig
-            if (achConfig != null) {
-                LibretroDroid.configureAchievements(
-                    achConfig.enabled,
-                    achConfig.username,
-                    achConfig.token,
-                    achConfig.consoleId,
-                    achConfig.hardcoreEnabled,
-                    achConfig.encoreEnabled,
-                    achConfig.unofficialEnabled,
-                )
-            } else {
-                LibretroDroid.configureAchievements(false, "", "", 0, false, false, false)
+            if (screenRegions.isNotEmpty()) {
+                LibretroDroid.setScreenRegions(screenRegions.copyOf())
             }
         }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     fun onDestroy() =
         catchExceptions {
-            LibretroDroid.destroy()
+            destroySynchronously()
             lifecycle = null
         }
+
+    fun destroySynchronously() {
+        if (!isDestroyed.compareAndSet(false, true)) {
+            return
+        }
+        isEmulationReady = false
+        try {
+            if (Thread.currentThread().name.startsWith("GLThread")) {
+                LibretroDroid.destroy()
+                return
+            }
+            if (isGameLoaded) {
+                val latch = CountDownLatch(1)
+                queueEvent {
+                    try {
+                        LibretroDroid.destroy()
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                if (latch.await(750L, TimeUnit.MILLISECONDS)) {
+                    return
+                }
+            }
+            LibretroDroid.destroy()
+        } catch (e: Exception) {
+            Log.e(TAG_LOG, "Error while destroying GLRetroView", e)
+        }
+    }
 
     private fun getDeviceLanguage() = Locale.getDefault().language
 
@@ -211,6 +285,30 @@ class GLRetroView(
         }
     }
 
+    fun resetCheat(useEmulationThread: Boolean = true) {
+        runOnEmulationThread(useEmulationThread) {
+            LibretroDroid.resetCheat()
+        }
+    }
+
+    fun setHardcoreMode(
+        enabled: Boolean,
+        useEmulationThread: Boolean = true,
+    ): Boolean {
+        return runOnEmulationThreadBounded(useEmulationThread, 8000L, false) {
+            LibretroDroid.setHardcoreMode(enabled)
+        }
+    }
+
+    /** Returns 0 if pause is allowed, or remaining frames (>0) required before pausing is allowed. */
+    fun canPauseAchievements(): Int {
+        return LibretroDroid.canPauseAchievements()
+    }
+
+    fun idleAchievements() {
+        LibretroDroid.idleAchievements()
+    }
+
     fun unserializeState(
         data: ByteArray,
         useEmulationThread: Boolean = true,
@@ -282,11 +380,15 @@ class GLRetroView(
     }
 
     fun getAvailableDisks(useEmulationThread: Boolean = true): Int {
-        return runOnEmulationThread(useEmulationThread) { LibretroDroid.availableDisks() }
+        return runOnEmulationThreadBounded(useEmulationThread, 1000L, 0) {
+            LibretroDroid.availableDisks()
+        }
     }
 
     fun getCurrentDisk(useEmulationThread: Boolean = true): Int {
-        return runOnEmulationThread(useEmulationThread) { LibretroDroid.currentDisk() }
+        return runOnEmulationThreadBounded(useEmulationThread, 1000L, 0) {
+            LibretroDroid.currentDisk()
+        }
     }
 
     fun changeDisk(
@@ -397,7 +499,7 @@ class GLRetroView(
             width: Int,
             height: Int,
         ) = catchExceptions {
-            Thread.currentThread().priority = Thread.MAX_PRIORITY
+            Thread.currentThread().priority = (Thread.NORM_PRIORITY + 1).coerceAtMost(Thread.MAX_PRIORITY)
             LibretroDroid.onSurfaceChanged(width, height)
         }
 
@@ -405,7 +507,7 @@ class GLRetroView(
             gl: GL10,
             config: EGLConfig,
         ) = catchExceptions {
-            Thread.currentThread().priority = Thread.MAX_PRIORITY
+            Thread.currentThread().priority = (Thread.NORM_PRIORITY + 1).coerceAtMost(Thread.MAX_PRIORITY)
             initializeCore()
             lifecycle?.coroutineScope?.launch {
                 retroGLEventsSubject.emit(GLRetroEvents.SurfaceCreated)
@@ -483,6 +585,37 @@ class GLRetroView(
 
         latch.awaitUninterruptibly()
         return result!!
+    }
+
+    private fun <T> runOnEmulationThreadBounded(
+        useEmulationThread: Boolean,
+        timeoutMs: Long,
+        fallback: T,
+        block: () -> T,
+    ): T {
+        if (!useEmulationThread || Thread.currentThread().name.startsWith("GLThread")) {
+            return block()
+        }
+        if (!isGameLoaded || isDestroyed.get()) {
+            return fallback
+        }
+
+        val latch = CountDownLatch(1)
+        val expired = AtomicBoolean(false)
+        var result: T? = null
+        queueEvent {
+            if (!expired.get()) {
+                result = block()
+            }
+            latch.countDown()
+        }
+
+        return if (latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+            result ?: fallback
+        } else {
+            expired.set(true)
+            fallback
+        }
     }
 
     private fun buildShader(config: ShaderConfig): GLRetroShader {
@@ -633,6 +766,10 @@ class GLRetroView(
         const val ERROR_SERIALIZATION = LibretroDroid.ERROR_SERIALIZATION
         const val ERROR_CHEAT = LibretroDroid.ERROR_CHEAT
         const val ERROR_GENERIC = LibretroDroid.ERROR_GENERIC
+
+        const val FAST_FORWARD_AUDIO_KEEP_PITCH = LibretroDroid.FAST_FORWARD_AUDIO_KEEP_PITCH
+        const val FAST_FORWARD_AUDIO_CLASSIC = LibretroDroid.FAST_FORWARD_AUDIO_CLASSIC
+        const val FAST_FORWARD_AUDIO_MUTE = LibretroDroid.FAST_FORWARD_AUDIO_MUTE
 
         private val TOUCH_EVENT_OUTSIDE = PointF(-10f, 10f)
     }

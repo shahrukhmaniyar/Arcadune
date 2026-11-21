@@ -204,7 +204,79 @@ void VideoLayout::updateRotation(float rotation) {
     updateBuffers();
 }
 
+void VideoLayout::updateScreenRegions(const std::vector<ScreenRegion>& regions) {
+    std::lock_guard<std::mutex> lock(regionsMutex);
+    screenRegions = regions;
+}
+
+std::vector<VideoLayout::ScreenRegion> VideoLayout::getScreenRegionsSnapshot() const {
+    std::lock_guard<std::mutex> lock(regionsMutex);
+    return screenRegions;
+}
+
+void VideoLayout::buildRegionQuad(
+    const ScreenRegion& region,
+    std::array<float, 12>& outVertices,
+    std::array<float, 12>& outTexCoords
+) const {
+    const float xLeft = region.dstX * 2.0F - 1.0F;
+    const float xRight = (region.dstX + region.dstW) * 2.0F - 1.0F;
+    const float yTop = 1.0F - region.dstY * 2.0F;
+    const float yBottom = 1.0F - (region.dstY + region.dstH) * 2.0F;
+
+    outVertices = {
+        xLeft,  yTop,
+        xLeft,  yBottom,
+        xRight, yTop,
+        xRight, yTop,
+        xLeft,  yBottom,
+        xRight, yBottom,
+    };
+
+    const float uLeft = region.srcX;
+    const float uRight = region.srcX + region.srcW;
+    const float vTop = bottomLeftOrigin ? (1.0F - region.srcY) : region.srcY;
+    const float vBottom = bottomLeftOrigin
+        ? (1.0F - (region.srcY + region.srcH))
+        : (region.srcY + region.srcH);
+
+    outTexCoords = {
+        uLeft,  vTop,
+        uLeft,  vBottom,
+        uRight, vTop,
+        uRight, vTop,
+        uLeft,  vBottom,
+        uRight, vBottom,
+    };
+}
+
 std::pair<float, float> VideoLayout::getRelativePosition(float touchX, float touchY) {
+    if (std::fabs(touchX) > 2.0F || std::fabs(touchY) > 2.0F) {
+        return {-10.0f, -10.0f};
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(regionsMutex);
+        if (!screenRegions.empty()) {
+            const float normX = (touchX + 1.0F) * 0.5F;
+            const float normY = (touchY + 1.0F) * 0.5F;
+            for (auto it = screenRegions.rbegin(); it != screenRegions.rend(); ++it) {
+                const auto& r = *it;
+                if (r.dstW <= 0.0001F || r.dstH <= 0.0001F) continue;
+                if (normX >= r.dstX && normX <= (r.dstX + r.dstW) &&
+                    normY >= r.dstY && normY <= (r.dstY + r.dstH)) {
+                    const float localU = (normX - r.dstX) / r.dstW;
+                    const float localV = (normY - r.dstY) / r.dstH;
+                    return {
+                        r.srcX + localU * r.srcW,
+                        r.srcY + localV * r.srcH
+                    };
+                }
+            }
+            return {-10.0f, -10.0f};
+        }
+    }
+
     float xMin = std::numeric_limits<float>::max();
     float xMax = std::numeric_limits<float>::lowest();
     float yMin = std::numeric_limits<float>::max();

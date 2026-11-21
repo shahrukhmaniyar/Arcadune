@@ -109,6 +109,12 @@ enum class MainRoute(
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
+    SETTINGS_CORES_SELECTION(
+        route = "settings/cores",
+        titleId = R.string.settings_title_open_cores_selection,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
     SETTINGS_SKINS(
         route = "settings/skins",
         titleId = R.string.skin_gallery_title,

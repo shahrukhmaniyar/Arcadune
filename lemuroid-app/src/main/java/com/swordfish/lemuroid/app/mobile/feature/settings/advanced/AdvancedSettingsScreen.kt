@@ -2,6 +2,13 @@ package com.swordfish.lemuroid.app.mobile.feature.settings.advanced
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -12,12 +19,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.main.MainRoute
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneDialog
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconBadge
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcadunePillButton
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneRowDivider
 import com.swordfish.lemuroid.app.utils.android.settings.LemuroidCardSettingsGroup
@@ -60,19 +69,22 @@ private fun InputSettings() {
     ) {
         val rumbleEnabled = booleanPreferenceState(R.string.pref_key_enable_rumble, false)
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.SportsEsports) },
             state = rumbleEnabled,
             title = { Text(text = stringResource(id = R.string.settings_title_enable_rumble)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_rumble)) },
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Vibration) },
             enabled = rumbleEnabled.value,
             state = booleanPreferenceState(R.string.pref_key_enable_device_rumble, false),
             title = { Text(text = stringResource(id = R.string.settings_title_enable_device_rumble)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_enable_device_rumble)) },
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsSlider(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Sensors) },
             state =
                 intPreferenceState(
                     key = stringResource(id = R.string.pref_key_tilt_sensitivity_index),
@@ -98,12 +110,14 @@ private fun GeneralSettings(
         title = { Text(text = stringResource(id = R.string.settings_category_general)) },
     ) {
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.GraphicEq) },
             state = booleanPreferenceState(R.string.pref_key_low_latency_audio, false),
             title = { Text(text = stringResource(id = R.string.settings_title_low_latency_audio)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_low_latency_audio)) },
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsList(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Storage) },
             title = { Text(text = stringResource(R.string.settings_title_maximum_cache_usage)) },
             items = cacheState.displayNames,
             state =
@@ -113,14 +127,16 @@ private fun GeneralSettings(
                     cacheState.values,
                 ),
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.Bolt) },
             state = booleanPreferenceState(R.string.pref_key_allow_direct_game_load, true),
             title = { Text(text = stringResource(id = R.string.settings_title_direct_game_load)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_direct_game_load)) },
         )
-        ArcaduneRowDivider()
+        ArcaduneRowDivider(startIndent = 68.dp)
         LemuroidSettingsMenuLink(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.RestartAlt) },
             title = { Text(text = stringResource(id = R.string.settings_title_reset_settings)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_reset_settings)) },
             onClick = { factoryResetDialogState.value = true },

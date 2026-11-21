@@ -78,6 +78,10 @@ public class LibretroDroid {
     public static final int ERROR_CHEAT = 4;
     public static final int ERROR_GENERIC = -1;
 
+    public static final int FAST_FORWARD_AUDIO_KEEP_PITCH = 0;
+    public static final int FAST_FORWARD_AUDIO_CLASSIC = 1;
+    public static final int FAST_FORWARD_AUDIO_MUTE = 2;
+
     public static native void create(
         int GLESVersion,
         String coreFilePath,
@@ -111,10 +115,12 @@ public class LibretroDroid {
 
     public static native void setRumbleEnabled(boolean enabled);
     public static native void setFrameSpeed(int speed);
+    public static native void setFastForwardAudioMode(int mode);
     public static native void setAudioEnabled(boolean enabled);
     public static native void setShaderConfig(GLRetroShader shader);
     public static native void setViewport(float x, float y, float width, float height);
     public static native void setViewportAlignment(int viewportAlignment);
+    public static native void setScreenRegions(float[] regionsFlat);
 
     public static native byte[] serializeState();
     public static native boolean unserializeState(byte[] state);
@@ -149,7 +155,26 @@ public class LibretroDroid {
         int consoleId,
         boolean hardcoreEnabled,
         boolean encoreEnabled,
-        boolean unofficialEnabled
+        boolean unofficialEnabled,
+        String serverHost,
+        String appVersion,
+        String osRelease,
+        boolean coreHardcoreAllowed,
+        String coreUnsupportedReason
+    );
+
+    public static native boolean setHardcoreMode(boolean enabled);
+
+    /** Returns 0 if pause is allowed, or remaining frames (>0) required before pausing is allowed. */
+    public static native int canPauseAchievements();
+
+    public static native void idleAchievements();
+
+    public static native boolean isCoreSettingAllowedInHardcore(
+        String libraryName,
+        int consoleId,
+        String key,
+        String value
     );
 
     public static native void completeAchievementHttpRequest(

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
+import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.app.shared.gamecrash.GameCrashActivity
 import com.swordfish.lemuroid.app.shared.savesync.SaveSyncWork
 import com.swordfish.lemuroid.app.shared.storage.cache.CacheCleanerWork
@@ -27,9 +28,10 @@ class GameLaunchTaskHandler(
         resultCode: Int,
         data: Intent?,
     ) {
+        val flushedGameIds = PlayTimeTracker.flushPendingToDatabase(activity.applicationContext, retrogradeDb)
         rescheduleBackgroundWork(activity.applicationContext)
         when (resultCode) {
-            Activity.RESULT_OK -> handleSuccessfulGameFinish(activity, enableRatingFlow, data)
+            Activity.RESULT_OK -> handleSuccessfulGameFinish(activity, enableRatingFlow, data, flushedGameIds)
             BaseGameActivity.RESULT_ERROR ->
                 handleUnsuccessfulGameFinish(
                     activity,
@@ -70,6 +72,7 @@ class GameLaunchTaskHandler(
         activity: Activity,
         enableRatingFlow: Boolean,
         data: Intent?,
+        flushedGameIds: Set<Int>,
     ) {
         val duration =
             data?.extras?.getLong(BaseGameActivity.PLAY_GAME_RESULT_SESSION_DURATION)
@@ -80,7 +83,14 @@ class GameLaunchTaskHandler(
             (data?.extras?.getSerializable(BaseGameActivity.PLAY_GAME_RESULT_GAME) as? Game)
                 ?: return
 
-        updateGamePlayedTimestamp(game)
+        if (game.id !in flushedGameIds) {
+            retrogradeDb.gameDao().recordPlaySession(
+                id = game.id,
+                playedAt = System.currentTimeMillis(),
+                playCountDelta = 1,
+                playTimeDeltaMs = duration.coerceAtLeast(0L),
+            )
+        }
         if (enableRatingFlow) {
             displayReviewRequest(activity, duration)
         }
@@ -92,9 +102,5 @@ class GameLaunchTaskHandler(
     ) {
         delay(500)
         reviewManager.launchReviewFlow(activity, durationMillis)
-    }
-
-    private suspend fun updateGamePlayedTimestamp(game: Game) {
-        retrogradeDb.gameDao().markPlayed(game.id, System.currentTimeMillis())
     }
 }

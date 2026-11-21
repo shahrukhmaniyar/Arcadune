@@ -254,12 +254,29 @@ fun renderPart(layout: SkinLayout, control: SkinControl, pressed: Boolean): Imag
                 val label =
                     when (shape) {
                         ButtonShape.SHOULDER -> c(palette.shoulderLabel)
+                        // Small pills carry their name on them, in the colour the app gives their pictures (menu, exit, rewind):
+                        // the palette's own where it reads on the pill, else near-white on a dark pill and near-black on a light one.
+                        ButtonShape.PILL -> {
+                            val drawn = standingOut(fill, c(palette.body))
+                            val wanted = c(palette.buttonLabel)
+                            when {
+                                kotlin.math.abs(lum(drawn) - lum(wanted)) >= 0.3f -> wanted
+                                lum(drawn) > 0.4f -> 0xFF1E1E22.toInt()
+                                else -> 0xFFF2F2F4.toInt()
+                            }
+                        }
                         else -> c(palette.labelOf(control.keyCode))
                     }
                 // From the smaller side, so a tall thin tab (the DS L / R) gets a small letter, not a huge one.
                 val side = minOf(face.width, face.height)
-                val size = if (shape == ButtonShape.ROUND) side * 0.44f else side * 0.52f
-                val font = Font(inter(if (shape == ButtonShape.ROUND) 600 else 700), size)
+                var size = if (shape == ButtonShape.ROUND) side * 0.44f else if (shape == ButtonShape.PILL) side * 0.58f else side * 0.52f
+                var font = Font(inter(if (shape == ButtonShape.ROUND) 600 else 700), size)
+                // A long name (SELECT/X) shrinks to fit inside the pill.
+                val natural = TextLine.make(control.label, font).width
+                if (shape == ButtonShape.PILL && natural > face.width * 0.84f) {
+                    size *= face.width * 0.84f / natural
+                    font = Font(inter(700), size)
+                }
                 canvas.moulded(control.label, font, face.left + face.width / 2, face.top + face.height / 2, label, fill, extent, pressed)
             }
         }
@@ -308,10 +325,10 @@ fun renderBody(layout: SkinLayout, grille: Boolean): Image {
     val y = (layout.height - 8) * K
     val mark = Rect.makeLTRB(x / K, y / K - 9f, (x + line.width) / K, y / K + 2f)
     val clear =
-        layout.controls.none { control ->
+        layout.controls.filterNot { it.defaultHidden }.none { control ->
             val f = control.frame
             // A name goes up to 16 units under small buttons and buttons named underneath.
-            val captioned = control is SkinControl.Menu || control is SkinControl.Rewind || (control as? SkinControl.Button)?.labelBelow == true
+            val captioned = (control is SkinControl.Menu && !layout.captionless) || control is SkinControl.Rewind || (control as? SkinControl.Button)?.labelBelow == true
             val bottom = f.y + f.height + if (captioned) 16f else 0f
             // And some room beside it, so it never squeezes between two names.
             f.x < mark.right + 8f && f.x + f.width > mark.left - 8f && f.y < mark.bottom && bottom > mark.top
@@ -342,6 +359,7 @@ fun renderComposite(layout: SkinLayout, grille: Boolean, pressedIndex: Int = -1)
     })
     canvas.drawImage(renderBody(layout, grille), 0f, 0f)
     layout.controls.forEachIndexed { i, control ->
+        if (control.defaultHidden) return@forEachIndexed
         val part = renderPart(layout, control, i == pressedIndex) ?: return@forEachIndexed
         canvas.drawImage(part, (control.frame.x - control.reach - ART_BLEED) * K, (control.frame.y - control.reach - ART_BLEED) * K)
     }

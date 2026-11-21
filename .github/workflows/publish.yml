@@ -32,13 +32,17 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Assemble Artifact
-        run: ./gradlew assembleFreeDynamic
+        run: |
+          ./gradlew :lemuroid-app:assembleFreeDynamicRelease
+          ./gradlew :lemuroid-app:assembleFreeBundleRelease
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v3.1.0
         with:
           name: apk
-          path: lemuroid-app/build/outputs/apk/freeDynamic/release/lemuroid-app-free-dynamic-release.apk
+          path: |
+            lemuroid-app/build/outputs/apk/freeDynamic/release/Arcadune.apk
+            lemuroid-app/build/outputs/apk/freeBundle/release/Arcadune-full.apk
 
   publish_apk:
     name: Publish APK on Github
@@ -57,4 +61,6 @@ jobs:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: true
           title: "Pre-release"
-          files: lemuroid-app-free-dynamic-release.apk
+          files: |
+            Arcadune.apk
+            Arcadune-full.apk

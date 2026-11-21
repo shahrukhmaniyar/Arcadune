@@ -6,12 +6,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -42,9 +47,13 @@ fun LemuroidSettingsPage(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val horizontalSafe =
+        WindowInsets.displayCutout
+            .union(WindowInsets.navigationBars)
+            .only(WindowInsetsSides.Horizontal)
     // On a wide screen (landscape, tablets) the cards keep a readable width, centred.
     Box(
-        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxWidth().windowInsetsPadding(horizontalSafe).verticalScroll(rememberScrollState()),
         contentAlignment = Alignment.TopCenter,
     ) {
         Column(
@@ -66,8 +75,12 @@ fun LemuroidLazySettingsPage(
     content: LazyListScope.() -> Unit,
 ) {
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val horizontalSafe =
+        WindowInsets.displayCutout
+            .union(WindowInsets.navigationBars)
+            .only(WindowInsetsSides.Horizontal)
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().windowInsetsPadding(horizontalSafe),
         contentAlignment = Alignment.TopCenter,
     ) {
         LazyColumn(
@@ -175,6 +188,7 @@ fun LemuroidSettingsSlider(
     steps: Int,
     enabled: Boolean,
     valueRange: ClosedFloatingPointRange<Float>,
+    icon: (@Composable () -> Unit)? = null,
     title: @Composable () -> Unit,
     subtitle: @Composable () -> Unit = { },
 ) {
@@ -184,6 +198,7 @@ fun LemuroidSettingsSlider(
         value = state.value.toFloat(),
         onValueChange = { state.value = it.roundToInt() },
         valueRange = valueRange,
+        icon = icon,
         title = title,
         subtitle = subtitle,
         enabled = enabled,

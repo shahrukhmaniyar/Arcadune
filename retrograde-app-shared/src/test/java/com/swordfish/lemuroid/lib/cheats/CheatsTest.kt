@@ -64,7 +64,10 @@ class LibretroTitleMatcherTest {
     @Test
     fun matchesAcrossRegionPublisherAndExtraTags() {
         val files = listOf("Wario Land 4 (USA, Europe) (Code Breaker)", "Other Game (USA)")
-        assertEquals("Wario Land 4 (USA, Europe) (Code Breaker)", LibretroTitleMatcher.findBest(files, "Wario Land 4 (USA, Europe)"))
+        assertEquals(
+            "Wario Land 4 (USA, Europe) (Code Breaker)",
+            LibretroTitleMatcher.findBest(files, "Wario Land 4 (USA, Europe)"),
+        )
         assertEquals("Contra (USA)", LibretroTitleMatcher.findBest(listOf("Contra (USA)"), "Contra (Konami) (USA)"))
     }
 
@@ -182,7 +185,11 @@ class CheatApplierTest {
         val before = listOf(autoKill, autoKillOff)
         val after = listOf(autoKill.copy(enabled = false), autoKillOff)
 
-        val active = CheatApplier(core, "psp").apply(after, previouslyApplied = CheatApplier(core, "psp").activeCheats(before))
+        val active =
+            CheatApplier(
+                core,
+                "psp",
+            ).apply(after, previouslyApplied = CheatApplier(core, "psp").activeCheats(before))
 
         assertEquals(0, active)
         assertEquals(listOf(autoKillOff.code), core.activeCodes)
@@ -196,7 +203,10 @@ class CheatApplierTest {
         CheatApplier(core, "psp").apply(list, previouslyApplied = listOf(autoKill))
         assertEquals(listOf(autoKill.code), core.activeCodes)
 
-        CheatApplier(core, "psp").apply(listOf(autoKill.copy(enabled = false), autoKillOff), previouslyApplied = emptyList())
+        CheatApplier(
+            core,
+            "psp",
+        ).apply(listOf(autoKill.copy(enabled = false), autoKillOff), previouslyApplied = emptyList())
         assertTrue(core.activeCodes.isEmpty())
     }
 
@@ -279,7 +289,11 @@ class CheatApplierTest {
     fun aGbaCheatThatIsOnlyHookLinesSendsNothing() {
         val core = FakeCore()
 
-        val active = CheatApplier(core, "gba").apply(listOf(Cheat("Setup", "0000F3FD+000A+100011E6+0007", enabled = true)))
+        val active =
+            CheatApplier(
+                core,
+                "gba",
+            ).apply(listOf(Cheat("Setup", "0000F3FD+000A+100011E6+0007", enabled = true)))
 
         assertEquals(0, active)
         assertTrue(core.activeCodes.isEmpty())
@@ -316,7 +330,10 @@ class CheatApplierTest {
         val core = FakeCore()
         CheatApplier(core, "nes").apply(list)
         // The player switches "Invincible" off and closes the menu: the list is applied again.
-        CheatApplier(core, "nes").apply(list.map { if (it.description == "Invincible") it.copy(enabled = false) else it })
+        CheatApplier(
+            core,
+            "nes",
+        ).apply(list.map { if (it.description == "Invincible") it.copy(enabled = false) else it })
 
         assertEquals(listOf("NYAIUZ"), core.activeCodes)
         assertTrue(core.calls.none { it.contains("0024:01") })
@@ -374,7 +391,22 @@ class CheatSafetyTest {
 
     @Test
     fun longCodesAreRefusedOnSystemsWherePartsMayDependOnEachOther() {
-        for (system in listOf("gba", "n64", "psx", "psp", "gb", "gbc", "nds", "ngp", "atari2600", "atari7800", "lynx", "mame2003plus")) {
+        val systems =
+            listOf(
+                "gba",
+                "n64",
+                "psx",
+                "psp",
+                "gb",
+                "gbc",
+                "nds",
+                "ngp",
+                "atari2600",
+                "atari7800",
+                "lynx",
+                "mame2003plus",
+            )
+        for (system in systems) {
             assertNull("$system must not split", CheatPolicy.chunks(crashingCode, system))
             assertFalse(CheatPolicy.isSupported(crashingCode, system))
         }
@@ -472,7 +504,8 @@ class CheatsDownloaderParsingTest {
     @Test
     fun readsOnlyChtFileNamesFromAGithubTree() {
         val json =
-            """{"sha":"x","tree":[{"path":"Contra (USA).cht","type":"blob"},{"path":"readme.txt","type":"blob"},{"path":"Super C (USA).cht","type":"blob"}],"truncated":false}"""
+            """{"sha":"x","tree":[{"path":"Contra (USA).cht","type":"blob"},""" +
+                """{"path":"readme.txt","type":"blob"},{"path":"Super C (USA).cht","type":"blob"}],"truncated":false}"""
         assertEquals(listOf("Contra (USA)", "Super C (USA)"), CheatsDownloader.parseTreeNames(json))
     }
 

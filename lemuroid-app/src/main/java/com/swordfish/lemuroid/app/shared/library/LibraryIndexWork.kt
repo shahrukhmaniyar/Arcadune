@@ -34,7 +34,8 @@ class LibraryIndexWork(context: Context, workerParams: WorkerParameters) :
                 notificationsManager.libraryIndexingNotification(),
             )
 
-        setForegroundAsync(foregroundInfo)
+        runCatching { setForegroundAsync(foregroundInfo) }
+            .onFailure { Timber.w(it, "Unable to promote LibraryIndexWork to foreground") }
 
         try {
             withContext(Dispatchers.IO) {

@@ -19,7 +19,6 @@ import java.io.FileOutputStream
  *   - Cleanup is trivial: delete the file when the game or the custom artwork is removed.
  */
 class CustomCoverManager(private val appContext: Context) {
-
     /** Returns (and creates if necessary) the directory for custom covers. */
     fun getCoversDirectory(): File {
         val baseDir = appContext.getExternalFilesDir(null) ?: appContext.filesDir
@@ -42,8 +41,10 @@ class CustomCoverManager(private val appContext: Context) {
      * Build a versioned cover file path for a given game id and extension so replacing an existing
      * custom cover produces a distinct file:// URI and immediately invalidates Coil's image caches.
      */
-    private fun coverFileForGame(gameId: Int, extension: String): File =
-        File(getCoversDirectory(), "cover_${gameId}_${System.currentTimeMillis()}.$extension")
+    private fun coverFileForGame(
+        gameId: Int,
+        extension: String,
+    ): File = File(getCoversDirectory(), "cover_${gameId}_${System.currentTimeMillis()}.$extension")
 
     /**
      * Copies the image at [sourceUri] into private storage and returns the local
@@ -52,7 +53,10 @@ class CustomCoverManager(private val appContext: Context) {
      * Any previously stored cover for this game is deleted first so that
      * switching from e.g. a .jpg to a .webp doesn't leave an orphan.
      */
-    suspend fun importCover(gameId: Int, sourceUri: Uri): String =
+    suspend fun importCover(
+        gameId: Int,
+        sourceUri: Uri,
+    ): String =
         withContext(Dispatchers.IO) {
             // Remove any existing cover regardless of its extension
             deleteCoversForGameId(gameId)
@@ -86,7 +90,7 @@ class CustomCoverManager(private val appContext: Context) {
      * This ensures cleanup works regardless of which image format or timestamp was used.
      */
     private fun deleteCoversForGameId(gameId: Int) {
-        val legacyPrefix = "cover_${gameId}."
+        val legacyPrefix = "cover_$gameId."
         val versionedPrefix = "cover_${gameId}_"
         getCoversDirectory().listFiles()
             ?.filter { it.name.startsWith(versionedPrefix) || it.name.startsWith(legacyPrefix) }

@@ -10,28 +10,20 @@ import dagger.android.DaggerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.system.exitProcess
 
 class GameService : DaggerService() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onBind(intent: Intent?) = null
 
     override fun onCreate() {
         super.onCreate()
-        serviceScope.launch {
-            awaitTermination()
-            withContext(Dispatchers.Main) {
-                ServiceCompat.stopForeground(this@GameService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                exitProcess(0)
-            }
-        }
+        activeService = this
+        ensureTaskRunnerStarted(applicationContext)
     }
 
     override fun onStartCommand(
@@ -39,6 +31,7 @@ class GameService : DaggerService() {
         flags: Int,
         startId: Int,
     ): Int {
+        ensureTaskRunnerStarted(applicationContext)
         if (intent != null) {
             displayNotification(intent)
         }
@@ -49,8 +42,12 @@ class GameService : DaggerService() {
         startId: Int,
         fgsType: Int,
     ) {
+        // Android 15 enforces a 6-hour rolling quota on dataSync foreground services.
+        // Drop foreground status cleanly while keeping processScope alive so SRAM + AutoSave
+        // tasks scheduled on game exit still run to completion before process termination.
         Timber.w("GameService foreground timeout reached (fgsType=%d), stopping foreground", fgsType)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        hideNotification()
         stopSelf(startId)
     }
 
@@ -76,7 +73,9 @@ class GameService : DaggerService() {
     }
 
     override fun onDestroy() {
-        serviceScope.cancel()
+        if (activeService === this) {
+            activeService = null
+        }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         hideNotification()
     }
@@ -89,25 +88,60 @@ class GameService : DaggerService() {
             val terminate: Boolean = false,
         )
 
-        private val tasks = Channel<GameProcessTask>(capacity = Channel.BUFFERED)
+        private val processScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val runnerStarted = AtomicBoolean(false)
+        private val tasks = Channel<GameProcessTask>(capacity = Channel.UNLIMITED)
+
+        @Volatile
+        private var activeService: GameService? = null
+
+        @Volatile
+        private var retainedAppContext: Context? = null
+
+        private fun ensureTaskRunnerStarted(context: Context? = null) {
+            if (context != null && retainedAppContext == null) {
+                retainedAppContext = context.applicationContext
+            }
+            if (!runnerStarted.compareAndSet(false, true)) return
+            processScope.launch {
+                awaitTermination()
+                withContext(Dispatchers.Main) {
+                    activeService?.let { service ->
+                        ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                        service.stopSelf()
+                    }
+                    retainedAppContext?.let { ctx ->
+                        NotificationManagerCompat.from(ctx).cancel(NotificationsManager.GAME_RUNNING_NOTIFICATION_ID)
+                    }
+                    exitProcess(0)
+                }
+            }
+        }
 
         fun startService(
             context: Context,
             gameActivityIntent: Intent,
         ) {
-            context.startService(
-                Intent(context, GameService::class.java).apply {
-                    putExtra(EXTRA_GAME_ACTIVITY_INTENT, gameActivityIntent)
-                },
-            )
+            ensureTaskRunnerStarted(context)
+            runCatching {
+                context.startService(
+                    Intent(context, GameService::class.java).apply {
+                        putExtra(EXTRA_GAME_ACTIVITY_INTENT, gameActivityIntent)
+                    },
+                )
+            }.onFailure {
+                Timber.w(it, "Unable to start GameService; process task runner remains active")
+            }
         }
 
         fun schedule(task: suspend () -> Unit) {
+            ensureTaskRunnerStarted()
             val result = tasks.trySend(GameProcessTask(task = task))
             Timber.i("GameService.schedule sent=%s", result.isSuccess)
         }
 
         fun requestTermination() {
+            ensureTaskRunnerStarted()
             val result = tasks.trySend(GameProcessTask(terminate = true))
             Timber.i("GameService.requestTermination sent=%s", result.isSuccess)
         }

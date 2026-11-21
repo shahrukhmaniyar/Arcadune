@@ -197,6 +197,18 @@ class GameViewModelTouchControls(
     private var dpadNonZero = false
     private var pendingDpadRelease: Runnable? = null
 
+    /** Cancels any delayed button/d-pad release callbacks before a clean Hardcore core restart. */
+    fun cancelPendingInputs() {
+        pendingReleases.values.forEach { mainHandler.removeCallbacks(it) }
+        pendingReleases.clear()
+        pressedAt.clear()
+        pendingDpadRelease?.let { mainHandler.removeCallbacks(it) }
+        pendingDpadRelease = null
+        dpadNonZero = false
+        dpadSince = 0L
+        menuPressed.value = false
+    }
+
     private fun sendDpad(
         xAxis: Float,
         yAxis: Float,

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -35,11 +36,29 @@ class CoresSelection(
             GameSystem.all()
                 .filter { it.systemCoreConfigs.size > 1 }
 
+        if (configurableSystems.isEmpty()) {
+            return flowOf(emptyList())
+        }
+
         val configurationFlows =
             configurableSystems.map { system ->
                 getSelectedCoreConfigForSystem(system)
                     .map { SelectedCore(system, it) }
             }
+
+        return combine(configurationFlows) { it.toList() }
+    }
+
+    fun getAllSelectedCores(): Flow<List<SelectedCore>> {
+        val configurationFlows =
+            GameSystem.all().map { system ->
+                getSelectedCoreConfigForSystem(system)
+                    .map { SelectedCore(system, it) }
+            }
+
+        if (configurationFlows.isEmpty()) {
+            return flowOf(emptyList())
+        }
 
         return combine(configurationFlows) { it.toList() }
     }
@@ -57,11 +76,15 @@ class CoresSelection(
         return getSelectedCoreConfigForSystem(system).first()
     }
 
+    fun getSelectedCoreConfigForSystemFlow(system: GameSystem): Flow<SystemCoreConfig> {
+        return getSelectedCoreConfigForSystem(system)
+    }
+
     private fun getSelectedCoreConfigForSystem(system: GameSystem): Flow<SystemCoreConfig> {
         return getSelectedCoreNameForSystem(system)
             .map { coreName ->
-                // A core that is no longer in the app (DeSmuME) falls back to the default one.
-                system.systemCoreConfigs.firstOrNull { it.coreID.coreName == coreName } ?: system.systemCoreConfigs.first()
+                system.systemCoreConfigs.firstOrNull { it.coreID.coreName == coreName }
+                    ?: system.systemCoreConfigs.first()
             }
     }
 

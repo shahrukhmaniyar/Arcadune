@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -68,7 +69,7 @@ fun GameMenuCheatsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val achievementsState by RetroAchievementsSessionHolder.state.collectAsState()
-    val hardcoreActive = achievementsState.hardcoreActive
+    val hardcoreActive = achievementsState.hardcoreActive || achievementsState.hardcoreTransitionInProgress
     val context = LocalContext.current
 
     LaunchedEffect(state.message) {
@@ -113,7 +114,7 @@ fun GameMenuCheatsScreen(
                         ),
                     icon = Icons.Filled.Search,
                     highlighted = true,
-                    enabled = !state.downloading,
+                    enabled = !state.downloading && !hardcoreActive,
                     height = 46.dp,
                     onClick = { viewModel.findCheatsOnline() },
                 )
@@ -121,6 +122,7 @@ fun GameMenuCheatsScreen(
                     modifier = Modifier.weight(1f),
                     label = stringResource(R.string.cheats_add),
                     icon = Icons.Filled.Add,
+                    enabled = !hardcoreActive,
                     height = 46.dp,
                     onClick = onOpenAddCheat,
                 )
@@ -274,6 +276,7 @@ fun GameMenuCheatsScreen(
                         ArcaduneIconPill(
                             icon = Icons.Default.Delete,
                             contentDescription = stringResource(R.string.cheats_delete),
+                            enabled = !hardcoreActive,
                             size = 36.dp,
                             onClick = { viewModel.deleteCheat(index) },
                         )
@@ -305,6 +308,7 @@ private fun AddCheatPage(onConfirm: (name: String, code: String) -> Unit) {
         modifier =
             Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,

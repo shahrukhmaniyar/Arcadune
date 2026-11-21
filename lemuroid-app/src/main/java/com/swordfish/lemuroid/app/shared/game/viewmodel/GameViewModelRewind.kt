@@ -70,12 +70,20 @@ class GameViewModelRewind(
     private suspend fun takeSnapshots() {
         while (currentCoroutineContextIsActive()) {
             delay(SNAPSHOT_INTERVAL_MS)
+            if (isHardcoreActive()) {
+                clearAndDisable()
+                return
+            }
             if (rewinding) continue
             val view = retroGameView.retroGameView ?: continue
             val state =
                 runCatching { withContext(Dispatchers.IO) { view.serializeState() } }
                     .onFailure { Timber.e(it, "Rewind snapshot failed") }
                     .getOrNull() ?: continue
+            if (isHardcoreActive()) {
+                clearAndDisable()
+                return
+            }
             push(state)
         }
     }
@@ -99,16 +107,30 @@ class GameViewModelRewind(
 
     /** Called when the rewind button is pressed (true) or released (false). */
     fun onRewindPressed(pressed: Boolean) {
+        if (isHardcoreActive()) {
+            clearAndDisable()
+            return
+        }
         if (!mutableAvailable.value) return
         if (pressed) start() else stop()
     }
 
+    /** Immediately halts any active rewind and purges the entire rewind state history. */
+    fun clearAndDisable() {
+        stop()
+        mutableAvailable.value = false
+        synchronized(lock) {
+            snapshots.clear()
+            snapshotsBytes = 0L
+        }
+    }
+
     private fun start() {
-        if (rewinding) return
+        if (rewinding || isHardcoreActive()) return
         rewinding = true
         rewindJob =
             scope.launch(Dispatchers.IO) {
-                while (rewinding && isActive) {
+                while (rewinding && isActive && !isHardcoreActive()) {
                     val state = pop() ?: break
                     val view = retroGameView.retroGameView ?: break
                     runCatching { view.unserializeState(state) }.onFailure { Timber.e(it, "Rewind step failed") }
@@ -150,6 +172,10 @@ class GameViewModelRewind(
                 SystemID.NGC,
                 SystemID.WS,
                 SystemID.WSC,
+                SystemID.SEGA32X,
+                SystemID.ATARI5200,
+                SystemID.COLECOVISION,
+                SystemID.MSX,
             )
     }
 }

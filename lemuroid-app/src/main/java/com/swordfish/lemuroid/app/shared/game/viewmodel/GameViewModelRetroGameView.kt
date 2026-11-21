@@ -10,6 +10,8 @@ import androidx.lifecycle.LifecycleOwner
 import com.swordfish.lemuroid.BuildConfig
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
+import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
+import com.swordfish.lemuroid.app.shared.achievements.RetroAchievementsSessionHolder
 import com.swordfish.lemuroid.app.shared.game.ShaderChooser
 import com.swordfish.lemuroid.app.shared.rumble.RumbleManager
 import com.swordfish.lemuroid.app.shared.settings.HDModeQuality
@@ -82,7 +84,8 @@ class GameViewModelRetroGameView(
     var retroGameView: GLRetroView? by MutableStateProperty(retroGameViewFlow)
 
     fun getGameState(): Flow<GameState> {
-        return gameState.debounce(200)
+        // A loading message waits a moment (a fast load never flashes it); the game itself never waits.
+        return gameState.debounce { state -> if (state is GameState.Loaded || state is GameState.Ready) 0L else 200L }
     }
 
     suspend fun initialize(
@@ -137,7 +140,6 @@ class GameViewModelRetroGameView(
                     }
                 sideEffects.requestFailureFinish(message)
             }
-            .debounce(200)
             .collect { loadingState ->
                 gameState.value =
                     if (loadingState is GameLoader.LoadingState.Ready) {
@@ -393,38 +395,72 @@ class GameViewModelRetroGameView(
     private fun publishScreenLayout() {
         screenLayout.value =
             (SIDEWAYS_LAYOUTS.keys + CITRA_SWAP_SCREEN)
-                .mapNotNull { key -> currentValues[key]?.let { key to sidewaysAware(key, it) } }
+                .mapNotNull { key ->
+                    val raw =
+                        if (key == CITRA_SWAP_SCREEN) {
+                            citraSwapOverride ?: currentValues[key]
+                        } else {
+                            currentValues[key]
+                        }
+                    raw?.let { key to effectiveDsLayout(key, it) }
+                }
                 .toMap()
+    }
+
+    private fun effectiveDsLayout(
+        key: String,
+        value: String,
+    ): String {
+        val (stacked, sideBySide) = SIDEWAYS_LAYOUTS[key] ?: return value
+        val base = if (landscape && value == stacked) sideBySide else value
+        if (!dsSwapped) return base
+        return when (base) {
+            "top-bottom" -> "bottom-top"
+            "top/bottom" -> "bottom/top"
+            "left-right" -> "right-left"
+            "left/right" -> "right/left"
+            "hybrid-top" -> DS_SWAPPED_SIDEWAYS
+            "hybrid/top" -> DESMUME_SWAPPED_SIDEWAYS
+            else -> base
+        }
     }
 
     private fun sidewaysAware(
         key: String,
         value: String,
     ): String {
-        val (stacked, sideBySide) = SIDEWAYS_LAYOUTS[key] ?: return value
-        if (!landscape || value != stacked) return value
-        // The DS sideways: the big screen is the top one, or (after Swap) the touch screen.
-        return if (key == MELONDS_LAYOUT && dsSwapped) DS_SWAPPED_SIDEWAYS else sideBySide
+        if (key == CITRA_SWAP_SCREEN) {
+            return citraSwapOverride ?: value
+        }
+        return effectiveDsLayout(key, value)
     }
 
-    // Whether Swap has made the DS touch screen the big one (sideways), for this session.
+    // Whether Swap has flipped the DS screens for this session.
     private var dsSwapped = false
+
+    // Session-only 3DS swap override so closing the Pause Menu does not reset in-game Swap.
+    private var citraSwapOverride: String? = null
+    private var lastMenuCitraSwap: String? = null
 
     /**
      * The swap-screens button: the other screen becomes the main one. Only for this session; the
      * game menu's "Main screen" (3DS) stays the choice the game starts with.
      */
     fun swapScreens() {
-        if (MELONDS_LAYOUT in currentValues) {
+        if (MELONDS_LAYOUT in currentValues || DESMUME_LAYOUT in currentValues) {
             dsSwapped = !dsSwapped
             currentValues[MELONDS_LAYOUT]?.let {
                 retroGameView?.updateVariables(Variable(MELONDS_LAYOUT, sidewaysAware(MELONDS_LAYOUT, it)))
             }
+            currentValues[DESMUME_LAYOUT]?.let {
+                retroGameView?.updateVariables(Variable(DESMUME_LAYOUT, sidewaysAware(DESMUME_LAYOUT, it)))
+            }
             publishScreenLayout()
             return
         }
-        val next = if (currentValues[CITRA_SWAP_SCREEN] == "Bottom") "Top" else "Bottom"
-        currentValues[CITRA_SWAP_SCREEN] = next
+        val currentSwap = citraSwapOverride ?: currentValues[CITRA_SWAP_SCREEN] ?: "Top"
+        val next = if (currentSwap == "Bottom") "Top" else "Bottom"
+        citraSwapOverride = next
         retroGameView?.updateVariables(Variable(CITRA_SWAP_SCREEN, next))
         publishScreenLayout()
     }
@@ -436,7 +472,21 @@ class GameViewModelRetroGameView(
             SIDEWAYS_LAYOUTS
                 .filterKeys { key -> key in exposedKeys && chosen.none { it.key == key } }
                 .map { (key, layouts) -> CoreVariable(key, layouts.first) }
-        val options = chosen + defaultLayouts
+        val defaultCitraSwap =
+            if (CITRA_SWAP_SCREEN in exposedKeys && chosen.none { it.key == CITRA_SWAP_SCREEN }) {
+                listOf(CoreVariable(CITRA_SWAP_SCREEN, "Top"))
+            } else {
+                emptyList()
+            }
+        val options = chosen + defaultLayouts + defaultCitraSwap
+        val menuCitraSwap = options.firstOrNull { it.key == CITRA_SWAP_SCREEN }?.value
+        if (menuCitraSwap != null) {
+            if (lastMenuCitraSwap != null && lastMenuCitraSwap != menuCitraSwap) {
+                // Player explicitly changed Main Screen in the Pause Menu -> adopt their new choice.
+                citraSwapOverride = null
+            }
+            lastMenuCitraSwap = menuCitraSwap
+        }
         options.forEach { currentValues[it.key] = it.value }
         val (restartOnly, live) = options.partition { it.key in RESTART_ONLY_VARIABLES }
 
@@ -449,8 +499,21 @@ class GameViewModelRetroGameView(
             Toast.makeText(appContext, R.string.setting_restart_to_apply, Toast.LENGTH_LONG).show()
         }
 
+        val hardcoreEnforced =
+            RetroAchievementsSessionHolder.state.value.let {
+                it.hardcoreActive || it.hardcoreTransitionInProgress
+            }
         val updatedVariables =
             live.map { Variable(it.key, sidewaysAware(it.key, it.value)) }
+                .filter { variable ->
+                    !hardcoreEnforced ||
+                        HardcorePolicy.isCoreOptionValueAllowed(
+                            systemCoreConfig.coreID,
+                            system.id,
+                            variable.key.orEmpty(),
+                            variable.value.orEmpty(),
+                        )
+                }
                 .toTypedArray()
 
         updatedVariables.forEach {
@@ -510,13 +573,16 @@ class GameViewModelRetroGameView(
 
         /** The stacked layout of each two-screen core, and what it becomes when the phone is sideways. */
         private const val MELONDS_LAYOUT = "melonds_screen_layout1"
+        private const val DESMUME_LAYOUT = "desmume_screens_layout"
         private const val DS_SWAPPED_SIDEWAYS = "hybrid-bottom"
+        private const val DESMUME_SWAPPED_SIDEWAYS = "hybrid/bottom"
 
         private val SIDEWAYS_LAYOUTS =
             mapOf(
                 "citra_layout_option" to ("Default Top-Bottom Screen" to "Large Screen, Small Screen"),
                 // The DS sideways: a big main screen and the other small at its lower right, like the 3DS.
                 "melonds_screen_layout1" to ("top-bottom" to "hybrid-top"),
+                "desmume_screens_layout" to ("top/bottom" to "hybrid/top"),
             )
 
         val RESTART_ONLY_VARIABLES =

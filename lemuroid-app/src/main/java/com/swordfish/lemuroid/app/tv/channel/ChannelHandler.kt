@@ -165,7 +165,7 @@ class ChannelHandler(
         if (coverUrl != null && (game.customCoverUri != null || thumbnailExists)) {
             preview.setPosterArtUri(Uri.parse(coverUrl))
         } else {
-            preview.setPosterArtUri(Uri.parse(CoverUtils.getFallbackRemoteUrl(game)))
+            preview.setPosterArtUri(Uri.parse(CoverUtils.getFallbackLocalResourceUri(appContext)))
         }
 
         return preview.build()

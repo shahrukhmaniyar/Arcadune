@@ -1,14 +1,18 @@
 package com.swordfish.lemuroid.app.shared.achievements
 
 import android.content.Context
+import android.os.Build
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.swordfish.lemuroid.BuildConfig
+import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRetroGameView
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsConsoleMap
+import com.swordfish.lemuroid.lib.achievements.RetroAchievementsOfflineQueue
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsSettingsState
 import com.swordfish.lemuroid.lib.library.GameSystem
+import com.swordfish.lemuroid.lib.library.SystemCoreConfig
 import com.swordfish.libretrodroid.AchievementEvent
 import com.swordfish.libretrodroid.AchievementsBridge
 import com.swordfish.libretrodroid.AchievementsConfig
@@ -22,8 +26,10 @@ import java.util.concurrent.atomic.AtomicLong
 class GameViewModelAchievements(
     private val appContext: Context,
     private val system: GameSystem,
+    private val systemCoreConfig: SystemCoreConfig,
     private val retroGameView: GameViewModelRetroGameView,
     private val scope: CoroutineScope,
+    private val onExternalSdkResetRequested: () -> Unit = {},
 ) : DefaultLifecycleObserver {
     private val bannerChannel = Channel<HudBannerUi>(capacity = 32)
     private val nextBannerKey = AtomicLong(1L)
@@ -35,15 +41,23 @@ class GameViewModelAchievements(
 
     val isSystemSupported: Boolean = RetroAchievementsConsoleMap.isSupported(system.id)
 
+    val isCoreHardcoreCompliant: Boolean =
+        RetroAchievementsConsoleMap.isCoreHardcoreCompliant(systemCoreConfig.coreID, system.id)
+
+    val coreUnsupportedReason: String =
+        RetroAchievementsConsoleMap.hardcoreUnsupportedReason(systemCoreConfig.coreID, system.id).orEmpty()
+
+    /**
+     * Authoritative runtime flag consulted by save-state loading, cheats, rewind, and pause
+     * cooldown boundaries. True whenever the running session is in Hardcore Mode OR a Hardcore
+     * enable transition is actively in progress.
+     */
     val isHardcoreEnforced: Boolean
         get() {
-            if (!isSystemSupported || !settingsSnapshot.isHardcoreActive) return false
             val session = RetroAchievementsSessionHolder.state.value
-            return if (session.status == AchievementSessionStatus.LOADED || session.hardcoreDowngraded) {
-                session.hardcoreActive
-            } else {
-                true
-            }
+            if (session.hardcoreTransitionInProgress) return true
+            if (!isSystemSupported || !isCoreHardcoreCompliant) return false
+            return session.hardcoreActive
         }
 
     init {
@@ -51,27 +65,92 @@ class GameViewModelAchievements(
         startBannerPresenterLoop()
     }
 
-    fun buildNativeConfig(): AchievementsConfig? {
+    fun buildNativeConfig(
+        requestedLoadSave: Boolean,
+        explicitQuickResume: Boolean,
+        hasAutoSaveSnapshot: Boolean,
+    ): Pair<AchievementsConfig?, HardcorePolicy.LaunchDecision> {
         val current = RetroAchievementsPreferences.readStateSync(appContext)
         settingsSnapshot = current
-        resetSessionFromPreferences(current)
 
         val consoleId = RetroAchievementsConsoleMap.getConsoleId(system.id)
         val account = current.account
-        if (!current.enabled || account == null || consoleId == RetroAchievementsConsoleMap.RC_CONSOLE_UNKNOWN) {
-            return null
+        val raEnabledAndSignedIn =
+            current.enabled &&
+                account != null &&
+                consoleId != RetroAchievementsConsoleMap.RC_CONSOLE_UNKNOWN
+
+        val decision =
+            HardcorePolicy.resolveLaunchDecision(
+                raEnabledAndSignedIn = raEnabledAndSignedIn,
+                hardcoreApproved = RetroAchievementsPreferences.isHardcoreApproved(),
+                hardcorePreferenceEnabled = current.hardcoreEnabled,
+                coreId = systemCoreConfig.coreID,
+                systemId = system.id,
+                requestedLoadSave = requestedLoadSave,
+                explicitQuickResume = explicitQuickResume,
+                hasAutoSaveSnapshot = hasAutoSaveSnapshot,
+            )
+
+        resetSessionFromPreferences(
+            prefs = current,
+            effectiveHardcore = decision.effectiveHardcore,
+            switchedToCasualForQuickResume = decision.switchedToCasualForQuickResume,
+        )
+
+        if (decision.switchedToCasualForQuickResume && current.notificationsEnabled) {
+            enqueueBanner(
+                HudBannerUi.StatusNotice(
+                    key = nextBannerKey.getAndIncrement(),
+                    title = appContext.getString(R.string.ra_quick_resume_casual_title),
+                    subtitle = appContext.getString(R.string.ra_quick_resume_casual_subtitle),
+                    isError = false,
+                ),
+            )
+        }
+
+        if (!raEnabledAndSignedIn || account == null) {
+            return null to decision
         }
 
         AchievementsBridge.appVersion = BuildConfig.VERSION_NAME
 
-        return AchievementsConfig(
-            enabled = true,
-            username = account.username,
-            token = account.token,
-            consoleId = consoleId,
-            hardcoreEnabled = current.isHardcoreActive,
-            encoreEnabled = current.encoreEnabled,
-            unofficialEnabled = current.unofficialEnabled,
+        val config =
+            AchievementsConfig(
+                enabled = true,
+                username = account.username,
+                token = account.token,
+                consoleId = consoleId,
+                hardcoreEnabled = decision.effectiveHardcore,
+                encoreEnabled = current.encoreEnabled,
+                unofficialEnabled = current.unofficialEnabled,
+                serverHost = BuildConfig.RA_SERVER_HOST,
+                appVersion = BuildConfig.VERSION_NAME,
+                osRelease = Build.VERSION.RELEASE ?: "Android",
+                coreHardcoreAllowed = decision.coreHardcoreSupported,
+                coreUnsupportedReason = decision.coreUnsupportedReason,
+            )
+        return config to decision
+    }
+
+    fun setTransitionInProgress(inProgress: Boolean) {
+        RetroAchievementsSessionHolder.updateState {
+            it.copy(hardcoreTransitionInProgress = inProgress)
+        }
+    }
+
+    fun showStatusBanner(
+        title: String,
+        subtitle: String,
+        isError: Boolean,
+    ) {
+        enqueueBanner(
+            HudBannerUi.StatusNotice(
+                key = nextBannerKey.getAndIncrement(),
+                title = title,
+                subtitle = subtitle,
+                isError = isError,
+            ),
         )
     }
 
@@ -81,13 +160,25 @@ class GameViewModelAchievements(
         scope.launch {
             RetroAchievementsPreferences.observeState(appContext).collect { latest ->
                 settingsSnapshot = latest
+                val pendingCount =
+                    latest.account?.let {
+                        RetroAchievementsOfflineQueue.pendingCountForAccount(appContext, it.username)
+                    } ?: 0
                 RetroAchievementsSessionHolder.updateState { prev ->
                     prev.copy(
+                        hardcorePreference = latest.hardcoreEnabled,
                         challengeIndicatorsEnabled = latest.challengeIndicatorsEnabled,
                         progressIndicatorsEnabled = latest.progressIndicatorsEnabled,
+                        leaderboardPopupsEnabled = latest.leaderboardPopupsEnabled,
+                        isOfflinePendingSync = prev.isOfflinePendingSync || pendingCount > 0,
                     )
                 }
             }
+        }
+
+        // Flush any durable offline submissions belonging exclusively to the signed-in account.
+        scope.launch(Dispatchers.IO) {
+            flushOfflineQueueForActiveAccount()
         }
 
         scope.launch(Dispatchers.Default) {
@@ -104,7 +195,19 @@ class GameViewModelAchievements(
         super.onDestroy(owner)
     }
 
-    private fun resetSessionFromPreferences(prefs: RetroAchievementsSettingsState = settingsSnapshot) {
+    private suspend fun flushOfflineQueueForActiveAccount() {
+        val account = settingsSnapshot.account ?: return
+        val summary = RetroAchievementsOfflineQueue.flushPending(appContext, account)
+        RetroAchievementsSessionHolder.updateState {
+            it.copy(isOfflinePendingSync = summary.remainingForAccount > 0)
+        }
+    }
+
+    private fun resetSessionFromPreferences(
+        prefs: RetroAchievementsSettingsState = settingsSnapshot,
+        effectiveHardcore: Boolean = isSystemSupported && isCoreHardcoreCompliant && prefs.isHardcoreActive,
+        switchedToCasualForQuickResume: Boolean = false,
+    ) {
         val initialStatus =
             when {
                 prefs.account == null -> AchievementSessionStatus.NOT_SIGNED_IN
@@ -117,9 +220,14 @@ class GameViewModelAchievements(
             GameAchievementsUiState(
                 status = initialStatus,
                 username = prefs.account?.displayName.orEmpty(),
-                hardcoreActive = isSystemSupported && prefs.isHardcoreActive,
+                hardcorePreference = prefs.hardcoreEnabled,
+                hardcoreActive = effectiveHardcore,
+                switchedToCasualForQuickResume = switchedToCasualForQuickResume,
+                coreHardcoreSupported = isCoreHardcoreCompliant,
+                coreUnsupportedReason = coreUnsupportedReason,
                 challengeIndicatorsEnabled = prefs.challengeIndicatorsEnabled,
                 progressIndicatorsEnabled = prefs.progressIndicatorsEnabled,
+                leaderboardPopupsEnabled = prefs.leaderboardPopupsEnabled,
             ),
         )
     }
@@ -135,6 +243,7 @@ class GameViewModelAchievements(
                     score = event.points,
                     softcoreScore = event.totalPoints,
                 )
+                flushOfflineQueueForActiveAccount()
             }
 
             AchievementEvent.TYPE_LOGIN_FAILED -> {
@@ -142,6 +251,7 @@ class GameViewModelAchievements(
                     it.copy(
                         status = AchievementSessionStatus.LOGIN_FAILED,
                         statusMessage = event.description,
+                        hardcoreActive = false,
                     )
                 }
                 enqueueBanner(
@@ -167,7 +277,7 @@ class GameViewModelAchievements(
                     }
                 }
                 RetroAchievementsSessionHolder.refreshFromNative()
-                if (prefs.notificationsEnabled && event.totalCount > 0) {
+                if (prefs.notificationsEnabled && (event.totalCount > 0 || event.title.isNotBlank())) {
                     enqueueBanner(
                         HudBannerUi.GameLoaded(
                             key = nextBannerKey.getAndIncrement(),
@@ -289,9 +399,80 @@ class GameViewModelAchievements(
             }
 
             AchievementEvent.TYPE_RECONNECTED -> {
-                RetroAchievementsSessionHolder.updateState {
-                    it.copy(isOfflinePendingSync = false)
+                flushOfflineQueueForActiveAccount()
+            }
+
+            AchievementEvent.TYPE_LEADERBOARD_STARTED -> {
+                // Leaderboard evaluation and state refresh ALWAYS execute regardless of popup preference.
+                RetroAchievementsSessionHolder.refreshFromNative()
+                if (prefs.leaderboardPopupsEnabled && prefs.notificationsEnabled) {
+                    enqueueBanner(
+                        HudBannerUi.LeaderboardNotice(
+                            key = nextBannerKey.getAndIncrement(),
+                            id = event.id,
+                            title = event.title,
+                            subtitle = event.description,
+                            formattedScore = event.measuredProgress,
+                        ),
+                    )
                 }
+            }
+
+            AchievementEvent.TYPE_LEADERBOARD_FAILED -> {
+                RetroAchievementsSessionHolder.refreshFromNative()
+                if (prefs.leaderboardPopupsEnabled && prefs.notificationsEnabled) {
+                    enqueueBanner(
+                        HudBannerUi.LeaderboardNotice(
+                            key = nextBannerKey.getAndIncrement(),
+                            id = event.id,
+                            title = event.title,
+                            subtitle = "Attempt canceled",
+                            formattedScore = "",
+                            isFailed = true,
+                        ),
+                    )
+                }
+            }
+
+            AchievementEvent.TYPE_LEADERBOARD_SUBMITTED,
+            AchievementEvent.TYPE_LEADERBOARD_SCOREBOARD,
+            -> {
+                RetroAchievementsSessionHolder.refreshFromNative()
+                if (prefs.leaderboardPopupsEnabled && prefs.notificationsEnabled) {
+                    enqueueBanner(
+                        HudBannerUi.LeaderboardNotice(
+                            key = nextBannerKey.getAndIncrement(),
+                            id = event.id,
+                            title = event.title,
+                            subtitle = event.description,
+                            formattedScore = event.measuredProgress,
+                            rankInfo = event.badgeUrl,
+                            isSubmitted = true,
+                        ),
+                    )
+                }
+            }
+
+            AchievementEvent.TYPE_LEADERBOARD_TRACKER_SHOW,
+            AchievementEvent.TYPE_LEADERBOARD_TRACKER_HIDE,
+            -> {
+                // Keep active leaderboard tracker data synced; RetroAchievementsOverlay gates presentation on leaderboardPopupsEnabled.
+                RetroAchievementsSessionHolder.refreshFromNative()
+            }
+
+            AchievementEvent.TYPE_HARDCORE_MODE_CHANGED -> {
+                RetroAchievementsSessionHolder.updateState { prev ->
+                    prev.copy(
+                        hardcoreActive = event.hardcore,
+                        activeChallenges = if (event.hardcore) emptyList() else prev.activeChallenges,
+                        progressIndicator = if (event.hardcore) null else prev.progressIndicator,
+                    )
+                }
+                RetroAchievementsSessionHolder.refreshFromNative()
+            }
+
+            AchievementEvent.TYPE_RESET_REQUIRED -> {
+                onExternalSdkResetRequested()
             }
         }
     }
@@ -309,6 +490,7 @@ class GameViewModelAchievements(
                         is HudBannerUi.AchievementUnlocked -> 4200L
                         is HudBannerUi.GameCompleted -> 4600L
                         is HudBannerUi.GameLoaded -> 3400L
+                        is HudBannerUi.LeaderboardNotice -> 3600L
                         is HudBannerUi.StatusNotice -> 3800L
                     }
                 delay(holdDurationMs)

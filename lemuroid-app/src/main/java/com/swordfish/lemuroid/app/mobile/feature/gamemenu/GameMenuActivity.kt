@@ -25,6 +25,12 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Looks3
+import androidx.compose.material.icons.filled.Looks4
+import androidx.compose.material.icons.filled.Looks5
+import androidx.compose.material.icons.filled.Looks6
+import androidx.compose.material.icons.filled.LooksOne
+import androidx.compose.material.icons.filled.LooksTwo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -234,7 +240,18 @@ class GameMenuActivity : RetrogradeComponentActivity() {
                                 (1..gameMenuRequest.numDisks).map {
                                     stringResource(R.string.game_menu_change_disk_disk, it)
                                 },
-                            icons = List(gameMenuRequest.numDisks) { Icons.Filled.Album },
+                            icons =
+                                (1..gameMenuRequest.numDisks).map { diskNum ->
+                                    when (diskNum) {
+                                        1 -> Icons.Filled.LooksOne
+                                        2 -> Icons.Filled.LooksTwo
+                                        3 -> Icons.Filled.Looks3
+                                        4 -> Icons.Filled.Looks4
+                                        5 -> Icons.Filled.Looks5
+                                        6 -> Icons.Filled.Looks6
+                                        else -> Icons.Filled.Album
+                                    }
+                                },
                             selected = gameMenuRequest.currentDisk,
                             onChoice = { index ->
                                 onResult { putExtra(GameMenuContract.RESULT_CHANGE_DISK, index) }
@@ -339,6 +356,9 @@ class GameMenuActivity : RetrogradeComponentActivity() {
                         GameMenuAchievementsScreen(
                             selectedAchievementId = selectedAchievementId,
                             onSelectAchievement = { selectedAchievementId = it },
+                            onSwitchHardcoreMode = { enable ->
+                                onResult { putExtra(GameMenuContract.RESULT_SET_HARDCORE, enable) }
+                            },
                         )
                     }
                 }

@@ -1,3 +1,4 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
 import java.util.Properties
 
 plugins {
@@ -10,19 +11,35 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+base {
+    archivesName.set("Arcadune")
+}
+
 val keystoreProperties =
     Properties().apply {
         val file = rootProject.file("keystore.properties")
         if (file.exists()) file.inputStream().use { load(it) }
     }
 val hasReleaseKey = keystoreProperties.containsKey("storeFile")
+val raHardcoreApproved =
+    project.findProperty("raHardcoreApproved")
+        ?.toString()
+        ?.toBooleanStrictOrNull()
+        ?: false
+val raServerHost =
+    project.findProperty("raServerHost")
+        ?.toString()
+        ?.trim()
+        .orEmpty()
 
 android {
     ndkVersion = "26.3.11579264"
     defaultConfig {
-        versionCode = 261
-        versionName = "1.0.9"
+        versionCode = 262
+        versionName = "1.1.0"
         applicationId = "io.github.shahrukhmaniyar.arcadune"
+        buildConfigField("Boolean", "RA_HARDCORE_APPROVED", raHardcoreApproved.toString())
+        buildConfigField("String", "RA_SERVER_HOST", "\"${raServerHost.replace("\"", "")}\"")
 
         // Only ARM phones: the cores Arcadune downloads exist only for these, and leaving out the
         // x86 emulator/Chromebook copies keeps both APKs much smaller.
@@ -60,6 +77,16 @@ android {
                 ":lemuroid_core_snes9x",
                 ":lemuroid_core_stella",
                 ":lemuroid_core_citra",
+                ":lemuroid_core_flycast",
+                ":lemuroid_core_opera",
+                ":lemuroid_core_yabasanshiro",
+                ":lemuroid_core_picodrive",
+                ":lemuroid_core_a5200",
+                ":lemuroid_core_atari800",
+                ":lemuroid_core_gearcoleco",
+                ":lemuroid_core_vice_x64",
+                ":lemuroid_core_applewin",
+                ":lemuroid_core_fmsx",
             ),
         )
     }
@@ -92,8 +119,7 @@ android {
             // Stripping created some issues with some libretro cores such as ppsspp
             keepDebugSymbols += setOf("*/*/*_libretro_android.so")
             useLegacyPackaging = true
-            // DeSmuME was removed from Arcadune (melonDS runs DS games); its engine is still in the
-            // shared cores folder, so the full APK leaves it out.
+            // DeSmuME is an on-demand downloadable alternate DS core (melonDS is the bundled default).
             excludes += setOf("**/libdesmume_libretro_android.so")
         }
         resources {
@@ -150,6 +176,19 @@ android {
         jvmTarget = "17"
     }
     namespace = "com.swordfish.lemuroid"
+
+    applicationVariants.all {
+        val variantName = name
+        outputs.all {
+            val outputImpl = this as? BaseVariantOutputImpl
+            outputImpl?.outputFileName =
+                when (variantName) {
+                    "freeBundleRelease" -> "Arcadune-full.apk"
+                    "freeDynamicRelease" -> "Arcadune.apk"
+                    else -> "Arcadune-$variantName.apk"
+                }
+        }
+    }
 }
 
 dependencies {
@@ -236,6 +275,8 @@ dependencies {
 
     kapt(deps.libs.dagger.android.processor)
     kapt(deps.libs.dagger.compiler)
+
+    testImplementation("junit:junit:4.13.2")
 }
 
 fun usePlayDynamicFeatures(): Boolean {

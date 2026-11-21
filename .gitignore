@@ -32,3 +32,7 @@ keystore.properties
 tools/skin-studio/build/
 tools/skin-studio/.gradle/
 tools/skin-studio/.kotlin/
+
+# JVM crash and replay dumps
+hs_err_pid*.log
+replay_pid*.log

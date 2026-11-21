@@ -1,5 +1,7 @@
 package com.swordfish.libretrodroid
 
+import android.os.Build
+
 data class AchievementsConfig(
     val enabled: Boolean,
     val username: String,
@@ -8,6 +10,11 @@ data class AchievementsConfig(
     val hardcoreEnabled: Boolean,
     val encoreEnabled: Boolean,
     val unofficialEnabled: Boolean,
+    val serverHost: String = "",
+    val appVersion: String = "1.0.9",
+    val osRelease: String = Build.VERSION.RELEASE ?: "",
+    val coreHardcoreAllowed: Boolean = true,
+    val coreUnsupportedReason: String = "",
 )
 
 class AchievementEvent(
@@ -41,6 +48,14 @@ class AchievementEvent(
         const val TYPE_SERVER_ERROR = 12
         const val TYPE_DISCONNECTED = 13
         const val TYPE_RECONNECTED = 14
+        const val TYPE_LEADERBOARD_STARTED = 15
+        const val TYPE_LEADERBOARD_FAILED = 16
+        const val TYPE_LEADERBOARD_SUBMITTED = 17
+        const val TYPE_LEADERBOARD_SCOREBOARD = 18
+        const val TYPE_LEADERBOARD_TRACKER_SHOW = 19
+        const val TYPE_LEADERBOARD_TRACKER_HIDE = 20
+        const val TYPE_HARDCORE_MODE_CHANGED = 21
+        const val TYPE_RESET_REQUIRED = 22
     }
 }
 
@@ -88,19 +103,49 @@ class AchievementDef(
     }
 }
 
+class LeaderboardDef(
+    val id: Int,
+    val title: String,
+    val description: String,
+    val trackerValue: String,
+    val state: Int,
+    val format: Int,
+    val lowerIsBetter: Boolean,
+) {
+    companion object {
+        const val STATE_INACTIVE = 0
+        const val STATE_ACTIVE = 1
+        const val STATE_TRACKING = 2
+        const val STATE_DISABLED = 3
+
+        const val FORMAT_TIME = 0
+        const val FORMAT_SCORE = 1
+        const val FORMAT_VALUE = 2
+    }
+}
+
+class LeaderboardTracker(
+    val id: Int,
+    val display: String,
+)
+
 class AchievementsSnapshot(
     val sessionStatus: Int,
     val statusMessage: String,
     val gameId: Int,
     val gameTitle: String,
     val gameBadgeUrl: String,
+    val gameHash: String,
     val richPresence: String,
+    val userAgent: String,
     val totalCount: Int,
     val unlockedCount: Int,
     val totalPoints: Int,
     val unlockedPoints: Int,
     val hardcoreActive: Boolean,
     val achievements: Array<AchievementDef>,
+    val leaderboards: Array<LeaderboardDef>,
+    val leaderboardTrackers: Array<LeaderboardTracker>,
 ) {
     companion object {
         const val STATUS_DISABLED = 0
