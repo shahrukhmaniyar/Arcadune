@@ -35,8 +35,8 @@ val raServerHost =
 android {
     ndkVersion = "26.3.11579264"
     defaultConfig {
-        versionCode = 263
-        versionName = "1.1.1"
+        versionCode = 264
+        versionName = "1.1.2"
         applicationId = "io.github.shahrukhmaniyar.arcadune"
         buildConfigField("Boolean", "RA_HARDCORE_APPROVED", raHardcoreApproved.toString())
         buildConfigField("String", "RA_SERVER_HOST", "\"${raServerHost.replace("\"", "")}\"")

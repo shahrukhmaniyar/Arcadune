@@ -28,6 +28,12 @@ Arcadune is an open-source multi-system retro game emulator for Android built on
 
 Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), so you can install either one on top of the other without losing your library, saves, or settings. All releases are available on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). Arcadune requires Android 6.0 or newer and includes built-in update checks under **Settings > Updates**.
 
+## What's New in 1.1.2
+
+- **Library fix:** if Android took back access to your ROMs folder, Arcadune could remove every game from your library. Games, favourites and saves are now kept, the library asks you to choose the folder again, and Factory reset keeps your folder. If you are on 1.1.0 or 1.1.1, please update.
+- **Safer saves:** a save that cannot be read no longer starts the game empty, the replaced save is kept, and games with the same file name on different consoles no longer share a save.
+- Downloaded cores are checked before they are used, and double-tapping a game no longer starts it twice.
+
 ## What's New in 1.1.1
 
 - **Crash fix:** the app no longer closes when you open a choice dialog in Settings (Display filter, Viewport alignment, Vibrate on touch, Cache size limit and the like) or tap a console under Change Cores. If you are on 1.1.0, please update.
