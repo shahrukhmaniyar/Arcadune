@@ -1,14 +1,16 @@
 name: Checks
 
-# Runs the same checks as docs/RELEASE_CHECKLIST.md step 1 on every push and pull request.
-# Releases are built and signed by hand (the signing key never leaves the maintainer's PC),
-# so nothing here builds release APKs or publishes anything.
+# The same checks as docs/RELEASE_CHECKLIST.md step 1, but only when started by hand (Actions tab >
+# Checks > Run workflow). It is NOT run on every push yet: GitHub cannot download the emulator
+# cores repo (lemuroid-cores) because four of its files are symlinks with an empty target, so the job
+# stops before the first check. To turn it back on: remove those four entries from ArcaduneCores
+# (arm/x86/x86_64 libcitra, x86_64 libppsspp under bundled-cores/src/main/jniLibs), update the
+# submodule here, make the job build on GitHub, and restore the push and pull_request triggers.
+# Releases are built and signed by hand (the signing key never leaves the maintainer PC), so nothing
+# here builds release APKs or publishes anything.
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_dispatch:
 
 permissions:
   contents: read
