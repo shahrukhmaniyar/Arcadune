@@ -143,7 +143,9 @@ class GameLoader(
                         // than the battery save) is decided once the battery save is known.
                         val autoSaveJob =
                             async {
-                                if (systemCoreConfig.statesSupported && systemCoreConfig.autoSaveSupported && loadSave) {
+                                val autoSaveWanted =
+                                    systemCoreConfig.statesSupported && systemCoreConfig.autoSaveSupported && loadSave
+                                if (autoSaveWanted) {
                                     runCatching {
                                         statesManager.getAutoSave(game, systemCoreConfig.coreID)
                                             ?.takeIf { it.metadata.version == systemCoreConfig.statesVersion }

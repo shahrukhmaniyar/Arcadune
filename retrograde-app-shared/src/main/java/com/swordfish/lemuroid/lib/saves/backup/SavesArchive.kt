@@ -71,22 +71,28 @@ object SavesArchive {
         }
 
         val canonicalRoots = roots.mapValues { it.value.canonicalFile }
-        var entries = 0
-        var restored = 0
-        var totalBytes = 0L
+        // Everything is unpacked into staging folders first. Saves are only replaced once the whole
+        // backup has been read without a problem, so a broken file or a restore that is interrupted
+        // while unpacking never leaves half of the saves restored.
+        val stagingRoots = canonicalRoots.mapValues { (_, root) -> stagingFolderFor(root) }
+        stagingRoots.values.forEach { it.deleteRecursively() }
 
-        while (true) {
-            val entry = zip.nextEntry ?: break
-            if (++entries > MAX_ENTRIES) throw InvalidBackupException("The backup has too many files")
-            if (entry.isDirectory) continue
+        try {
+            var entries = 0
+            var totalBytes = 0L
+            val staged = mutableListOf<Pair<File, File>>()
 
-            val target = resolveTarget(entry.name, canonicalRoots) ?: continue
-            target.parentFile?.mkdirs()
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (++entries > MAX_ENTRIES) throw InvalidBackupException("The backup has too many files")
+                if (entry.isDirectory) continue
 
-            // Write to a temporary file first, so a broken backup never leaves a half-written save.
-            val temporary = File(target.parentFile, target.name + ".restoring")
-            try {
-                temporary.outputStream().use { out ->
+                val target = resolveTarget(entry.name, canonicalRoots) ?: continue
+                val rootName = entry.name.substringBefore('/')
+                val root = canonicalRoots.getValue(rootName)
+                val stagedFile = File(stagingRoots.getValue(rootName), target.relativeTo(root).path)
+                stagedFile.parentFile?.mkdirs()
+                stagedFile.outputStream().use { out ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
                         val read = zip.read(buffer)
@@ -96,15 +102,24 @@ object SavesArchive {
                         out.write(buffer, 0, read)
                     }
                 }
-                temporary.copyTo(target, overwrite = true)
-                restored++
-            } finally {
-                temporary.delete()
+                staged += stagedFile to target
             }
-        }
 
-        return restored
+            // The whole backup is good: move the files into place (a quick rename on the same disk).
+            for ((stagedFile, target) in staged) {
+                target.parentFile?.mkdirs()
+                if (target.exists()) target.delete()
+                if (!stagedFile.renameTo(target)) {
+                    stagedFile.copyTo(target, overwrite = true)
+                }
+            }
+            return staged.size
+        } finally {
+            stagingRoots.values.forEach { it.deleteRecursively() }
+        }
     }
+
+    private fun stagingFolderFor(root: File): File = File(root.parentFile, ".restoring-${root.name}")
 
     /** Maps a zip entry name to a file inside one of the roots, or null if the entry should be ignored. */
     private fun resolveTarget(

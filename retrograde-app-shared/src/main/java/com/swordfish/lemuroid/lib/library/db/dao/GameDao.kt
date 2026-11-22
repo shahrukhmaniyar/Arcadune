@@ -70,12 +70,14 @@ interface GameDao {
     fun selectFirstNotPlayed(limit: Int): Flow<List<Game>>
 
     @Query(
-        "SELECT * FROM games WHERE systemId = :systemId ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
+        "SELECT * FROM games WHERE systemId = :systemId " +
+            "ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
     )
     fun selectBySystem(systemId: String): PagingSource<Int, Game>
 
     @Query(
-        "SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
+        "SELECT * FROM games WHERE systemId IN (:systemIds) " +
+            "ORDER BY COALESCE(customName, title) COLLATE NOCASE ASC, id DESC",
     )
     fun selectBySystems(systemIds: List<String>): PagingSource<Int, Game>
 
@@ -97,6 +99,13 @@ interface GameDao {
 
     @Query("SELECT COUNT(*) FROM games")
     fun countGames(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM games")
+    fun countGamesNow(): Int
+
+    /** Games whose file name starts with [prefix] (a LIKE pattern, escaped with a backslash). */
+    @Query("SELECT * FROM games WHERE fileName LIKE :prefix ESCAPE '\\'")
+    suspend fun selectByFileNamePrefix(prefix: String): List<Game>
 
     @Query("SELECT COUNT(*) FROM games WHERE isFavorite = 1")
     fun countFavorites(): Flow<Int>

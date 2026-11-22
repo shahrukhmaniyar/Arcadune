@@ -13,6 +13,7 @@ import com.swordfish.lemuroid.app.shared.settings.StorageFrameworkPickerLauncher
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -53,8 +54,10 @@ class HomeViewModel(
         val showNoNotificationPermissionCard: Boolean = false,
         val showNoMicrophonePermissionCard: Boolean = false,
         val showNoGamesCard: Boolean = false,
+        val showRomsAccessLostCard: Boolean = false,
     )
 
+    private val romsFolderReadableState = MutableStateFlow(true)
     private val microphonePermissionEnabledState = MutableStateFlow(true)
     private val notificationsPermissionEnabledState = MutableStateFlow(true)
     private val uiStates = MutableStateFlow(UIState())
@@ -70,6 +73,21 @@ class HomeViewModel(
     fun updatePermissions(context: Context) {
         notificationsPermissionEnabledState.value = isNotificationsPermissionGranted(context)
         microphonePermissionEnabledState.value = isMicrophonePermissionGranted(context)
+        romsFolderReadableState.value = isRomsFolderReadable(context)
+    }
+
+    /**
+     * False when a ROMs folder was chosen but Android no longer lets Arcadune read it. Games then
+     * fail to start, so the library asks the player to choose the folder again.
+     */
+    private fun isRomsFolderReadable(context: Context): Boolean {
+        val folder =
+            SharedPreferencesHelper.getLegacySharedPreferences(context)
+                .getString(context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_extenral_folder), null)
+                ?: return true
+        return runCatching {
+            context.contentResolver.persistedUriPermissions.any { it.isReadPermission && it.uri.toString() == folder }
+        }.getOrDefault(true)
     }
 
     private fun isNotificationsPermissionGranted(context: Context): Boolean {
@@ -101,12 +119,14 @@ class HomeViewModel(
         indexInProgress: Boolean,
         notificationsPermissionEnabled: Boolean,
         showMicrophoneCard: Boolean,
+        romsFolderReadable: Boolean,
     ): UIState {
         return UIState(
             indexInProgress = indexInProgress,
             showNoNotificationPermissionCard = !notificationsPermissionEnabled,
             showNoMicrophonePermissionCard = showMicrophoneCard,
-            showNoGamesCard = totalGamesCount == 0,
+            showNoGamesCard = totalGamesCount == 0 && romsFolderReadable,
+            showRomsAccessLostCard = !romsFolderReadable,
         )
     }
 
@@ -118,6 +138,7 @@ class HomeViewModel(
                     indexingInProgress(appContext),
                     notificationsPermissionEnabledState,
                     microphoneNotification(retrogradeDb),
+                    romsFolderReadableState,
                     ::buildViewState,
                 )
 

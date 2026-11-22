@@ -2240,7 +2240,9 @@ private fun DrawScope.drawFourPads(
         if (look == DpadLook.C_BUTTONS) {
             val r = full * 0.165f
             if (overlay) {
-                val fill = cColor?.first?.let { Overlay.tinted(it, isPressed) } ?: if (isPressed) Overlay.FillPressed else Overlay.Fill
+                val fill =
+                    cColor?.first?.let { Overlay.tinted(it, isPressed) }
+                        ?: if (isPressed) Overlay.FillPressed else Overlay.Fill
                 drawCircle(fill, r, centre)
                 drawCircle(Overlay.Edge, r, centre, style = Stroke(1.5.dp.toPx()))
                 mark = Overlay.Glyph
@@ -2637,9 +2639,16 @@ private fun ControlGlyph(
                         drawConsoleButton(shape, fill.standingOutFrom(consolePalette.body), isPressed)
                     style == SkinStyle.NES_CLASSIC && control is SkinControl.Button && shape == ButtonShape.ROUND ->
                         drawNesFaceButton(isPressed)
-                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind) && frame.width < frame.height * 1.3f ->
+                    style == SkinStyle.NES_CLASSIC &&
+                        (control is SkinControl.Menu || control is SkinControl.Rewind) &&
+                        frame.width < frame.height * 1.3f ->
                         drawNesSmallButton(isPressed)
-                    style == SkinStyle.NES_CLASSIC && (control is SkinControl.Menu || control is SkinControl.Rewind || (control is SkinControl.Button && control.isExtraButton())) ->
+                    style == SkinStyle.NES_CLASSIC &&
+                        (
+                            control is SkinControl.Menu ||
+                                control is SkinControl.Rewind ||
+                                (control is SkinControl.Button && control.isExtraButton())
+                        ) ->
                         drawNesSmallPill(isPressed)
                     else -> drawMonoButton(shape, isPressed)
                 }
@@ -2658,10 +2667,13 @@ private fun ControlGlyph(
         val onButton =
             when {
                 glyph != null -> null
-                control is SkinControl.Button && (!control.labelBelow || style == SkinStyle.OVERLAY || pinned) -> control.label
+                control is SkinControl.Button && (!control.labelBelow || style == SkinStyle.OVERLAY || pinned) ->
+                    control.label
                 else -> null
             }
-        if (glyph != null && (style != SkinStyle.NES_CLASSIC || control is SkinControl.Button || frame.width >= frame.height * 1.3f)) {
+        val glyphFits =
+            style != SkinStyle.NES_CLASSIC || control is SkinControl.Button || frame.width >= frame.height * 1.3f
+        if (glyph != null && glyphFits) {
             val coloured = style == SkinStyle.CONSOLE || style == SkinStyle.OVERLAY || style == SkinStyle.OUTLINE
             val glyphColor = if (coloured) labelColor else Mono.Glyph
             val mouldedShadow = style == SkinStyle.CONSOLE
@@ -2699,7 +2711,8 @@ private fun ControlGlyph(
             val unitDp = scale
             val fontSize =
                 with(LocalDensity.current) {
-                    val natural = minOf(frame.width, frame.height) * unitDp * if (control is SkinControl.Button && control.shape == ButtonShape.PILL) 0.42f else 0.46f
+                    val isPill = control is SkinControl.Button && control.shape == ButtonShape.PILL
+                    val natural = minOf(frame.width, frame.height) * unitDp * if (isPill) 0.42f else 0.46f
                     // A long name (SELECT/X) shrinks to fit inside the pill.
                     val fits = frame.width * unitDp * 0.84f / (onButton.length * 0.62f)
                     minOf(natural, fits).dp.toSp()
@@ -3177,7 +3190,8 @@ private fun Caption(
     // Where the name goes: under the control (on the NES deck, small buttons share one baseline).
     val (left, top, align) =
         when {
-            nes && !isFace && !control.isExtraButton() && control !is SkinControl.Menu && control !is SkinControl.Rewind ->
+            nes && !isFace && !control.isExtraButton() &&
+                control !is SkinControl.Menu && control !is SkinControl.Rewind ->
                 Triple(
                     x + (frame.width - width) / 2 * scale,
                     y + (244f - frame.y) * scale,
@@ -3189,14 +3203,18 @@ private fun Caption(
 
     val color =
         when {
-            nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind) -> Color.White
+            nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind) ->
+                Color.White
             style == SkinStyle.OVERLAY -> Color.White
             nes -> Nes.Label
             style == SkinStyle.CONSOLE || style == SkinStyle.OUTLINE -> layout.paletteOrMono().caption
             else -> Mono.Caption
         }
     val captionShadow =
-        if ((nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind)) || style == SkinStyle.OVERLAY) {
+        if (
+            (nes && (control.isExtraButton() || control is SkinControl.Menu || control is SkinControl.Rewind)) ||
+            style == SkinStyle.OVERLAY
+        ) {
             androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.65f), Offset(0f, 1f), 2f)
         } else {
             null

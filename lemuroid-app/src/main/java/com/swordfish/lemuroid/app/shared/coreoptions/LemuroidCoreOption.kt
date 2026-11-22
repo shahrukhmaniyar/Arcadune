@@ -18,7 +18,9 @@ data class LemuroidCoreOption(
 
     fun getEntries(context: Context): List<String> {
         if (exposedSetting.values.isEmpty()) {
-            return coreOption.optionValues.map { it.capitalize() }
+            return coreOption.optionValues.map { value ->
+                value.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+            }
         }
 
         return getCorrectExposedSettings().map { context.getString(it.titleId) }

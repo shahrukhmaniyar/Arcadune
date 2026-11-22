@@ -28,6 +28,7 @@ class GameLaunchTaskHandler(
         resultCode: Int,
         data: Intent?,
     ) {
+        com.swordfish.lemuroid.app.shared.game.GameLauncher.onLaunchEnded()
         val flushedGameIds = PlayTimeTracker.flushPendingToDatabase(activity.applicationContext, retrogradeDb)
         rescheduleBackgroundWork(activity.applicationContext)
         when (resultCode) {

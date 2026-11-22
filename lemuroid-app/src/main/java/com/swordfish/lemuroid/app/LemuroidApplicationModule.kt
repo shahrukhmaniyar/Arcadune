@@ -142,15 +142,10 @@ abstract class LemuroidApplicationModule {
         fun retrogradeDb(app: LemuroidApplication) =
             Room.databaseBuilder(app, RetrogradeDatabase::class.java, RetrogradeDatabase.DB_NAME)
                 .addCallback(GameSearchDao.CALLBACK)
-                .addMigrations(
-                    GameSearchDao.MIGRATION,
-                    Migrations.VERSION_8_9,
-                    Migrations.VERSION_9_10,
-                    Migrations.VERSION_10_11,
-                    Migrations.VERSION_11_12,
-                    Migrations.VERSION_12_13,
-                )
-                .fallbackToDestructiveMigration()
+                .addMigrations(*Migrations.ALL)
+                // Never wipe the library because an upgrade path is missing (MigrationsTest covers
+                // every version); only an older app installed over a newer database starts over.
+                .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
 
         @Provides
@@ -244,7 +239,10 @@ abstract class LemuroidApplicationModule {
         @Provides
         @PerApp
         @JvmStatic
-        fun savesManager(directoriesManager: DirectoriesManager) = SavesManager(directoriesManager)
+        fun savesManager(
+            directoriesManager: DirectoriesManager,
+            retrogradeDatabase: RetrogradeDatabase,
+        ) = SavesManager(directoriesManager, retrogradeDatabase.gameDao())
 
         @Provides
         @PerApp

@@ -123,7 +123,11 @@ private fun DeviceShortcutBinding(
     LemuroidSettingsMenuLink(
         icon = { ArcaduneIconBadge(icon = shortcutTypeIcon(shortcut.type)) },
         title = { Text(text = shortcut.type.displayName()) },
-        subtitle = { Text(text = if (shortcut.keys.isEmpty()) stringResource(R.string.shortcut_not_set) else shortcut.name) },
+        subtitle = {
+            Text(
+                text = if (shortcut.keys.isEmpty()) stringResource(R.string.shortcut_not_set) else shortcut.name,
+            )
+        },
         onClick = {
             val intent =
                 Intent(context, GamePadShortcutBindingActivity::class.java).apply {

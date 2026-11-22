@@ -236,8 +236,16 @@ fun SkinGalleryScreen(
             Controllers.mapNotNull { (id, name) ->
                 val variant = store.variant(id.name)
                 val skin = ArcaduneSkins.forController(id, variant) ?: return@mapNotNull null
-                val upright = store.load(SkinCustomizationStore.keyOf(id.name, false, skin.portrait), skin.portrait.defaultCustomization)
-                val sideways = store.load(SkinCustomizationStore.keyOf(id.name, true, skin.landscape), skin.landscape.defaultCustomization)
+                val upright =
+                    store.load(
+                        SkinCustomizationStore.keyOf(id.name, false, skin.portrait),
+                        skin.portrait.defaultCustomization,
+                    )
+                val sideways =
+                    store.load(
+                        SkinCustomizationStore.keyOf(id.name, true, skin.landscape),
+                        skin.landscape.defaultCustomization,
+                    )
                 val targets = MultiControllerTargets[id]
                 val primarySystem = targets?.firstOrNull()?.systemId
                 val selectedCoreName =

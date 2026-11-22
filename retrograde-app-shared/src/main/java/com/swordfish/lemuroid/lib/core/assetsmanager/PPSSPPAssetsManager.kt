@@ -2,12 +2,13 @@ package com.swordfish.lemuroid.lib.core.assetsmanager
 
 import android.content.SharedPreferences
 import android.net.Uri
+import com.swordfish.lemuroid.lib.core.CoreFingerprints
 import com.swordfish.lemuroid.lib.core.CoreUpdater
+import com.swordfish.lemuroid.lib.core.DownloadVerifier
 import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import retrofit2.Response
 import timber.log.Timber
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -26,25 +27,36 @@ class PPSSPPAssetsManager : CoreID.AssetsManager {
             return
         }
 
+        // The zip is saved first and checked against its published fingerprint, then unpacked.
+        val download = File(directoriesManager.getSystemDirectory(), "ppsspp-download.zip.part")
         try {
-            val response = coreUpdaterApi.downloadZip(PPSSPP_ASSETS_URL.toString())
-            handleSuccess(directoriesManager, response, sharedPreferences)
+            val response = coreUpdaterApi.downloadFile(PPSSPP_ASSETS_URL.toString())
+            if (!response.isSuccessful) throw java.io.IOException("PSP files download answered ${response.code()}")
+            withContext(Dispatchers.IO) {
+                val body = response.body() ?: throw java.io.IOException("Empty PSP files download")
+                body.use { input -> download.outputStream().use { input.copyTo(it) } }
+                DownloadVerifier.verify(download, CoreFingerprints.PPSSPP_ASSETS_SHA256, "PSP files")
+            }
+            handleSuccess(directoriesManager, download, sharedPreferences)
         } catch (e: Throwable) {
+            Timber.e(e, "Could not get the PSP files")
             getAssetsDirectory(directoriesManager).deleteRecursively()
+        } finally {
+            download.delete()
         }
     }
 
     private suspend fun handleSuccess(
         directoriesManager: DirectoriesManager,
-        response: Response<ZipInputStream>,
+        zipFile: File,
         sharedPreferences: SharedPreferences,
-    ) {
+    ) = withContext(Dispatchers.IO) {
         val coreAssetsDirectory = getAssetsDirectory(directoriesManager)
         coreAssetsDirectory.deleteRecursively()
         coreAssetsDirectory.mkdirs()
 
         val canonicalRoot = coreAssetsDirectory.canonicalPath + File.separator
-        response.body()?.use { zipInputStream ->
+        ZipInputStream(zipFile.inputStream().buffered()).use { zipInputStream ->
             while (true) {
                 val entry = zipInputStream.nextEntry ?: break
                 Timber.d("Writing file: ${entry.name}")

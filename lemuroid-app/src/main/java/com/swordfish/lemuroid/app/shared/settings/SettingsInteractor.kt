@@ -16,7 +16,14 @@ class SettingsInteractor(
     }
 
     fun resetAllSettings() {
-        SharedPreferencesHelper.getLegacySharedPreferences(context).edit().clear().apply()
+        // The ROMs folder is kept: clearing it made the next scan see no files at all, and the game
+        // crash screen sends players here, so a reset must never empty their library.
+        val legacy = SharedPreferencesHelper.getLegacySharedPreferences(context)
+        val folderKey = context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_extenral_folder)
+        val folder = legacy.getString(folderKey, null)
+        val editor = legacy.edit().clear()
+        if (folder != null) editor.putString(folderKey, folder)
+        editor.apply()
         SharedPreferencesHelper.getSharedPreferences(context).edit().clear().apply()
         LibraryIndexScheduler.scheduleLibrarySync(context.applicationContext)
         CacheCleanerWork.enqueueCleanCacheAll(context.applicationContext)

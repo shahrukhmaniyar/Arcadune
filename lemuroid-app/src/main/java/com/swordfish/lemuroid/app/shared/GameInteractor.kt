@@ -1,10 +1,6 @@
 package com.swordfish.lemuroid.app.shared
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import androidx.core.content.ContextCompat
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
 import com.swordfish.lemuroid.app.shared.covers.CoverCompression
@@ -35,9 +31,6 @@ class GameInteractor(
         if (!ensureNotBusy()) {
             return
         }
-        if (!ensureNotificationsPermissionAvailable()) {
-            return
-        }
         gameLauncher.launchGameAsync(
             activity = activity.activity(),
             game = game,
@@ -51,9 +44,6 @@ class GameInteractor(
         if (!ensureNotBusy()) {
             return
         }
-        if (!ensureNotificationsPermissionAvailable()) {
-            return
-        }
         gameLauncher.launchGameAsync(
             activity = activity.activity(),
             game = game,
@@ -65,9 +55,6 @@ class GameInteractor(
 
     fun onGameRestart(game: Game) {
         if (!ensureNotBusy()) {
-            return
-        }
-        if (!ensureNotificationsPermissionAvailable()) {
             return
         }
         gameLauncher.launchGameAsync(
@@ -151,25 +138,6 @@ class GameInteractor(
                 retrogradeDb.gameDao().updateCustomCoverUri(game.id, null)
             }.onFailure { Timber.e(it, "Failed to clear custom cover for game ${game.id}") }
         }
-    }
-
-    private fun ensureNotificationsPermissionAvailable(): Boolean {
-        if (useLeanback || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return true
-        }
-
-        val permissionResult =
-            ContextCompat.checkSelfPermission(
-                activity.activity(),
-                Manifest.permission.POST_NOTIFICATIONS,
-            )
-
-        if (permissionResult == PackageManager.PERMISSION_GRANTED) {
-            return true
-        }
-
-        activity.activity().displayToast(R.string.game_interactor_notification_permission_required)
-        return false
     }
 
     private fun ensureNotBusy(): Boolean {

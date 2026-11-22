@@ -59,7 +59,7 @@ class SavesSettingsViewModel(
         val isBusy: Boolean = false,
     )
 
-    private val savesBackupManager = SavesBackupManager(appContext, directoriesManager)
+    private val savesBackupManager = SavesBackupManager(appContext, directoriesManager, savesManager)
     private val _uiState =
         MutableStateFlow(
             State(
@@ -114,12 +114,13 @@ class SavesSettingsViewModel(
                     retrogradeDb.gameDao().selectAllFlow().first()
                 }
             return withContext(Dispatchers.IO) {
+                // Every game takes part in finding shared save names, not only the listed ones.
+                val saveFiles = savesManager.saveRAMFilesForRead(games)
                 games
                     .asSequence()
                     .filter { SavesStorageInspector.supportsSingleFileSave(it.systemId) }
                     .map { game ->
-                        val saveFile = savesManager.getSaveRAMFile(game)
-                        val size = if (saveFile.exists() && saveFile.length() > 0L) saveFile.length() else 0L
+                        val size = saveFiles[game.id]?.length() ?: 0L
                         GameSaveOption(game = game, hasSave = size > 0L, saveSizeBytes = size)
                     }
                     .sortedBy { it.game.displayName().lowercase() }

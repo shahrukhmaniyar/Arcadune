@@ -53,6 +53,20 @@ dependencies {
     kapt(deps.libs.androidx.room.compiler)
 
     testImplementation("junit:junit:4.13.2")
+    // Database migration tests run on the PC with Robolectric (an Android stand-in).
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("androidx.room:room-testing:${deps.versions.room}")
+    testImplementation("androidx.test:core:1.6.1")
+}
+
+android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+    sourceSets {
+        // MigrationTestHelper reads the exported database schemas as test assets.
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 android {

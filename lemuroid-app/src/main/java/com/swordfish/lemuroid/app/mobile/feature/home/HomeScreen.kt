@@ -54,6 +54,15 @@ fun HomeNotices(
     val state = viewModel.getViewStates().collectAsState(HomeViewModel.UIState()).value
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         UpdateNotice()
+        AnimatedVisibility(state.showRomsAccessLostCard) {
+            HomeNotification(
+                titleId = R.string.home_roms_access_lost_title,
+                messageId = R.string.home_roms_access_lost_message,
+                actionId = R.string.home_roms_access_lost_action,
+                onAction = { viewModel.changeLocalStorageFolder(context) },
+                enabled = !state.indexInProgress,
+            )
+        }
         AnimatedVisibility(state.showNoNotificationPermissionCard) {
             HomeNotification(
                 titleId = R.string.home_notification_title,

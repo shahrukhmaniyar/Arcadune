@@ -82,7 +82,7 @@ class SettingsViewModel(
     private val initialDirectoryName =
         cachedDirectoryNames[initialDirectory] ?: context.getString(R.string.none)
 
-    private val savesBackupManager = SavesBackupManager(context, directoriesManager)
+    private val savesBackupManager = SavesBackupManager(context, directoriesManager, savesManager)
     private val savesSummary =
         MutableStateFlow(
             SavesBackupManager.cachedStats?.formatSummary(context)

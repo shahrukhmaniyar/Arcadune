@@ -21,9 +21,8 @@ import java.util.Locale
 class SavesBackupManager(
     private val appContext: Context,
     private val directoriesManager: DirectoriesManager,
+    private val savesManager: SavesManager,
 ) {
-    private val savesManager = SavesManager(directoriesManager)
-
     private fun roots() =
         linkedMapOf(
             "saves" to directoriesManager.getSavesDirectory(),
@@ -113,10 +112,9 @@ class SavesBackupManager(
         game: Game,
         destination: Uri,
     ) = withContext(Dispatchers.IO) {
-        val saveFile = savesManager.getSaveRAMFile(game)
-        if (!saveFile.exists() || saveFile.length() <= 0L) {
-            throw IOException("No in-game save found")
-        }
+        val saveFile =
+            savesManager.saveRAMFileForRead(game)
+                ?: throw IOException("No in-game save found")
         val out =
             openOutputStream(destination)
                 ?: throw IOException("Cannot write to the chosen file")

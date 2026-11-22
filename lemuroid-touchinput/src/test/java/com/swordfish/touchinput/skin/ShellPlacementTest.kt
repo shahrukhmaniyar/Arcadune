@@ -150,9 +150,14 @@ class ShellPlacementTest {
                     // the buttons (a known limit, left to the player's own adjusting).
                     // They were also tuned for the core's default screen arrangement only.
                     if (defaults.hasScreenChanges && (w / h < 2.1f || values != settings.first())) continue
-                    val p = placeShell(skin, true, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, defaults)
+                    val p =
+                        placeShell(skin, true, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, defaults)
                     // Tuned screens too big for this phone run off it; nothing can keep clear of those.
-                    if (p.windows.any { it.top < -dp || it.bottom > (h + 1) * dp || it.left < -dp || it.right > (w + 1) * dp }) continue
+                    val offPhone =
+                        p.windows.any {
+                            it.top < -dp || it.bottom > (h + 1) * dp || it.left < -dp || it.right > (w + 1) * dp
+                        }
+                    if (offPhone) continue
                     val geometry = SkinGeometry(layout, pinToEdges = true, width = w - 8f, height = h - 8f)
                     val controls = geometry.frameRects(defaults, rewindAvailable = true)
                     for (window in p.windows) {

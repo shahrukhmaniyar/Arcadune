@@ -51,7 +51,12 @@ object CoverCompression {
         val output = ByteArrayOutputStream()
 
         @Suppress("DEPRECATION")
-        val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
+        val format =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                Bitmap.CompressFormat.WEBP
+            }
         bitmap.compress(format, QUALITY, output)
         bitmap.recycle()
         return output.toByteArray().takeIf { it.size < bytes.size }

@@ -127,6 +127,43 @@ class NotificationsManager(private val applicationContext: Context) {
         return builder.build()
     }
 
+    /** Tells the player a battery save could not be written (most often: the phone is full). */
+    fun showSaveFailedNotification(gameName: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel =
+                NotificationChannel(
+                    SAVES_CHANNEL_ID,
+                    applicationContext.getString(R.string.notification_channel_saves_name),
+                    NotificationManager.IMPORTANCE_HIGH,
+                )
+            ContextCompat.getSystemService(applicationContext, NotificationManager::class.java)
+                ?.createNotificationChannel(channel)
+        }
+        val notification =
+            NotificationCompat.Builder(applicationContext, SAVES_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_arcadune_notification)
+                .setContentTitle(applicationContext.getString(R.string.save_failed_notification_title))
+                .setContentText(applicationContext.getString(R.string.save_failed_notification_message, gameName))
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText(applicationContext.getString(R.string.save_failed_notification_message, gameName)),
+                )
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+        val allowed =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!allowed) return
+        try {
+            androidx.core.app.NotificationManagerCompat.from(applicationContext)
+                .notify(SAVE_FAILED_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            // The permission was taken away between the check and the call: nothing more to do.
+        }
+    }
+
     private fun createDefaultNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = applicationContext.getString(R.string.notification_channel_name)
@@ -146,5 +183,7 @@ class NotificationsManager(private val applicationContext: Context) {
         const val SAVE_SYNC_NOTIFICATION_ID = 2
         const val GAME_RUNNING_NOTIFICATION_ID = 3
         const val CORE_INSTALL_NOTIFICATION_ID = 4
+        const val SAVE_FAILED_NOTIFICATION_ID = 5
+        const val SAVES_CHANNEL_ID = "SAVES_CHANNEL_ID"
     }
 }

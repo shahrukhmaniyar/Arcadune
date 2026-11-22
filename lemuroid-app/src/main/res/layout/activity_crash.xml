@@ -12,6 +12,7 @@
         android:layout_margin="32dp">
 
         <ImageView
+            android:importantForAccessibility="no"
             android:src="@drawable/ic_warning"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />

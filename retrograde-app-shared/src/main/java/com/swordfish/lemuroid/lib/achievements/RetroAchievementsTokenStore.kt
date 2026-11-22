@@ -11,7 +11,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 interface TokenCipherEngine {
     fun encrypt(plaintext: String): String
@@ -140,9 +139,19 @@ object RetroAchievementsTokenStore {
                 }
             AesGcmSecretKeyCipherEngine(secretKey)
         }.getOrElse {
-            // Fallback for local JVM test environments without AndroidKeyStore provider.
-            val ephemeralBytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
-            AesGcmSecretKeyCipherEngine(SecretKeySpec(ephemeralBytes, "AES"))
+            // A throwaway key would "work" until the next start and then silently sign the player
+            // out every time. Refuse instead, so sign-in shows a clear error. (Tests set
+            // [cipherOverrideForTesting].)
+            UnavailableCipherEngine
         }
     }
+}
+
+/** The Android Keystore could not give Arcadune a key: the sign-in cannot be stored securely. */
+class TokenStorageUnavailableException : IllegalStateException("Secure storage is not available on this device")
+
+private object UnavailableCipherEngine : TokenCipherEngine {
+    override fun encrypt(plaintext: String): String = throw TokenStorageUnavailableException()
+
+    override fun decrypt(encodedCiphertext: String): String? = null
 }

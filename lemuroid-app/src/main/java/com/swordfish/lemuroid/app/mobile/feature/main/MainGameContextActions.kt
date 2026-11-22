@@ -81,7 +81,6 @@ import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImag
 import com.swordfish.lemuroid.app.shared.game.PlayTimeTracker
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.db.entity.Game
-import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -168,14 +167,8 @@ private fun ContextActionContent(
             contract = ActivityResultContracts.GetContent(),
         ) { uri: Uri? ->
             if (uri != null) {
-                try {
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                } catch (e: SecurityException) {
-                    Timber.e(e, "Failed to persist read URI permission for custom cover")
-                }
+                // The picture is copied into Arcadune's own storage right away (CustomCoverManager), so
+                // no lasting permission is kept: Android allows only a limited number of them per app.
                 onSetCustomCoverUri(selectedGame, uri.toString())
                 selectedGameState.value = null
             }

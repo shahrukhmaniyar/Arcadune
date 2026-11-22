@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
@@ -30,7 +29,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Height
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.RotateLeft
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -196,7 +194,10 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 SkinCustomizationStore.keyOf(controllerId!!.name, isLandscape, layout)
             }
                 ?: "${controllerId?.name}_${if (isLandscape) "landscape" else "portrait"}_none"
-        val skinDefault = skin?.let { (if (isLandscape) it.landscape else it.portrait).defaultCustomization } ?: SkinCustomization()
+        val skinDefault =
+            skin?.let {
+                (if (isLandscape) it.landscape else it.portrait).defaultCustomization
+            } ?: SkinCustomization()
         val skinCustomization = remember(skinKey) { mutableStateOf(skinStore.load(skinKey, skinDefault)) }
         DisposableEffect(skinKey) {
             onDispose {
@@ -281,32 +282,34 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 )
             }
 
-            if (gameLoaded) AndroidView(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .onGloballyPositioned { fullScreenPosition.value = it.boundsInRoot() },
-                factory = {
-                    viewModel.createRetroView(localContext, lifecycle)
-                },
-                // With a DS / 3DS skin the tracker feeds the touch screen (every finger, not only the
-                // first, and only fingers that start in a screen window): the view must not do it too.
-                update = {
-                        view ->
-                    view.setOnTouchListener(
-                        if (skinTakesScreenTouches) {
-                            View.OnTouchListener {
-                                    _,
-                                    _,
-                                ->
-                                true
-                            }
-                        } else {
-                            null
-                        },
-                    )
-                },
-            )
+            if (gameLoaded) {
+                AndroidView(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { fullScreenPosition.value = it.boundsInRoot() },
+                    factory = {
+                        viewModel.createRetroView(localContext, lifecycle)
+                    },
+                    // With a DS / 3DS skin the tracker feeds the touch screen (every finger, not only the
+                    // first, and only fingers that start in a screen window): the view must not do it too.
+                    update = {
+                            view ->
+                        view.setOnTouchListener(
+                            if (skinTakesScreenTouches) {
+                                View.OnTouchListener {
+                                        _,
+                                        _,
+                                    ->
+                                    true
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    },
+                )
+            }
 
             val fullPos = fullScreenPosition.value
             val viewPos = viewportPosition.value

@@ -39,7 +39,8 @@ class LayoutContactSheetTest {
             lines += "L,$id,portrait,${p.width},${p.height},-1,-1,-1,-1"
             p.controls.forEachIndexed { i, c ->
                 val f = p.defaultCustomization.frameOf(i, c.frame)
-                lines += "C,${c.kind()},${c.name()},${f.x},${f.y},${f.width},${f.height},${if (c.defaultHidden) 1 else 0}"
+                val hidden = if (c.defaultHidden) 1 else 0
+                lines += "C,${c.kind()},${c.name()},${f.x},${f.y},${f.width},${f.height},$hidden"
             }
             // Sideways: placed the way the app places them on a 20:9 phone (891 x 411 dp, 4 dp padding).
             val l = skin.landscape
@@ -55,7 +56,8 @@ class LayoutContactSheetTest {
             val frames = geometry.frameRects(all, rewindAvailable = true, includeHidden = true).toMap()
             l.controls.forEachIndexed { i, c ->
                 val f = frames[i] ?: return@forEachIndexed
-                lines += "C,${c.kind()},${c.name()},${f.left},${f.top},${f.width},${f.height},${if (c.defaultHidden) 1 else 0}"
+                val hidden = if (c.defaultHidden) 1 else 0
+                lines += "C,${c.kind()},${c.name()},${f.left},${f.top},${f.width},${f.height},$hidden"
             }
         }
         out.writeText(lines.joinToString("\n"))

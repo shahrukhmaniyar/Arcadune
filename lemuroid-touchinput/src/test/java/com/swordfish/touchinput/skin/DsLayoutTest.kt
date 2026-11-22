@@ -59,33 +59,60 @@ class DsLayoutTest {
                     val extras = layout.controls.indices.filter { layout.controls[it].isExtraButton() }.toSet()
                     val c = layout.defaultCustomization.copy(shown = extras)
                     val smalls = layout.controls.filter { small(it) }
-                    val sizes = smalls.map { c.frameOf(layout.controls.indexOf(it), it.frame) }.map { it.width to it.height }.distinct()
-                    if (variant == SkinVariant.CONSOLE && sizes.size > 1) found += "$id ${if (landscape) "landscape" else "upright"}: small buttons differ in size $sizes"
+                    val sizes =
+                        smalls.map {
+                            c.frameOf(
+                                layout.controls.indexOf(it),
+                                it.frame,
+                            )
+                        }.map { it.width to it.height }.distinct()
+                    if (variant == SkinVariant.CONSOLE && sizes.size > 1) {
+                        found += "$id ${if (landscape) "landscape" else "upright"}: small buttons differ in size $sizes"
+                    }
                     val spec = ScreenSpecs.forController(id, emptyMap(), landscape)
                     for ((w, h) in if (landscape) sideways else upright) {
                         val tag = "$id $variant ${if (landscape) "landscape" else "upright"} ${w.toInt()}x${h.toInt()}"
                         val dp = 3f
-                        val p = placeShell(skin, landscape, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, c)
+                        val p =
+                            placeShell(skin, landscape, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, c)
                         val windows = p.windows.map { Rect(it.left / dp, it.top / dp, it.right / dp, it.bottom / dp) }
                         val bezel = if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP
                         val frames: Map<Int, Rect>
                         val touches: Map<Int, Rect>
                         if (landscape) {
                             val g = SkinGeometry(layout, true, w - 8f, h - 8f)
-                            frames = g.frameRects(c, rewindAvailable = false).toMap().mapValues { it.value.translate(4f, 4f) }
-                            touches = g.touchRects(c, rewindAvailable = false).toMap().mapValues { it.value.translate(4f, 4f) }
+                            frames =
+                                g.frameRects(c, rewindAvailable = false).toMap()
+                                    .mapValues { it.value.translate(4f, 4f) }
+                            touches =
+                                g.touchRects(c, rewindAvailable = false).toMap()
+                                    .mapValues { it.value.translate(4f, 4f) }
                         } else {
                             val unit = p.panel.width / layout.width / dp
                             val left = p.panel.left / dp
                             val top = p.panel.top / dp
-                            fun rect(f: SkinRect, reach: Float) = Rect(left + (f.x - reach) * unit, top + (f.y - reach) * unit, left + (f.x + f.width + reach) * unit, top + (f.y + f.height + reach) * unit)
-                            frames = layout.controls.indices.filter { !layout.controls[it].defaultHidden || it in extras }
-                                .associateWith { rect(c.frameOf(it, layout.controls[it].frame), 0f) }
-                            touches = layout.controls.indices.filter { !layout.controls[it].defaultHidden || it in extras }
-                                .associateWith { rect(c.frameOf(it, layout.controls[it].frame), layout.controls[it].reach) }
+
+                            fun rect(
+                                f: SkinRect,
+                                reach: Float,
+                            ) = Rect(
+                                left + (f.x - reach) * unit,
+                                top + (f.y - reach) * unit,
+                                left + (f.x + f.width + reach) * unit,
+                                top + (f.y + f.height + reach) * unit,
+                            )
+                            frames =
+                                layout.controls.indices.filter { !layout.controls[it].defaultHidden || it in extras }
+                                    .associateWith { rect(c.frameOf(it, layout.controls[it].frame), 0f) }
+                            touches =
+                                layout.controls.indices.filter { !layout.controls[it].defaultHidden || it in extras }
+                                    .associateWith {
+                                        rect(c.frameOf(it, layout.controls[it].frame), layout.controls[it].reach)
+                                    }
                         }
                         // The screens must at least fit the phone; if they do not, nothing keeps clear of them.
-                        val screensFit = windows.all { it.left >= -1f && it.top >= -1f && it.right <= w + 1f && it.bottom <= h + 1f }
+                        val screensFit =
+                            windows.all { it.left >= -1f && it.top >= -1f && it.right <= w + 1f && it.bottom <= h + 1f }
                         for ((i, f) in frames) {
                             val label = name(layout.controls[i])
                             if (f.left < -0.5f || f.top < -0.5f || f.right > w + 0.5f || f.bottom > h + 0.5f) {
@@ -101,7 +128,14 @@ class DsLayoutTest {
                             }
                             if (screensFit) {
                                 val grow = if (small(layout.controls[i])) bezel else 0f
-                                if (windows.any { it.inflate(grow).cuts(f) }) found += "$tag: $label sits on a game screen"
+                                if (windows.any {
+                                        it.inflate(
+                                            grow,
+                                        ).cuts(f)
+                                    }
+                                ) {
+                                    found += "$tag: $label sits on a game screen"
+                                }
                             }
                         }
                         if (!screensFit) found += "$tag: the screens do not fit the phone"
@@ -126,7 +160,11 @@ class DsLayoutTest {
                     val dp = 3f
                     val p = placeShell(skin, landscape, true, spec, w * dp, h * dp, Rect(0f, 0f, w * dp, h * dp), dp, c)
                     p.windows.forEachIndexed { i, win ->
-                        if (win.width < 0.59f * p.defaultWindows[i].width * c.screenScaleOf(i)) found += "$id ${w.toInt()}x${h.toInt()} landscape=$landscape: screen ${i + 1} shrank to ${(100 * win.width / p.defaultWindows[i].width).toInt()}% of its plain size"
+                        if (win.width < 0.59f * p.defaultWindows[i].width * c.screenScaleOf(i)) {
+                            val percent = (100 * win.width / p.defaultWindows[i].width).toInt()
+                            found += "$id ${w.toInt()}x${h.toInt()} landscape=$landscape: " +
+                                "screen ${i + 1} shrank to $percent% of its plain size"
+                        }
                     }
                 }
             }

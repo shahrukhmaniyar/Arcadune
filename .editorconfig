@@ -9,3 +9,7 @@ ktlint_function_naming_ignore_when_annotated_with=Composable
 
 [lemuroid-app/src/main/java/com/swordfish/lemuroid/app/shared/game/ShaderChooser.kt]
 max_line_length = off
+
+# Recorded layout data: one line per console, not code.
+[lemuroid-touchinput/src/main/java/com/swordfish/touchinput/skin/HandTunedLayouts.kt]
+max_line_length = off

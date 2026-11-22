@@ -45,12 +45,10 @@ android {
         // x86 emulator/Chromebook copies keeps both APKs much smaller.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
-        // The languages Arcadune has translations for; libraries bring dozens more that only add size.
-        resourceConfigurations +=
-            listOf(
-                "en", "af", "ar", "ca", "cs", "da", "de", "el", "es", "fi", "fr", "hu", "it", "iw", "ja", "ko",
-                "nl", "no", "pl", "pt", "ro", "ru", "sr", "sv", "tr", "uk", "vi", "zh",
-            )
+        // English only for now. The other languages in res/values-* translate only about a third of
+        // the app (Lemuroid's old text), so a phone in German showed half German, half English. Add a
+        // language back here once its strings.xml is complete (and turn MissingTranslation back on).
+        resourceConfigurations += listOf("en")
     }
     flavorDimensions += listOf("opensource", "cores")
 
@@ -160,7 +158,12 @@ android {
     }
 
     lint {
+        // MissingTranslation stays off while only English ships (see resourceConfigurations).
         disable += setOf("MissingTranslation", "ExtraTranslation", "EnsureInitializerMetadata")
+        // Lint must pass for a release: known, reviewed warnings live in lint-baseline.xml.
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
     buildFeatures {
@@ -277,6 +280,8 @@ dependencies {
     kapt(deps.libs.dagger.compiler)
 
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json only exists on a phone; unit tests need the real library.
+    testImplementation("org.json:json:20240303")
 }
 
 fun usePlayDynamicFeatures(): Boolean {

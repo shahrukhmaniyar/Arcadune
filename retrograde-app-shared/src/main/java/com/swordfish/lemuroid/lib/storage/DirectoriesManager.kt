@@ -35,6 +35,12 @@ class DirectoriesManager(private val appContext: Context) {
             mkdirs()
         }
 
+    /** The save each battery save replaced, kept so a bad write can be undone (see SavesManager). */
+    fun getPreviousSavesDirectory(): File =
+        File(appContext.getExternalFilesDir(null), "saves-previous").apply {
+            mkdirs()
+        }
+
     fun getInternalRomsDirectory(): File =
         File(appContext.getExternalFilesDir(null), "roms").apply {
             mkdirs()

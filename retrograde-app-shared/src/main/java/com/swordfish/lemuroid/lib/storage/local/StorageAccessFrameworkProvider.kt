@@ -59,18 +59,16 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
             while (directoryDocumentIds.isNotEmpty()) {
                 val currentDirectoryDocumentId = directoryDocumentIds.removeAt(0)
 
-                val result =
-                    runCatching {
-                        listBaseStorageFiles(rootUri, currentDirectoryDocumentId)
-                    }
-                if (result.isFailure) {
-                    Timber.e(result.exceptionOrNull(), "Error while listing files")
-                }
-
+                // A folder that cannot be listed (most often: Android no longer lets Arcadune read
+                // the ROMs folder) must stop the scan. Treating it as an empty folder made the
+                // library clean-up delete every game, with its favourite, play time and cover.
                 val (files, directories) =
-                    result.getOrDefault(
-                        listOf<BaseStorageFile>() to listOf<String>(),
-                    )
+                    try {
+                        listBaseStorageFiles(rootUri, currentDirectoryDocumentId)
+                    } catch (e: Exception) {
+                        Timber.e(e, "Error while listing files")
+                        throw StorageAccessLostException(rootUri, e)
+                    }
 
                 emit(files)
                 directoryDocumentIds.addAll(directories)
@@ -95,7 +93,10 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
                 DocumentsContract.Document.COLUMN_SIZE,
                 DocumentsContract.Document.COLUMN_MIME_TYPE,
             )
-        context.contentResolver.query(childrenUri, projection, null, null, null)?.use {
+        val cursor =
+            context.contentResolver.query(childrenUri, projection, null, null, null)
+                ?: throw java.io.IOException("Cannot list $childrenUri")
+        cursor.use {
             while (it.moveToNext()) {
                 val documentId = it.getString(0)
                 val documentName = it.getString(1)

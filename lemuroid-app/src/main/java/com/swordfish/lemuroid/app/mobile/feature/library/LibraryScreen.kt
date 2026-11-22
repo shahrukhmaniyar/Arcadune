@@ -197,7 +197,11 @@ fun LibraryScreen(
         var startPageId by rememberSaveable { mutableStateOf<String?>(null) }
         if (startPageId == null && pages.isNotEmpty()) {
             startPageId =
-                (pages.firstOrNull { it is LibraryViewModel.Page.RecentlyPlayed } ?: pages.getOrNull(1) ?: pages.first()).id
+                (
+                    pages.firstOrNull { it is LibraryViewModel.Page.RecentlyPlayed }
+                        ?: pages.getOrNull(1)
+                        ?: pages.first()
+                ).id
         }
         val pagerState =
             rememberPagerState(
@@ -311,7 +315,10 @@ fun LibraryScreen(
                 scrubGlide?.cancel()
                 scrubGlide =
                     scope.launch {
-                        pagerState.animateScrollToPage(page, animationSpec = spring(dampingRatio = 1f, stiffness = 1200f))
+                        pagerState.animateScrollToPage(
+                            page,
+                            animationSpec = spring(dampingRatio = 1f, stiffness = 1200f),
+                        )
                     }
             },
             query = viewModel.searchQuery,
@@ -794,8 +801,6 @@ private fun PageIndicator(
         }
     }
 }
-
-/** Arcadune's own icons, drawn in the style of Delta's: a star, a clock, and a silhouette per console. */
 
 /**
  * Short vibrations for the page pill, played on the vibrator like the game buttons do: some phones

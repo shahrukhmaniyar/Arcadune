@@ -1073,14 +1073,23 @@ object ArcaduneSkins {
                         )
                     val under = if (named) maxOf(0f, 18f - control.reach) else 0f
                     Taken(
-                        SkinRect(f.x - control.reach, f.y - control.reach, f.width + 2 * control.reach, f.height + 2 * control.reach + under),
+                        SkinRect(
+                            f.x - control.reach,
+                            f.y - control.reach,
+                            f.width + 2 * control.reach,
+                            f.height + 2 * control.reach + under,
+                        ),
                         zoneOf(f.centerX),
                         true,
                     )
                 } + extraBlockers.map { Taken(it, zoneOf(it.centerX), false) } +
                     listOfNotNull(
                         // A 4:3 game, full height, centred: what the buttons should not cover.
-                        if (overlayGame) Taken(SkinRect(width / 2 - height * 2 / 3, 0f, height * 4 / 3, height), 1, false) else null,
+                        if (overlayGame) {
+                            Taken(SkinRect(width / 2 - height * 2 / 3, 0f, height * 4 / 3, height), 1, false)
+                        } else {
+                            null
+                        },
                     )
 
             // One button's cell: its touch area and the name under it.
@@ -1094,10 +1103,13 @@ object ArcaduneSkins {
                 x: Float,
                 y: Float,
             ): Float {
-                if (x < margin || x + sw > width - margin || y < topInset || y + sh + caption > height - margin) return -1f
+                val outside =
+                    x < margin || x + sw > width - margin || y < topInset || y + sh + caption > height - margin
+                if (outside) return -1f
                 val c = cell(x, y)
                 val zone = zoneOf(x + sw / 2)
-                var best = minOf(x - margin, width - margin - (x + sw), y - topInset, height - margin - (y + sh + caption))
+                var best =
+                    minOf(x - margin, width - margin - (x + sw), y - topInset, height - margin - (y + sh + caption))
                 for (t in taken) {
                     val r =
                         if (t.drifts && zoneShift > 0f && t.zone != zone) {
@@ -1149,7 +1161,11 @@ object ArcaduneSkins {
 
             // The rows of small buttons: menu, rewind and the pills (select, start and the like).
             val smallBands =
-                visible.filter { it is SkinControl.Menu || it is SkinControl.Rewind || (it is SkinControl.Button && it.shape == ButtonShape.PILL) }
+                visible.filter {
+                    it is SkinControl.Menu ||
+                        it is SkinControl.Rewind ||
+                        (it is SkinControl.Button && it.shape == ButtonShape.PILL)
+                }
                     .map { it.frame.y to it.frame.y + it.frame.height }
             var best: List<SkinRect>? = null
             var bestScore = -1f
@@ -1305,10 +1321,12 @@ object ArcaduneSkins {
                     val za = zoneOf(a.centerX)
                     val zb = zoneOf(b.centerX)
                     val sameRows = a.top < b.bottom && b.top < a.bottom
-                    if (za != zb && sameRows && zoneShift > 0f && maxOf(b.left - a.right, a.left - b.right) < 2 * zoneShift) continue
+                    val sideGap = maxOf(b.left - a.right, a.left - b.right)
+                    if (za != zb && sameRows && zoneShift > 0f && sideGap < 2 * zoneShift) continue
                     // A matching pair of pairs: mirrored across the middle, at the same height.
                     val level = kotlin.math.abs(a.centerY - b.centerY) < 6f
-                    val mirrored = level && kotlin.math.abs((a.centerX + b.centerX) / 2 - width / 2) < 12f && a.width == b.width
+                    val mirrored =
+                        level && kotlin.math.abs((a.centerX + b.centerX) / 2 - width / 2) < 12f && a.width == b.width
                     // Two pairs at different heights and not mirrored look scattered: only when nothing tidier fits.
                     if (!mirrored && !level && !lastTry) continue
                     val (l, r) = if (a.centerX <= b.centerX) a to b else b to a
@@ -1336,7 +1354,14 @@ object ArcaduneSkins {
         }
         overall?.let { return it }
         // The skin has no room at all: the top row, as a plain strip (a test would flag it).
-        return List(4) { SkinRect(width / 2 - (4 * slot.width + 3 * slot.width * 0.2f) / 2 + it * slot.width * 1.2f, margin, slot.width, slot.height) }
+        return List(4) {
+            SkinRect(
+                width / 2 - (4 * slot.width + 3 * slot.width * 0.2f) / 2 + it * slot.width * 1.2f,
+                margin,
+                slot.width,
+                slot.height,
+            )
+        }
             .let { Triple(it, reach, 1f) }
     }
 
@@ -1351,7 +1376,8 @@ object ArcaduneSkins {
         topInset: Float = 2f,
         overlayGame: Boolean = false,
     ): List<SkinControl> {
-        val (frames, used, scale) = placeExtras(controls, width, height, slot, reach, extraBlockers, zoneShift, topInset, overlayGame)
+        val (frames, used, scale) =
+            placeExtras(controls, width, height, slot, reach, extraBlockers, zoneShift, topInset, overlayGame)
         return extraButtons(frames, scale, used)
     }
 
@@ -1433,7 +1459,15 @@ object ArcaduneSkins {
         val saved = SkinCustomization.decode(encoded)
         val visible = controls.count { !it.defaultHidden } + removed.size
 
-        fun renumbered(index: Int): Int? = if (index in removed || index >= visible) null else index - removed.count { it < index }
+        fun renumbered(index: Int): Int? =
+            if (index in removed || index >= visible) {
+                null
+            } else {
+                index -
+                    removed.count {
+                        it < index
+                    }
+            }
 
         val tuned =
             saved.copy(
@@ -1442,6 +1476,7 @@ object ArcaduneSkins {
                 hidden = saved.hidden.mapNotNull { renumbered(it) }.toSet(),
                 shown = emptySet(),
             )
+
         // Sideways, a control is pinned to the left edge, the middle or the right edge by where it
         // was drawn, and a move is kept from there. One the player dragged to another side would
         // drift on a wider or narrower phone (the 3DS SELECT went under the screen): it gets the
@@ -1517,7 +1552,9 @@ object ArcaduneSkins {
                     )
                 // A phone so wide and short that the player's screens run off it has no layout that
                 // keeps them clear: it is left out rather than letting it squeeze out every other phone.
-                if (placement.windows.any { it.top < -1f || it.bottom > h + 1f || it.left < -1f || it.right > w + 1f }) {
+                val offPanel =
+                    placement.windows.any { it.top < -1f || it.bottom > h + 1f || it.left < -1f || it.right > w + 1f }
+                if (offPanel) {
                     emptyList()
                 } else if (isLandscape) {
                     // The controls fill the screen less a 4-unit margin, pinned to its left, middle or right.
@@ -1540,7 +1577,12 @@ object ArcaduneSkins {
                     val panel = placement.panel
                     val unit = panel.width / layout.width
                     placement.windows.map { it.inflate(bezel) }.map { win ->
-                        SkinRect((win.left - panel.left) / unit, (win.top - panel.top) / unit, win.width / unit, win.height / unit)
+                        SkinRect(
+                            (win.left - panel.left) / unit,
+                            (win.top - panel.top) / unit,
+                            win.width / unit,
+                            win.height / unit,
+                        )
                     }
                 }
             }
@@ -1564,7 +1606,12 @@ object ArcaduneSkins {
         if (fixedExtras) return this
         val tuned = defaultCustomization
         val moved =
-            controls.mapIndexed { i, c -> if (c.isExtraButton()) null else c.withFrame(tuned.frameOf(i, c.frame)) }.filterNotNull()
+            controls.mapIndexed {
+                    i,
+                    c,
+                ->
+                if (c.isExtraButton()) null else c.withFrame(tuned.frameOf(i, c.frame))
+            }.filterNotNull()
         val landscape = width > 500f
         val extras =
             autoExtras(
@@ -1583,7 +1630,6 @@ object ArcaduneSkins {
         return copy(controls = controls.map { if (it.isExtraButton()) extras[next++] else it })
     }
 
-
     /**
      * Tuned layouts make some buttons big (the DS face buttons at 160%): their touch margins then
      * reach the next button. Every control's margin is cut to half the gap to its nearest neighbour,
@@ -1600,7 +1646,13 @@ object ArcaduneSkins {
                         if (j == i) continue
                         val a = frames[i]
                         val b = frames[j]
-                        val gap = maxOf(b.x - (a.x + a.width), a.x - (b.x + b.width), b.y - (a.y + a.height), a.y - (b.y + b.height))
+                        val gap =
+                            maxOf(
+                                b.x - (a.x + a.width),
+                                a.x - (b.x + b.width),
+                                b.y - (a.y + a.height),
+                                a.y - (b.y + b.height),
+                            )
                         r = minOf(r, maxOf(0f, gap / 2f))
                     }
                     ctl.withReach(r)
@@ -1608,33 +1660,13 @@ object ArcaduneSkins {
         )
     }
 
-
     /**
      * The layouts the player arranged by hand on a phone (2026-11-21), one per console and
      * orientation, as saved customizations in the order of each skin's controls. They are baked
      * into the skins as their starting place, then tidied (see [handTuned]).
      */
     private val HAND_TUNED: Map<String, String> =
-        mapOf(
-        "GB_portrait" to "1.0;6:44.73008:-204.0;5:35.999992:0.0;4:23.999992:0.0",
-        "GB_landscape" to "1.0;2:0.0:-115.09637;1:12.67308:-118.22561;6:0.0:169.85155;5:-12.943576:169.85155;8:636.48:-105.94298;7:626.6797:-105.94298;10:31.480011:10.796068;9:11.479999:10.796068;0:0.0:-28.789467",
-        "NES_portrait" to "1.0;bg=0.02683562;5:-192.11378:-0.4999966;8:-17.5:-0.4999966;9:-34.113792:-6.0937505;7:34.500004:-6.0937505;10:-13.378843:-6.0937505;6:7.9999933:-6.0937505",
-        "PSX_portrait" to "1.0;13:-35.04001:-60.004852;14:105.119995:-212.02971;15:35.039997:-178.45917;9:0.0:16.927088;10:0.0:16.927088;11:1.1867947E-5:16.927088;12:0.0:16.927088;s13=1.2;s15=1.1;s14=1.1",
-        "PSX_landscape" to "1.0;11:36.00004:0.0;10:597.0:0.0;13:-663.99994:83.6915;9:-5.9999995:0.0;12:36.00004:21.647346;15:-0.99999624:25.647333;14:0.0:25.647333",
-        "PSX_DUALSHOCK_portrait" to "1.0;16:105.119995:-168.81099;17:35.039997:-131.46457;15:-35.04001:-208.26141;11:0.0:14.902914;12:0.0:14.902914;13:3.0000153:14.902914;14:0.0:14.902914;6:0.0:0.0;4:6.9072638:7.999999;s15=1.1;s16=1.1;s17=1.1;s4=1.1255579",
-        "PSX_DUALSHOCK_landscape" to "1.0;17:37.44:-5.5802927;16:17.439997:-5.5802927;13:33.000023:0.0;12:597.0:0.0;15:-576.56:260.0115;11:-6.846143:0.0;14:50.439987:0.0;5:0.0:-13.261672;s15=1.4;s17=1.15",
-        "N64_portrait" to "1.0;12:67.491:-237.46;13:70.08:-237.46;11:-34.04:-16.589159;4:5.000002:0.0;7:14.747111:0.0;6:8.666331:5.908529;9:0.0:19.370863;10:0.0:19.370863;s11=1.2406412;s12=1.2;s13=1.2",
-        "N64_landscape" to "1.0;3:-13.000002:-12.115033;4:0.0:-6.055654;13:38.12933:6.394574;12:5.548809:6.394574;11:30.40275:16.394594;10:0.0:16.394594;8:31.000008:0.0;s12=1.1;s13=1.1;s10=1.1;s11=1.1",
-        "PSP_portrait" to "1.0;12:-35.04001:-77.538155;13:105.119995:-227.92136;14:35.039997:-181.71751;8:4.0000024:17.611202;9:0.0:17.611202;10:0.0:17.611202;11:0.0:17.611202;2:0.0:-6.770836;3:0.0:-5.0781283;s12=1.2;s14=1.1;s13=1.1;s3=1.45;s2=0.8",
-        "PSP_landscape" to "1.0;9:-26.000004:0.0;10:-8.999995:0.0;4:-1.0000254:-27.399996;5:0.0:-27.508774;6:0.0:-27.508774;7:-1.0000254:-25.014124;3:-6.999999:-29.183554;13:0.0:10.9765005;14:0.0:10.9765005;8:-12.2566805:-49.290714;12:-708.0195:23.2808;11:28.95999:23.2808;s3=1.3239982",
-        "SNES_portrait" to "1.0;10:-97.92113:-214.5;9:39.82666:0.0;8:22.07888:0.0;12:10.665202:1.5399997;14:52.665203:40.683083;13:24.87888:40.683083;s12=1.2;s14=1.1;s13=1.1",
-        "GBA_portrait" to "1.0;12:62.37309:46.51895;11:33.98527:46.51895;8:-18.42691:-214.5;7:36.31282:0.0;6:23.824394:0.0;10:-50.014732:1.5399997;s10=1.35;s11=1.35;s12=1.35",
-        "GENESIS_3_portrait" to "1.0;6:72.00002:-204.0;5:36.000004:0.0",
-        "GENESIS_6_portrait" to "1.0;11:43.199993:0.0;13:24.121983:0.0;12:14.399998:0.0;9:72.00002:-201.99998;8:36.000004:0.0",
-        "ATARI2600_portrait" to "1.0;10:18.142376:-235.70341;11:0.0:-235.70341;8:-9.340015:-235.70341;9:23.165308:-35.960022;7:-42.60002:-199.7434;s9=1.25;s10=1.25;s11=1.2;s8=1.2",
-        "THREEDO_portrait" to "1.0;10:-95.19998:-29.460001;11:-32.94954:18.959707;12:-23.996895:18.959707;s10=1.3;s12=1.3;s11=1.3",
-        "APPLEII_portrait" to "1.0;7:40.66342:-7.417467E-7;9:35.519993:0.0;8:35.044483:7.417467E-7;s8=1.2;s9=1.2;s7=1.2",
-        )
+        HandTunedLayouts.ALL
 
     /** A box the tidying moves about, in layout units. */
     private class Box(var x: Float, var y: Float, var w: Float, var h: Float) {
@@ -1644,7 +1676,11 @@ object ArcaduneSkins {
     }
 
     private fun SkinControl.isSmallPill(): Boolean =
-        (this is SkinControl.Menu || this is SkinControl.Rewind || (this is SkinControl.Button && shape == ButtonShape.PILL)) &&
+        (
+            this is SkinControl.Menu ||
+                this is SkinControl.Rewind ||
+                (this is SkinControl.Button && shape == ButtonShape.PILL)
+        ) &&
             frame.width <= 75f && frame.height <= 30f &&
             !(this is SkinControl.Button && label in setOf("SPACE", "RETURN", "STOP"))
 
@@ -1687,12 +1723,26 @@ object ArcaduneSkins {
         val boxes =
             controls.mapIndexed { i, ctl ->
                 val moved = i in c.offsets || i in c.scales
-                val f = if (!moved) ctl.frame else if (isLandscape) seen(i) else c.frameOf(i, ctl.frame)
+                val f =
+                    if (!moved) {
+                        ctl.frame
+                    } else if (isLandscape) {
+                        seen(i)
+                    } else {
+                        c.frameOf(i, ctl.frame)
+                    }
                 Box(f.x, f.y, f.width, f.height)
             }.toMutableList()
         // A diamond of four round buttons keeps its shape: top over bottom, left level with right, all four the same distance out.
-        val rounds = controls.indices.filter { val k = controls[it]; k is SkinControl.Button && k.shape == ButtonShape.ROUND && !k.isExtraButton() && k.icon == null }
-        if (rounds.size == 4 && rounds.all { kotlin.math.abs(boxes[it].w - boxes[rounds[0]].w) < 0.1f * boxes[rounds[0]].w }) {
+        val rounds =
+            controls.indices.filter {
+                val k = controls[it]
+                k is SkinControl.Button && k.shape == ButtonShape.ROUND && !k.isExtraButton() && k.icon == null
+            }
+        val fourOfOneSize =
+            rounds.size == 4 &&
+                rounds.all { kotlin.math.abs(boxes[it].w - boxes[rounds[0]].w) < 0.1f * boxes[rounds[0]].w }
+        if (fourOfOneSize) {
             val byY = rounds.sortedBy { boxes[it].cy }
             val top = boxes[byY[0]]
             val bottom = boxes[byY[3]]
@@ -1708,10 +1758,14 @@ object ArcaduneSkins {
                     b.w = w
                     b.h = w
                 }
-                top.x = cx - w / 2; top.y = cy - away - w / 2
-                bottom.x = cx - w / 2; bottom.y = cy + away - w / 2
-                left.x = cx - away - w / 2; left.y = cy - w / 2
-                right.x = cx + away - w / 2; right.y = cy - w / 2
+                top.x = cx - w / 2
+                top.y = cy - away - w / 2
+                bottom.x = cx - w / 2
+                bottom.y = cy + away - w / 2
+                left.x = cx - away - w / 2
+                left.y = cy - w / 2
+                right.x = cx + away - w / 2
+                right.y = cy - w / 2
             }
         }
         val small = controls.indices.filter { controls[it].isSmallPill() }
@@ -1724,7 +1778,11 @@ object ArcaduneSkins {
         for (i in byY) {
             val row = rows.lastOrNull()
             val rowY = row?.map { boxes[it].cy }?.average()?.toFloat() ?: 0f
-            if (row != null && kotlin.math.abs(boxes[i].cy - rowY) <= maxOf(3f, 0.45f * boxes[i].h)) row += i else rows += mutableListOf(i)
+            if (row != null && kotlin.math.abs(boxes[i].cy - rowY) <= maxOf(3f, 0.45f * boxes[i].h)) {
+                row += i
+            } else {
+                rows += mutableListOf(i)
+            }
         }
         for (row in rows) {
             val sorted = row.sortedBy { boxes[it].x }
@@ -1732,7 +1790,11 @@ object ArcaduneSkins {
             for (i in sorted) {
                 val last = runs.lastOrNull()
                 val maxW = (last?.maxOfOrNull { boxes[it].w } ?: 0f).coerceAtLeast(boxes[i].w)
-                if (last != null && boxes[i].x - boxes[last.last()].right <= 1.6f * maxW) last += i else runs += mutableListOf(i)
+                if (last != null && boxes[i].x - boxes[last.last()].right <= 1.6f * maxW) {
+                    last += i
+                } else {
+                    runs += mutableListOf(i)
+                }
             }
             for (run in runs) {
                 if (run.size < 2) continue
@@ -1754,13 +1816,20 @@ object ArcaduneSkins {
                     val wide = (right - left) > 0.6f * width
                     val balanced = kotlin.math.abs(left - (width - right)) < 0.12f * width
                     val even = wide && balanced
-                    val gutter = if (even) (width - run.size * w) / (run.size + 1) else (right - left - run.size * w) / (run.size - 1)
+                    val gutter =
+                        if (even) {
+                            (width - run.size * w) / (run.size + 1)
+                        } else {
+                            (right - left - run.size * w) / (run.size - 1)
+                        }
                     val start = if (even) gutter else left
                     run.forEachIndexed { k, i -> boxes[i].x = start + k * (w + gutter) }
                 } else if (!isLandscape) {
                     // A pair near the middle of the panel sits exactly on its middle line.
                     val middle = (boxes[run.first()].x + boxes[run.last()].right) / 2
-                    if (kotlin.math.abs(middle - width / 2) in 0.5f..14f) run.forEach { boxes[it].x += width / 2 - middle }
+                    if (kotlin.math.abs(middle - width / 2) in 0.5f..14f) {
+                        run.forEach { boxes[it].x += width / 2 - middle }
+                    }
                 }
             }
         }
@@ -1771,7 +1840,11 @@ object ArcaduneSkins {
         for (i in loose) {
             val col = columns.lastOrNull()
             val colX = col?.map { boxes[it].cx }?.average()?.toFloat() ?: 0f
-            if (col != null && kotlin.math.abs(boxes[i].cx - colX) <= 0.4f * boxes[i].w) col += i else columns += mutableListOf(i)
+            if (col != null && kotlin.math.abs(boxes[i].cx - colX) <= 0.4f * boxes[i].w) {
+                col += i
+            } else {
+                columns += mutableListOf(i)
+            }
         }
         for (col in columns) {
             if (col.size < 2) continue
@@ -1799,6 +1872,7 @@ object ArcaduneSkins {
         fun Box.hits(o: Box) = x + 0.5f < o.right && o.x + 0.5f < right && y + 0.5f < o.y + o.h && o.y + 0.5f < y + h
         // Last, make it legal: inside the panel, off the screens and the big controls, clear of each other.
         val wall = if (isLandscape && screenArea != null) screenArea else null
+
         fun clamp(b: Box) {
             b.x = b.x.coerceIn(2f, maxOf(2f, width - 2f - b.w))
             b.y = b.y.coerceIn(2f, maxOf(2f, height - 2f - b.h))
@@ -1809,7 +1883,9 @@ object ArcaduneSkins {
                 clamp(b)
                 if (wall != null) {
                     val gap = 9f
-                    val onScreen = b.x < wall.x + wall.width + gap && wall.x - gap < b.right && b.y < wall.y + wall.height && wall.y < b.y + b.h
+                    val onScreen =
+                        b.x < wall.x + wall.width + gap && wall.x - gap < b.right &&
+                            b.y < wall.y + wall.height && wall.y < b.y + b.h
                     if (onScreen) {
                         b.x = if (b.cx < wall.x + wall.width / 2) wall.x - gap - b.w else wall.x + wall.width + gap
                         clamp(b)
@@ -1828,14 +1904,22 @@ object ArcaduneSkins {
                 if (a < c2 && boxes[a].hits(boxes[c2])) {
                     val first = if (boxes[a].x <= boxes[c2].x) boxes[a] else boxes[c2]
                     val second = if (first === boxes[a]) boxes[c2] else boxes[a]
-                    if (kotlin.math.abs(first.cy - second.cy) < first.h) second.x = first.right + 4f else second.y = first.y + first.h + 4f
+                    if (kotlin.math.abs(first.cy - second.cy) < first.h) {
+                        second.x = first.right + 4f
+                    } else {
+                        second.y = first.y + first.h + 4f
+                    }
                     clamp(second)
                 }
             }
         }
 
         // One size for every small button of the skin (the biggest system button), wherever it fits.
-        val system = small.filter { val k = controls[it]; k is SkinControl.Menu || (k is SkinControl.Button && (k.keyCode == SELECT || k.keyCode == START)) }
+        val system =
+            small.filter {
+                val k = controls[it]
+                k is SkinControl.Menu || (k is SkinControl.Button && (k.keyCode == SELECT || k.keyCode == START))
+            }
         if (system.isNotEmpty()) {
             val tw = system.maxOf { boxes[it].w }
             val th = system.maxOf { boxes[it].h }
@@ -1843,8 +1927,14 @@ object ArcaduneSkins {
                 val b = boxes[i]
                 if (kotlin.math.abs(b.w - tw) < 0.5f && kotlin.math.abs(b.h - th) < 0.5f) continue
                 val grown = Box(b.cx - tw / 2, b.cy - th / 2, tw, th)
-                val inside = grown.x >= 2f && grown.y >= 2f && grown.right <= width - 2f && grown.y + grown.h <= height - 2f
-                val offWall = wall == null || !(grown.x < wall.x + wall.width + 9f && wall.x - 9f < grown.right && grown.y < wall.y + wall.height && wall.y < grown.y + grown.h)
+                val inside =
+                    grown.x >= 2f && grown.y >= 2f && grown.right <= width - 2f && grown.y + grown.h <= height - 2f
+                val offWall =
+                    wall == null ||
+                        !(
+                            grown.x < wall.x + wall.width + 9f && wall.x - 9f < grown.right &&
+                                grown.y < wall.y + wall.height && wall.y < grown.y + grown.h
+                        )
                 if (inside && offWall && controls.indices.none { it != i && boxes[it].hits(grown) }) {
                     b.x = grown.x
                     b.y = grown.y
@@ -1855,7 +1945,11 @@ object ArcaduneSkins {
         }
         // A small button the tidying pushed onto another control goes back to where the player left it.
         for (i in small) {
-            if (controls.indices.any { it != i && it !in small && boxes[it].hits(boxes[i]) && !original[it].hits(original[i]) }) {
+            val newlyOverlaps =
+                controls.indices.any {
+                    it != i && it !in small && boxes[it].hits(boxes[i]) && !original[it].hits(original[i])
+                }
+            if (newlyOverlaps) {
                 boxes[i] = original[i]
             }
         }
@@ -1864,25 +1958,44 @@ object ArcaduneSkins {
             controls.mapIndexed { i, ctl ->
                 val b = boxes[i]
                 var out = ctl.withFrame(SkinRect(b.x, b.y, b.w, b.h))
-                if (!nes && out is SkinControl.Button && (out.isExtraButton() || (out.shape == ButtonShape.PILL && out.icon == null && out.label.length <= 8))) {
+                val shortNamePill =
+                    out is SkinControl.Button &&
+                        (
+                            out.isExtraButton() ||
+                                (out.shape == ButtonShape.PILL && out.icon == null && out.label.length <= 8)
+                        )
+                if (!nes && shortNamePill && out is SkinControl.Button) {
                     out = out.copy(labelBelow = false)
                 }
                 out
             }
         return copy(
             controls = baked,
-            defaultCustomization = c.copy(offsets = emptyMap(), scales = emptyMap(), shown = emptySet(), hidden = emptySet()),
+            defaultCustomization =
+                c.copy(
+                    offsets = emptyMap(),
+                    scales = emptyMap(),
+                    shown = emptySet(),
+                    hidden = emptySet(),
+                ),
             captionless = !nes,
             fixedExtras = true,
         ).withSettledReach()
     }
 
-
     /** Per-console touches after the general tidying (what the player asked for by name). */
-    private fun SkinLayout.adjusted(id: TouchControllerID, portrait: Boolean): SkinLayout {
+    private fun SkinLayout.adjusted(
+        id: TouchControllerID,
+        portrait: Boolean,
+    ): SkinLayout {
         if (!portrait) return this
+
         fun idx(match: (SkinControl) -> Boolean) = controls.indexOfFirst(match)
-        fun label(c: SkinControl, vararg names: String) = c is SkinControl.Button && c.label in names
+
+        fun label(
+            c: SkinControl,
+            vararg names: String,
+        ) = c is SkinControl.Button && c.label in names
         val frames = controls.map { it.frame }.toMutableList()
         when (id) {
             // The top four: save, load, fast-forward (optional), rewind (always there) last.
@@ -1908,16 +2021,28 @@ object ArcaduneSkins {
             TouchControllerID.PSX -> {
                 val ids = listOf("SAVE", "LOAD", "FAST").map { n -> idx { label(it, n) } }
                 if (ids.all { it >= 0 }) {
-                    val shoulders = frames.indices.filter { (controls[it] as? SkinControl.Button)?.shape == ButtonShape.SHOULDER }
+                    val shoulders =
+                        frames.indices.filter { (controls[it] as? SkinControl.Button)?.shape == ButtonShape.SHOULDER }
                     val shoulderBottom = shoulders.maxOf { frames[it].y + frames[it].height }
                     val shift = 14f
-                    frames.indices.filter { controls[it] is SkinControl.Dpad || ((controls[it] as? SkinControl.Button)?.shape == ButtonShape.ROUND && !controls[it].isExtraButton()) }.forEach {
+                    frames.indices.filter {
+                        controls[it] is SkinControl.Dpad ||
+                            (
+                                (controls[it] as? SkinControl.Button)?.shape == ButtonShape.ROUND &&
+                                    !controls[it].isExtraButton()
+                            )
+                    }.forEach {
                         frames[it] = SkinRect(frames[it].x, frames[it].y + shift, frames[it].width, frames[it].height)
                     }
                     val w = 40f
                     val h = 17f
                     val gutter = (width - 3 * w) / 4
-                    ids.forEachIndexed { k, i -> frames[i] = SkinRect(gutter + k * (w + gutter), shoulderBottom + 6f, w, h) }
+                    ids.forEachIndexed {
+                            k,
+                            i,
+                        ->
+                        frames[i] = SkinRect(gutter + k * (w + gutter), shoulderBottom + 6f, w, h)
+                    }
                 }
             }
             else -> return this
@@ -1927,8 +2052,24 @@ object ArcaduneSkins {
 
     private fun ArcaduneSkin.handTuned(id: TouchControllerID): ArcaduneSkin {
         return copy(
-            portrait = (if (portrait.fixedExtras) portrait else portrait.handTuned(HAND_TUNED["${id}_portrait"])).adjusted(id, portrait = true),
-            landscape = if (landscape.fixedExtras) landscape else landscape.handTuned(HAND_TUNED["${id}_landscape"]),
+            portrait =
+                (
+                    if (portrait.fixedExtras) {
+                        portrait
+                    } else {
+                        portrait.handTuned(
+                            HAND_TUNED["${id}_portrait"],
+                        )
+                    }
+                ).adjusted(id, portrait = true),
+            landscape =
+                if (landscape.fixedExtras) {
+                    landscape
+                } else {
+                    landscape.handTuned(
+                        HAND_TUNED["${id}_landscape"],
+                    )
+                },
         )
     }
 
@@ -1949,6 +2090,7 @@ object ArcaduneSkins {
             is SkinControl.Menu -> copy(frame = frame)
             is SkinControl.Rewind -> copy(frame = frame)
         }
+
     /** The DS sideways: both screens side by side across the top, the controls under them. */
     private val DS_SIDEWAYS_SCREENS = SkinRect(70f, 0f, 672f, 232f)
 
@@ -2541,7 +2683,12 @@ object ArcaduneSkins {
                             load = r(row3[1], 192, 40, 17),
                             reach = 3f,
                         ),
-                ).copy(uprightScreenSide = DS_UPRIGHT_SIDE, screenPanelBelow = 6f, captionless = true, fixedExtras = true)
+                ).copy(
+                    uprightScreenSide = DS_UPRIGHT_SIDE,
+                    screenPanelBelow = 6f,
+                    captionless = true,
+                    fixedExtras = true,
+                )
                     .withDefaults(DS_PORTRAIT_TUNED).withSettledReach(),
             // Sideways like the 3DS: slim wings, a big main screen with the other one small at its
             // lower right (Swap trades them), L and the d-pad on the left wing, R, Swap,
@@ -2584,6 +2731,7 @@ object ArcaduneSkins {
             "3:-67.27749:-26.906977;2:9.388709:-14.879306;5:-62.27748:51.502384;7:-52.120354:69.70162;" +
             "4:-52.120354:37.322453;6:-36.842728:51.502384;1:-10.268363:1.8190217E-6;" +
             "s3=1.15;s2=1.2;s7=1.6;s6=1.6;s5=1.6;s4=1.6"
+
     // The 3DS as tuned on 2026-11-20: screens, sticks, shoulders and face buttons. The small buttons
     // (menu, select, start, and the four extras) are not in it: they are placed in the layout itself,
     // all one size, with no names under them.
@@ -2666,9 +2814,9 @@ object ArcaduneSkins {
                             reach = 4f,
                         ),
                 ).copy(captionless = true, fixedExtras = true).withDefaults(N3DS_PORTRAIT_TUNED).withSettledReach(),
+            // Landscape: slim wings, so the big main screen takes as much of the width as it can (the
+            // 3DS picture is wide: its height is set by the width it gets).
             landscape =
-                // Slim wings, so the big main screen takes as much of the width as it can (the
-                // 3DS picture is wide: its height is set by the width it gets).
                 landscape(
                     listOf(
                         shoulder(L, "L", r(4, 6, 50, 32)),
@@ -2808,7 +2956,9 @@ object ArcaduneSkins {
                     SkinPalettes.WONDERSWAN,
                     listOf(
                         SkinControl.Dpad(r(8, 56, 128)),
-                    ) + diamond(244f, 114f, 50f, Y to "X1", B to "X4", X to "X2", A to "X3") + portraitBottomRow(select = null),
+                    ) +
+                        diamond(244f, 114f, 50f, Y to "X1", B to "X4", X to "X2", A to "X3") +
+                        portraitBottomRow(select = null),
                 ),
             landscape =
                 landscape(

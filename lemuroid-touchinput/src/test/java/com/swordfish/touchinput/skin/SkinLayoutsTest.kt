@@ -106,28 +106,52 @@ class SkinLayoutsTest {
                     val layout = skin.portrait
                     val extras = layout.controls.indices.filter { layout.controls[it].isExtraButton() }.toSet()
                     val frames = layout.controls.mapIndexed { i, c -> layout.defaultCustomization.frameOf(i, c.frame) }
+
                     // The name written under a control (a 4-unit gap, then a line of text about 13 high).
                     fun named(c: SkinControl) =
                         c is SkinControl.Menu || c is SkinControl.Rewind || (c is SkinControl.Button && c.labelBelow)
 
                     fun scaleOf(c: SkinControl) = (c as? SkinControl.Button)?.captionScale ?: 1f
 
-                    fun nameOf(f: SkinRect, c: SkinControl) = SkinRect(f.centerX - 20f * scaleOf(c), f.y + f.height + 4f * scaleOf(c), 40f * scaleOf(c), 13f * scaleOf(c))
+                    fun nameOf(
+                        f: SkinRect,
+                        c: SkinControl,
+                    ) = SkinRect(
+                        f.centerX - 20f * scaleOf(c),
+                        f.y + f.height + 4f * scaleOf(c),
+                        40f * scaleOf(c),
+                        13f * scaleOf(c),
+                    )
                     val names =
                         extras.filter { (layout.controls[it] as SkinControl.Button).labelBelow }.flatMap { i ->
+                            val extra = describe(layout.controls[i])
                             layout.controls.indices.filter { it != i }.flatMap { j ->
                                 val own = nameOf(frames[i], layout.controls[i])
+                                val otherName = nameOf(frames[j], layout.controls[j])
                                 val clash =
-                                    own.overlaps(frames[j]) ||
-                                        (named(layout.controls[j]) && own.overlaps(nameOf(frames[j], layout.controls[j])))
-                                if (clash) listOf("$id $v portrait: the name under extra ${describe(layout.controls[i])} meets ${describe(layout.controls[j])}") else emptyList()
-                            } +
-                                layout.controls.indices.filter { it !in extras && named(layout.controls[it]) }.mapNotNull { j ->
-                                    if (nameOf(frames[j], layout.controls[j]).overlaps(frames[i])) "$id $v portrait: the name under ${describe(layout.controls[j])} meets extra ${describe(layout.controls[i])}" else null
+                                    own.overlaps(frames[j]) || (named(layout.controls[j]) && own.overlaps(otherName))
+                                if (clash) {
+                                    val other = describe(layout.controls[j])
+                                    listOf("$id $v portrait: the name under extra $extra meets $other")
+                                } else {
+                                    emptyList()
                                 }
+                            } +
+                                layout.controls.indices
+                                    .filter { it !in extras && named(layout.controls[it]) }
+                                    .mapNotNull { j ->
+                                        if (nameOf(frames[j], layout.controls[j]).overlaps(frames[i])) {
+                                            val other = describe(layout.controls[j])
+                                            "$id $v portrait: the name under $other meets extra $extra"
+                                        } else {
+                                            null
+                                        }
+                                    }
                         }
                     problems("$id $v portrait", layout, frames, layout.width)
-                        .filter { it.contains("button 'FAST'") || it.contains("button 'EXIT'") || it.contains("button 'SAVE'") || it.contains("button 'LOAD'") }
+                        .filter {
+                            listOf("FAST", "EXIT", "SAVE", "LOAD").any { name -> it.contains("button '$name'") }
+                        }
                         .also { assertEquals("$id has four extra buttons", 4, extras.size) } + names
                 }
             }
@@ -152,20 +176,39 @@ class SkinLayoutsTest {
                         val name = "$id $v landscape ${w.toInt()}x${h.toInt()}"
                         extras.filter { it in frames }.flatMap { i ->
                             frames.filter { (j, other) ->
-                                i != j && (touches.getValue(i).coversPartOf(other) || (touches[j]?.coversPartOf(frames.getValue(i)) ?: false))
+                                i != j &&
+                                    (
+                                        touches.getValue(i).coversPartOf(other) ||
+                                            (touches[j]?.coversPartOf(frames.getValue(i)) ?: false)
+                                    )
                             }.map { (j, _) ->
                                 "$name: extra ${describe(layout.controls[i])} meets ${describe(layout.controls[j])}"
                             } +
                                 // The name under an extra button (sideways only those carry one).
-                                frames.getValue(i).takeIf { (layout.controls[i] as SkinControl.Button).labelBelow }.let { f ->
+                                frames.getValue(i).takeIf {
+                                    (layout.controls[i] as SkinControl.Button).labelBelow
+                                }.let { f ->
                                     if (f == null) return@let emptyList<String>()
                                     val sc = geometry.scale
                                     val cs = (layout.controls[i] as? SkinControl.Button)?.captionScale ?: 1f
-                                    fun nameOf(r: Rect) = Rect(r.center.x - 20f * sc * cs, r.bottom + 4f * sc * cs, r.center.x + 20f * sc * cs, r.bottom + 17f * sc * cs)
+
+                                    fun nameOf(r: Rect) =
+                                        Rect(
+                                            r.center.x - 20f * sc * cs,
+                                            r.bottom + 4f * sc * cs,
+                                            r.center.x + 20f * sc * cs,
+                                            r.bottom + 17f * sc * cs,
+                                        )
                                     val own = nameOf(f)
                                     frames.filter { (j, other) ->
-                                        i != j && (own.coversPartOf(other) || (j in extras && (layout.controls[j] as SkinControl.Button).labelBelow && own.coversPartOf(nameOf(other))))
-                                    }.map { (j, _) -> "$name: the name under extra ${describe(layout.controls[i])} meets ${describe(layout.controls[j])}" }
+                                        val otherNamed =
+                                            j in extras && (layout.controls[j] as SkinControl.Button).labelBelow
+                                        i != j &&
+                                            (own.coversPartOf(other) || (otherNamed && own.coversPartOf(nameOf(other))))
+                                    }.map { (j, _) ->
+                                        val extra = describe(layout.controls[i])
+                                        "$name: the name under extra $extra meets ${describe(layout.controls[j])}"
+                                    }
                                 }
                         }
                     }
@@ -188,13 +231,23 @@ class SkinLayoutsTest {
                     val all = layout.defaultCustomization.copy(shown = extras)
                     val spec = ScreenSpecs.forController(id, emptyMap(), isLandscape)
                     val sizes =
-                        if (isLandscape) listOf(891f to 411f, 800f to 360f, 915f to 412f) else listOf(411f to 891f, 360f to 800f, 412f to 915f)
+                        if (isLandscape) {
+                            listOf(
+                                891f to 411f,
+                                800f to 360f,
+                                915f to 412f,
+                            )
+                        } else {
+                            listOf(411f to 891f, 360f to 800f, 412f to 915f)
+                        }
                     sizes.flatMap { (w, h) ->
                         val placement = placeShell(skin, isLandscape, shell, spec, w, h, Rect(0f, 0f, w, h), 1f, all)
                         // Screens that run off the phone (a tuned size too big for it): nothing keeps clear of those.
-                        if (placement.windows.any { it.top < -1f || it.bottom > h + 1f || it.left < -1f || it.right > w + 1f }) {
-                            return@flatMap emptyList<String>()
-                        }
+                        val offPhone =
+                            placement.windows.any {
+                                it.top < -1f || it.bottom > h + 1f || it.left < -1f || it.right > w + 1f
+                            }
+                        if (offPhone) return@flatMap emptyList<String>()
                         val name = "$id ${if (isLandscape) "landscape" else "portrait"} ${w.toInt()}x${h.toInt()}"
                         val placed: Map<Int, Rect> =
                             if (isLandscape) {
@@ -214,7 +267,17 @@ class SkinLayoutsTest {
                                 }
                             }
                         extras.filter { it in placed }.flatMap { i ->
-                            placement.windows.filter { it.inflate(if (isLandscape && all.hasScreenChanges) 0f else if (layout.screenPanelBelow != null) SCREEN_OUTLINE_DP else SCREEN_BEZEL_DP).overlaps(placed.getValue(i)) }
+                            placement.windows.filter {
+                                it.inflate(
+                                    if (isLandscape && all.hasScreenChanges) {
+                                        0f
+                                    } else if (layout.screenPanelBelow != null) {
+                                        SCREEN_OUTLINE_DP
+                                    } else {
+                                        SCREEN_BEZEL_DP
+                                    },
+                                ).overlaps(placed.getValue(i))
+                            }
                                 .map { "$name: extra ${describe(layout.controls[i])} is on a game screen" }
                         }
                     }
@@ -566,7 +629,10 @@ class SkinLayoutsTest {
 
                 val defaultState = SkinCustomization()
                 assertTrue(defaultState.isHidden(ffIdx, layout.controls[ffIdx]))
-                assertFalse("$id $orientation: Exit is on by default", defaultState.isHidden(exitIdx, layout.controls[exitIdx]))
+                assertFalse(
+                    "$id $orientation: Exit is on by default",
+                    defaultState.isHidden(exitIdx, layout.controls[exitIdx]),
+                )
 
                 val enabled = defaultState.setControlVisible(ffIdx, layout.controls[ffIdx], visible = true)
                 assertFalse(enabled.isHidden(ffIdx, layout.controls[ffIdx]))
@@ -589,7 +655,10 @@ class SkinLayoutsTest {
                     assertTrue("$id $orientation is missing the optional $name button", index >= 0)
                     assertTrue(SkinCustomization().isHidden(index, layout.controls[index]))
                     val frame = layout.controls[index].frame
-                    assertTrue("$id $orientation $name starts outside the skin", frame.x >= 0f && frame.x + frame.width <= layout.width)
+                    assertTrue(
+                        "$id $orientation $name starts outside the skin",
+                        frame.x >= 0f && frame.x + frame.width <= layout.width,
+                    )
                 }
             }
         }

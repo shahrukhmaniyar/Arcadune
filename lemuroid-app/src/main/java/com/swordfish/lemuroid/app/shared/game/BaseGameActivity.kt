@@ -2,8 +2,8 @@ package com.swordfish.lemuroid.app.shared.game
 
 import android.app.Activity
 import android.content.Intent
-import android.content.res.Configuration
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -496,7 +496,10 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             {
                 // The layout first (placing the extra buttons takes a moment), then its pictures, both
                 // cached, so the game screen finds them ready instead of working them out itself.
-                controllers.forEach { id -> runCatching { com.swordfish.touchinput.skin.ArcaduneSkins.forController(id) } }
+                controllers.forEach {
+                        id ->
+                    runCatching { com.swordfish.touchinput.skin.ArcaduneSkins.forController(id) }
+                }
                 controllers.forEach { id -> runCatching { SkinArtLoader.load(context, id.name, landscape) } }
             },
             "skin-art-preload",

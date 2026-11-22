@@ -27,6 +27,7 @@ import com.swordfish.lemuroid.common.files.safeDelete
 import com.swordfish.lemuroid.common.kotlin.writeToFile
 import com.swordfish.lemuroid.lib.core.CoreLibraryLocator
 import com.swordfish.lemuroid.lib.core.CoreUpdater
+import com.swordfish.lemuroid.lib.core.DownloadVerifier
 import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
@@ -103,6 +104,8 @@ class CoreUpdaterImpl(
                     if (!CoreLibraryLocator.isValidElfSharedLibrary(tempFile)) {
                         throw IOException("Downloaded core ${coreID.coreName} is not a valid Android ELF binary")
                     }
+                    // Native code: only the exact file Arcadune published may ever be loaded.
+                    DownloadVerifier.verifyCore(tempFile, abi, coreID)
                     CoreLibraryLocator.withCrossProcessCoreLock(directoriesManager) {
                         runCatching {
                             CoreLibraryLocator.deleteOutdatedCores(directoriesManager)

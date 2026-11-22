@@ -25,6 +25,7 @@
 
     <ImageView
         android:id="@+id/settings_loading_icon"
+        android:importantForAccessibility="no"
         android:layout_width="@dimen/loading_circle_icon"
         android:layout_height="@dimen/loading_circle_icon"
         android:layout_gravity="center"/>

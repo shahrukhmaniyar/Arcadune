@@ -5,13 +5,15 @@ import android.content.Intent
 import android.view.InputDevice
 import android.view.KeyEvent
 import com.swordfish.lemuroid.R
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
-@OptIn(DelicateCoroutinesApi::class)
+/** Outlives the binding screen, so a binding is still saved after the screen has closed. */
+internal val bindingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
 class InputBindingUpdater(private val inputDeviceManager: InputDeviceManager, intent: Intent) {
     val extras = parseExtras(intent)
 
@@ -40,10 +42,12 @@ class InputBindingUpdater(private val inputDeviceManager: InputDeviceManager, in
     private fun onKeyUp(event: KeyEvent): Boolean {
         if (!isTargetedDevice(event.device)) return false
 
-        runBlocking {
-            GlobalScope.async {
-                inputDeviceManager.updateBinding(event.device, RetroKey(extras.retroKey), InputKey(event.keyCode))
-            }
+        // Saved in the background (the screen closes right away); the settings list updates when it lands.
+        val device = event.device
+        val keyCode = event.keyCode
+        bindingScope.launch {
+            runCatching { inputDeviceManager.updateBinding(device, RetroKey(extras.retroKey), InputKey(keyCode)) }
+                .onFailure { Timber.e(it, "Could not save the button binding") }
         }
 
         return true

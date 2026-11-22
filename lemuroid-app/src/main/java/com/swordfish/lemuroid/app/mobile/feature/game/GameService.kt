@@ -61,7 +61,12 @@ class GameService : DaggerService() {
                 this,
                 NotificationsManager.GAME_RUNNING_NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                // Service types exist from Android 10; ServiceCompat ignores the value before that.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                } else {
+                    0
+                },
             )
         }.onFailure {
             Timber.w(it, "Unable to promote GameService to foreground")

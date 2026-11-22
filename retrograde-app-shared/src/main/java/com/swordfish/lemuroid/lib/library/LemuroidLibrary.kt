@@ -56,6 +56,7 @@ class LemuroidLibrary(
     suspend fun indexLibrary() {
         val startedAtMs = System.currentTimeMillis()
         var completedCleanly = false
+        scannedFiles.set(0)
 
         try {
             indexProviders(startedAtMs)
@@ -67,7 +68,7 @@ class LemuroidLibrary(
             Timber.e(e, "Library indexing stopped due to exception; skipping destructive cleanup")
         }
 
-        if (completedCleanly) {
+        if (completedCleanly && shouldRunCleanUp(scannedFiles.get(), retrogradedb.gameDao().countGamesNow())) {
             cleanUp(startedAtMs)
         }
 
@@ -102,6 +103,7 @@ class LemuroidLibrary(
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
     ) = flow<Unit> {
+        scannedFiles.addAndGet(batch.size)
         val entries = fetchEntriesFromDatabase(batch)
 
         val existingEntries = entries.filterIsInstance<ScanEntry.GameFile>()
@@ -366,10 +368,22 @@ class LemuroidLibrary(
         data class File(val file: GroupedStorageFiles) : ScanEntry()
     }
 
+    private val scannedFiles = java.util.concurrent.atomic.AtomicInteger(0)
+
     companion object {
         // We batch database updates to avoid unnecessary UI updates.
         const val MAX_BUFFER_SIZE = 200
         const val MAX_TIME = 5000
         private const val SQLITE_BIND_CHUNK_SIZE = 500
+
+        /**
+         * A scan that found no file at all while the library still has games almost always means the
+         * folder could not be read (lost permission, SD card not mounted), not that every ROM was
+         * deleted. Removing the games then would wipe favourites, play time and custom covers.
+         */
+        fun shouldRunCleanUp(
+            filesSeen: Int,
+            gamesInLibrary: Int,
+        ): Boolean = filesSeen > 0 || gamesInLibrary == 0
     }
 }

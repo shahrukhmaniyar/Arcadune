@@ -22,7 +22,6 @@ import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import java.security.MessageDigest
@@ -66,7 +65,7 @@ object AppUpdater {
         val sha256: String?,
     )
 
-    private const val LATEST_RELEASE_URL = "https://api.github.com/repos/shahrukhmaniyar/Arcadune/releases/latest"
+    private const val RELEASES_URL = "https://api.github.com/repos/shahrukhmaniyar/Arcadune/releases?per_page=30"
     private const val PREF_LAST_CHECK = "arcadune_update_last_check"
     private const val AUTOMATIC_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
 
@@ -122,6 +121,9 @@ object AppUpdater {
                 try {
                     val release = fetchLatestRelease()
                     if (isNewer(release.version, currentVersion)) State.Available(release) else State.UpToDate
+                } catch (e: NoAppReleaseException) {
+                    // Nothing to install is "up to date", not "no connection".
+                    State.UpToDate
                 } catch (e: Exception) {
                     Timber.w(e, "Could not check for updates")
                     State.Failed(Reason.NO_CONNECTION)
@@ -155,7 +157,11 @@ object AppUpdater {
                 } catch (e: Exception) {
                     Timber.w(e, "Could not download the update")
                     tempFile.delete()
-                    if (coroutineContext.isActive) State.Failed(Reason.NO_CONNECTION, release) else State.Available(release)
+                    if (coroutineContext.isActive) {
+                        State.Failed(Reason.NO_CONNECTION, release)
+                    } else {
+                        State.Available(release)
+                    }
                 }
         }
     }
@@ -237,31 +243,53 @@ object AppUpdater {
         job = scope.launch(block = block)
     }
 
+    /**
+     * The newest app release. The list of releases is read instead of GitHub's "latest" release,
+     * because that flag can sit on a release of downloadable cores, which has no app in it.
+     */
     private fun fetchLatestRelease(): Release {
         val request =
             Request.Builder()
-                .url(LATEST_RELEASE_URL)
+                .url(RELEASES_URL)
                 .header("Accept", "application/vnd.github+json")
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("GitHub answered ${response.code}")
             val bodyString = response.body?.string() ?: error("Empty GitHub release response")
-            val json = JSONObject(bodyString)
-            val assets = json.getJSONArray("assets")
-            val asset =
-                (0 until assets.length())
-                    .map { assets.getJSONObject(it) }
-                    .firstOrNull { it.getString("name") == apkName }
-                    ?: error("The latest release has no $apkName")
-            return Release(
-                version = json.getString("tag_name").removePrefix("v"),
-                title = json.optString("name").ifBlank { json.getString("tag_name") },
-                notes = json.optString("body"),
-                apkUrl = asset.getString("browser_download_url"),
-                apkSize = asset.optLong("size"),
-                sha256 = asset.optString("digest").takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:"),
-            )
+            return newestAppRelease(bodyString, apkName) ?: throw NoAppReleaseException()
         }
+    }
+
+    /** No release on GitHub holds an app APK (not a connection problem). */
+    class NoAppReleaseException : Exception("No app release found")
+
+    /** Picks the newest non-draft, non-pre-release `vX.Y.Z` release that has [apkName] from a GitHub releases list. */
+    fun newestAppRelease(
+        releasesJson: String,
+        apkName: String,
+    ): Release? {
+        val releases = org.json.JSONArray(releasesJson)
+        return (0 until releases.length())
+            .map { releases.getJSONObject(it) }
+            .filter { !it.optBoolean("draft") && !it.optBoolean("prerelease") }
+            .filter { Regex("""v\d+(\.\d+)*""").matches(it.optString("tag_name")) }
+            .mapNotNull { json ->
+                val assets = json.optJSONArray("assets") ?: return@mapNotNull null
+                val asset =
+                    (0 until assets.length())
+                        .map { assets.getJSONObject(it) }
+                        .firstOrNull { it.optString("name") == apkName }
+                        ?: return@mapNotNull null
+                Release(
+                    version = json.getString("tag_name").removePrefix("v"),
+                    title = json.optString("name").ifBlank { json.getString("tag_name") },
+                    notes = json.optString("body"),
+                    apkUrl = asset.getString("browser_download_url"),
+                    apkSize = asset.optLong("size"),
+                    sha256 = asset.optString("digest").takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:"),
+                )
+            }
+            .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
     }
 
     private suspend fun downloadTo(

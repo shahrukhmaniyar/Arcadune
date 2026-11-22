@@ -356,6 +356,13 @@
     <string name="gamepad_binding_update_title">Associate \"RetroPad %1$s\"</string>
     <string name="gamepad_binding_update_description">Press a button on your \"%1$s\"</string>
     <string name="shortcut_not_set">Not set</string>
+    <string name="home_roms_access_lost_title">Choose your ROMs folder again</string>
+    <string name="home_roms_access_lost_message">Android no longer lets Arcadune read your ROMs folder, so games cannot start. Your games, saves and favourites are kept: choose the same folder again to continue.</string>
+    <string name="home_roms_access_lost_action">Choose folder</string>
+    <string name="ra_sign_in_not_stored">Signed in, but this phone could not store your sign-in securely, so it was not kept. Restart the phone and try again.</string>
+    <string name="notification_channel_saves_name">Save problems</string>
+    <string name="save_failed_notification_title">Your game was not saved</string>
+    <string name="save_failed_notification_message">Arcadune could not write the save for %1$s. Free some space on your phone, then open the game again and save.</string>
     <string name="shortcut_binding_update_title">Associate \"Shortcut %1$s\"</string>
     <string name="shortcut_binding_update_description">Press the first, then second button to bind a combo on your \"%1$s\"</string>
 
@@ -430,7 +437,7 @@
     <string name="saves_storage_folder_title">In-game saves folder</string>
     <string name="saves_storage_folder_hint">%1$s\nTap to copy full path</string>
     <string name="saves_storage_path_copied">Save folder path copied</string>
-    <string name="saves_storage_android_note">Android 11 and later hide Android/data folders from most built-in file managers when browsing internal storage without an SD card or PC, and Arcadune stores saves under its own package (%1$s).\n\nUninstalling Arcadune deletes this folder, so keep a copy in a visible folder or backup zip below.</string>
+    <string name="saves_storage_android_note">Android 11 and later hide Android/data folders from most built-in file managers when browsing internal storage without an SD card or PC, and Arcadune stores saves under its own package (%1$s).\n\nUninstalling Arcadune deletes this folder, and your phone\'s own Google backup does not include it, so keep a copy in a visible folder or backup zip below.</string>
     <string name="saves_export_category">Visible folder export</string>
     <string name="saves_export_folder_title">Export save files to folder</string>
     <string name="saves_export_folder_description">Copy raw save files (.srm, memory cards, PSP/3DS saves) into Documents, Downloads, or an SD card folder</string>

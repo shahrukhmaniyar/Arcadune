@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.game.GameService
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
+import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
 import com.swordfish.lemuroid.app.shared.GameMenuContract
 import com.swordfish.lemuroid.app.shared.achievements.GameViewModelAchievements
 import com.swordfish.lemuroid.app.shared.achievements.HardcorePolicy
@@ -599,7 +600,7 @@ class BaseGameScreenViewModel(
                 val snapshot = saves.captureSaveSnapshot(true)
                 // Compressing and writing it to disk happens after the game window has closed. The
                 // game process stays alive until it is done (see GameService), so nothing is lost.
-                GameService.schedule { saves.writeSaveSnapshot(snapshot) }
+                GameService.schedule { writeSnapshotOrWarn(snapshot) }
                 sideEffects.requestSuccessfulFinish()
             }
         }
@@ -630,8 +631,15 @@ class BaseGameScreenViewModel(
         GameService.schedule {
             stateMutex.withLock {
                 val snapshot = saves.captureSaveSnapshot(false)
-                saves.writeSaveSnapshot(snapshot)
+                writeSnapshotOrWarn(snapshot)
             }
+        }
+    }
+
+    /** A save that cannot be written is not silent: the player gets a notification. */
+    private suspend fun writeSnapshotOrWarn(snapshot: GameViewModelSaves.SaveSnapshot?) {
+        if (!saves.writeSaveSnapshot(snapshot)) {
+            NotificationsManager(appContext).showSaveFailedNotification(game.displayName())
         }
     }
 

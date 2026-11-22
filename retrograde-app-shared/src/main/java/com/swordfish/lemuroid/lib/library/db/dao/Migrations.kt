@@ -82,8 +82,10 @@ object Migrations {
                 )
                 database.execSQL(
                     "CREATE TABLE IF NOT EXISTS `collection_games` (`collectionId` INTEGER NOT NULL, " +
-                        "`gameId` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`collectionId`, `gameId`), " +
-                        "FOREIGN KEY(`collectionId`) REFERENCES `collections`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , " +
+                        "`gameId` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`collectionId`, `gameId`), " +
+                        "FOREIGN KEY(`collectionId`) REFERENCES `collections`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE , " +
                         "FOREIGN KEY(`gameId`) REFERENCES `games`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
                 )
                 database.execSQL(
@@ -91,6 +93,18 @@ object Migrations {
                 )
             }
         }
+
+    /** Every migration, oldest first. The database must be able to go from version 7 to the current one. */
+    val ALL: Array<Migration>
+        get() =
+            arrayOf(
+                GameSearchDao.MIGRATION,
+                VERSION_8_9,
+                VERSION_9_10,
+                VERSION_10_11,
+                VERSION_11_12,
+                VERSION_12_13,
+            )
 
     private fun migrateGamesTableToVersion10(database: SupportSQLiteDatabase) {
         database.execSQL(

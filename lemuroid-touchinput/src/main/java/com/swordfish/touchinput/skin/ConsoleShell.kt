@@ -776,19 +776,38 @@ fun placeShell(
                         if (isLandscape) {
                             SkinGeometry(layout, true, width / dp - 8f, height / dp - 8f)
                                 .frameRects(customization, rewindAvailable = true)
-                                .map { (i, r) -> i to Rect((r.left + 4f) * dp, (r.top + 4f) * dp, (r.right + 4f) * dp, (r.bottom + 4f) * dp) }
+                                .map {
+                                        (i, r) ->
+                                    i to
+                                        Rect(
+                                            (r.left + 4f) * dp,
+                                            (r.top + 4f) * dp,
+                                            (r.right + 4f) * dp,
+                                            (r.bottom + 4f) * dp,
+                                        )
+                                }
                         } else {
                             val unit = panel.width / layout.width
                             layout.controls.indices
-                                .filter { customization.isControlAvailable(layout.controls[it], true, true) && !customization.isHidden(it, layout.controls[it]) }
+                                .filter {
+                                    customization.isControlAvailable(layout.controls[it], true, true) &&
+                                        !customization.isHidden(it, layout.controls[it])
+                                }
                                 .map { i ->
                                     val f = customization.frameOf(i, layout.controls[i].frame)
-                                    i to Rect(panel.left + f.x * unit, panel.top + f.y * unit, panel.left + (f.x + f.width) * unit, panel.top + (f.y + f.height) * unit)
+                                    i to
+                                        Rect(
+                                            panel.left + f.x * unit,
+                                            panel.top + f.y * unit,
+                                            panel.left + (f.x + f.width) * unit,
+                                            panel.top + (f.y + f.height) * unit,
+                                        )
                                 }
                         }
                     rects.map { (i, r) ->
                         val c = layout.controls[i]
-                        r to if (c is SkinControl.Menu || (c is SkinControl.Button && c.shape == ButtonShape.PILL)) bezelPx else 0f
+                        val pill = c is SkinControl.Menu || (c is SkinControl.Button && c.shape == ButtonShape.PILL)
+                        r to if (pill) bezelPx else 0f
                     }
                 }
             }

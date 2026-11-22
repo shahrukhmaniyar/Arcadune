@@ -153,6 +153,24 @@ class SavesArchiveTest {
     }
 
     @Test
+    fun aBackupThatFailsHalfwayChangesNothing() {
+        val target = roots("target")
+        target.getValue("saves").write("a.srm", "current a")
+        target.getValue("saves").write("b.srm", "current b")
+        // The first entry is fine, the second one is unsafe: the restore must stop before replacing a.srm.
+        val halfBad = zipOf(withInfo = true, "saves/a.srm" to "from backup", "saves/../evil.txt" to "x")
+
+        try {
+            SavesArchive.read(ByteArrayInputStream(halfBad), target)
+            fail("the unsafe entry must stop the restore")
+        } catch (expected: SavesArchive.InvalidBackupException) {
+            assertEquals("current a", File(target.getValue("saves"), "a.srm").readText())
+            assertEquals("current b", File(target.getValue("saves"), "b.srm").readText())
+            assertFalse(File(temp.root, "target/.restoring-saves").exists())
+        }
+    }
+
+    @Test
     fun unknownTopLevelFoldersAreIgnored() {
         val target = roots("target")
         val zip = zipOf(withInfo = true, "other/x.txt" to "x", "saves/ok.srm" to "ok")

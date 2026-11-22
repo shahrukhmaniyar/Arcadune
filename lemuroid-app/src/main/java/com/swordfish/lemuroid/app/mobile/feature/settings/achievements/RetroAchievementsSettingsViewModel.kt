@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsAuthClient
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsOfflineQueue
 import com.swordfish.lemuroid.lib.achievements.RetroAchievementsPreferences
@@ -100,15 +101,27 @@ class RetroAchievementsSettingsViewModel(
             val result = RetroAchievementsAuthClient.loginWithPassword(username, password)
             result
                 .onSuccess { account ->
-                    RetroAchievementsPreferences.saveAccount(
-                        context = appContext,
-                        username = account.username,
-                        displayName = account.displayName,
-                        token = account.token,
-                        score = account.score,
-                        softcoreScore = account.softcoreScore,
-                        avatarUrl = account.avatarUrl,
-                    )
+                    val stored =
+                        runCatching {
+                            RetroAchievementsPreferences.saveAccount(
+                                context = appContext,
+                                username = account.username,
+                                displayName = account.displayName,
+                                token = account.token,
+                                score = account.score,
+                                softcoreScore = account.softcoreScore,
+                                avatarUrl = account.avatarUrl,
+                            )
+                        }
+                    if (stored.isFailure) {
+                        formState.update {
+                            it.copy(
+                                isSigningIn = false,
+                                errorMessage = appContext.getString(R.string.ra_sign_in_not_stored),
+                            )
+                        }
+                        return@onSuccess
+                    }
                     hasAutoRefreshed = true
                     RetroAchievementsOfflineQueue.flushPending(appContext, account)
                     formState.update {

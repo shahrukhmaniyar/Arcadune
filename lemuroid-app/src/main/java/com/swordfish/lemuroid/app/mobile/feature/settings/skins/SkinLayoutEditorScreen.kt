@@ -103,10 +103,9 @@ fun SkinLayoutEditorScreen(
         }
     }
 
-    val entryWasLandscape =
-        remember {
-            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        }
+    // The orientation when the editor opened, kept on purpose (the editor turns the screen itself).
+    val entryOrientation = LocalConfiguration.current.orientation
+    val entryWasLandscape = remember { entryOrientation == Configuration.ORIENTATION_LANDSCAPE }
     val previousOrientation =
         remember(activity) {
             activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

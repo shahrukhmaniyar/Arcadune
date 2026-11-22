@@ -6,10 +6,9 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.settings.GameShortcutType
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import timber.log.Timber
 
-@OptIn(DelicateCoroutinesApi::class)
 class ShortcutBindingUpdater(private val inputDeviceManager: InputDeviceManager, intent: Intent) {
     val extras = parseExtras(intent)
 
@@ -43,10 +42,13 @@ class ShortcutBindingUpdater(private val inputDeviceManager: InputDeviceManager,
             return false // wait for second key
         } else {
             if (firstKeyCodeInCombo == event.keyCode) return false // ignore same key press
-            val combo = Pair(InputKey(firstKeyCodeInCombo!!), InputKey(event.keyCode))
-            // TODO runBlocking here should go away.
-            runBlocking {
-                inputDeviceManager.updateShortcutBinding(event.device, extras.shortcutType, combo)
+            val first = firstKeyCodeInCombo ?: return false
+            val combo = Pair(InputKey(first), InputKey(event.keyCode))
+            val device = event.device
+            // Saved in the background (the screen closes right away); the settings list updates when it lands.
+            bindingScope.launch {
+                runCatching { inputDeviceManager.updateShortcutBinding(device, extras.shortcutType, combo) }
+                    .onFailure { Timber.e(it, "Could not save the shortcut") }
             }
             return true
         }

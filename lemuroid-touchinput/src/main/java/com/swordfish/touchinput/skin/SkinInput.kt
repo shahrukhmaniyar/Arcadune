@@ -123,7 +123,8 @@ class SkinInput(
         val target = targetAt(position)
         owners[id] =
             when {
-                target != null && (target.control is SkinControl.Dpad || target.control is SkinControl.Stick) -> Owner.Steer(target.index)
+                target != null && (target.control is SkinControl.Dpad || target.control is SkinControl.Stick) ->
+                    Owner.Steer(target.index)
                 target != null -> Owner.Buttons()
                 screenPointer == null && touchWindows.any { it.contains(position) } -> {
                     screenPointer = id
@@ -321,7 +322,9 @@ class SkinInput(
         when (hapticFeedback) {
             HapticFeedbackType.PRESS -> if (newlyPressed.isNotEmpty() || directionPressed) vibrate()
             HapticFeedbackType.PRESS_RELEASE ->
-                if (newlyPressed.isNotEmpty() || released.isNotEmpty() || directionPressed || directionReleased) vibrate()
+                if (newlyPressed.isNotEmpty() || released.isNotEmpty() || directionPressed || directionReleased) {
+                    vibrate()
+                }
             else -> Unit
         }
     }

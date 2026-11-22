@@ -11,6 +11,7 @@ import com.swordfish.lemuroid.app.utils.android.displayErrorDialog
 import com.swordfish.lemuroid.lib.android.RetrogradeActivity
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
+import timber.log.Timber
 import javax.inject.Inject
 
 class StorageFrameworkPickerLauncher : RetrogradeActivity() {
@@ -56,12 +57,17 @@ class StorageFrameworkPickerLauncher : RetrogradeActivity() {
             val currentValue: String? = sharedPreferences.getString(preferenceKey, null)
             val newValue = resultData?.data
 
-            if (newValue != null && newValue.toString() != currentValue) {
-                updatePersistableUris(newValue)
+            if (newValue != null) {
+                // Always ask Android to keep the permission, even for the folder that was already
+                // chosen: if Android dropped it, picking the same folder again is how players fix it.
+                runCatching { updatePersistableUris(newValue) }
+                    .onFailure { Timber.e(it, "Could not keep access to $newValue") }
 
-                sharedPreferences.edit().apply {
-                    this.putString(preferenceKey, newValue.toString())
-                    this.apply()
+                if (newValue.toString() != currentValue) {
+                    sharedPreferences.edit().apply {
+                        this.putString(preferenceKey, newValue.toString())
+                        this.apply()
+                    }
                 }
             }
 
