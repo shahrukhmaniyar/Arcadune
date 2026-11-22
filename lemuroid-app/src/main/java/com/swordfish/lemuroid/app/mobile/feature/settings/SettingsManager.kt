@@ -50,7 +50,7 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
             if (hasOwnSettings && own.isNotEmpty()) own else screenFilter()
         }
 
-    // HD mode (an upscaling filter that smooths pixel art) and immersive mode were removed from
+    // HD mode (an upscaling filter that smooths pixel art) and the old immersive mode switch were removed from
     // Settings; they stay off even for players who had switched them on before.
     @Suppress("RedundantSuspendModifier")
     suspend fun hdMode() = false
@@ -73,6 +73,9 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     @Suppress("RedundantSuspendModifier")
     suspend fun enableImmersiveMode() = false
+
+    /** Blur fill: the black space around the game filled with a blur of the picture. Off unless switched on. */
+    suspend fun blurFill() = booleanPreference(R.string.pref_key_blur_fill, false)
 
     suspend fun cacheSizeBytes() =
         stringPreference(

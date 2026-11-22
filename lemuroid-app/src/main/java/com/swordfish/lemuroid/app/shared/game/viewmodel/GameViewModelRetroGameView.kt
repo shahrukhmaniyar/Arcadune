@@ -110,7 +110,8 @@ class GameViewModelRetroGameView(
         val lowLatencyAudio = settingsManager.lowLatencyAudio()
         val enableRumble = settingsManager.enableRumble()
         val directLoad = settingsManager.allowDirectGameLoad()
-        val enableImmersiveMode = settingsManager.enableImmersiveMode()
+        val enableImmersiveMode = settingsManager.blurFill()
+        blurFillEnabled = enableImmersiveMode
 
         val hasMicrophonePermission =
             ContextCompat.checkSelfPermission(
@@ -359,6 +360,11 @@ class GameViewModelRetroGameView(
             )
     }
 
+    /** Whether Blur fill (Settings) is on for this game; the screen decides where it may show. */
+    @Volatile
+    var blurFillEnabled = false
+        private set
+
     // Values of the restart-only options when the game started (they are passed to the core at load).
     private var restartOnlyAtStart: Map<String, String>? = null
 
@@ -419,8 +425,6 @@ class GameViewModelRetroGameView(
             "top/bottom" -> "bottom/top"
             "left-right" -> "right-left"
             "left/right" -> "right/left"
-            "hybrid-top" -> DS_SWAPPED_SIDEWAYS
-            "hybrid/top" -> DESMUME_SWAPPED_SIDEWAYS
             else -> base
         }
     }
@@ -574,15 +578,14 @@ class GameViewModelRetroGameView(
         /** The stacked layout of each two-screen core, and what it becomes when the phone is sideways. */
         private const val MELONDS_LAYOUT = "melonds_screen_layout1"
         private const val DESMUME_LAYOUT = "desmume_screens_layout"
-        private const val DS_SWAPPED_SIDEWAYS = "hybrid-bottom"
-        private const val DESMUME_SWAPPED_SIDEWAYS = "hybrid/bottom"
 
         private val SIDEWAYS_LAYOUTS =
             mapOf(
                 "citra_layout_option" to ("Default Top-Bottom Screen" to "Large Screen, Small Screen"),
-                // The DS sideways: a big main screen and the other small at its lower right, like the 3DS.
-                "melonds_screen_layout1" to ("top-bottom" to "hybrid-top"),
-                "desmume_screens_layout" to ("top/bottom" to "hybrid/top"),
+                // The DS stays stacked sideways too: the console shell cuts the big main screen and the small
+                // other one out of the stacked picture (ScreenSpecs), so filters and Swap work on both cores.
+                "melonds_screen_layout1" to ("top-bottom" to "top-bottom"),
+                "desmume_screens_layout" to ("top/bottom" to "top/bottom"),
             )
 
         val RESTART_ONLY_VARIABLES =

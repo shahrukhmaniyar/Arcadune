@@ -63,20 +63,39 @@ fun main(args: Array<String>) {
                         }
                     }
                     if (shell) ConsoleShell(Modifier.fillMaxSize(), layout.palette ?: SkinPalettes.MONO, placement.windows, placement.bodyTop, placement.screenPanel)
+                    // SIZE=1.35 shows the skin after "All buttons" is pressed up to that size in Edit
+                    // Controls, one 5% press at a time (SPREAD=off: the plain size, with no room made).
+                    val surfaceW = if (landscape) w - 8f else placement.panel.width / scale
+                    val surfaceH = if (landscape) h - 8f else placement.panel.height / scale
+                    val customization = sizedCustomization(layout, landscape, surfaceW, surfaceH)
                     if (landscape) {
-                        ArcaduneSkinPreview(Modifier.fillMaxSize().padding(4.dp), layout, pinToEdges = true, shell = shell, art = art)
+                        ArcaduneSkinPreview(Modifier.fillMaxSize().padding(4.dp), layout, pinToEdges = true, shell = shell, customization = customization, art = art)
                     } else with(density) {
                         ArcaduneSkinPreview(
                             Modifier.absoluteOffset { IntOffset(placement.panel.left.toInt(), placement.panel.top.toInt()) }
                                 .size(placement.panel.width.toDp(), placement.panel.height.toDp()),
-                            layout, shell = true, art = art,
+                            layout, shell = true, customization = customization, art = art,
                         )
                     }
                 }
             }.use { scene ->
                 val img = scene.render()
-                File(out, "${id.name}_$name.png").writeBytes(img.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+                val sized = System.getenv("SIZE")?.let { "_size$it" + if (System.getenv("SPREAD") == "off") "_plain" else "" } ?: ""
+                File(out, "${id.name}_$name$sized.png").writeBytes(img.encodeToData(EncodedImageFormat.PNG)!!.bytes)
             }
         }
     }
+}
+
+/** The layout's own starting point, or (with SIZE set) that point with "All buttons" pressed up to SIZE. */
+private fun sizedCustomization(layout: SkinLayout, landscape: Boolean, width: Float, height: Float): SkinCustomization {
+    val target = System.getenv("SIZE")?.toFloatOrNull() ?: return SkinCustomization()
+    var c = layout.defaultCustomization
+    if (System.getenv("SPREAD") == "off") return c.copy(size = target)
+    var asked = c.size
+    while (kotlin.math.abs(target - asked) > 0.001f) {
+        asked = if (target > asked) minOf(asked + 0.05f, target) else maxOf(asked - 0.05f, target)
+        c = layout.spreadForGrowth(landscape, width, height, c, c.copy(size = asked))
+    }
+    return c
 }

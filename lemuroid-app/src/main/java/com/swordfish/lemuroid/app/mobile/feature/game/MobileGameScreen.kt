@@ -327,6 +327,12 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
 
             val targetRegions = if (skin != null) screenRegionsState.value else FloatArray(0)
 
+            // Immersive mode (Settings, off by default) paints a blur of the picture in the empty space around
+            // the game, wherever a skin leaves it: the console skins keep their bodies and only lose the black
+            // around the game, and the Minimal skins turn see-through so the blur shows behind the controls.
+            val blurVisible = viewModel.retroGameView.blurFillEnabled
+            val glassBody = blurVisible && skinVariant.value == SkinVariant.MINIMAL
+
             SideEffect {
                 val gameView = viewModel.retroGameView.retroGameView
                 if (gameView != null) {
@@ -336,10 +342,11 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                     if (!gameView.screenRegions.contentEquals(targetRegions)) {
                         gameView.screenRegions = targetRegions
                     }
+                    gameView.immersiveBackgroundVisible = blurVisible
                 }
             }
 
-            LaunchedEffect(targetViewport, targetRegions) {
+            LaunchedEffect(targetViewport, targetRegions, blurVisible) {
                 val gameView = viewModel.retroGameView.retroGameViewFlow()
                 if (targetViewport != null && gameView.viewport != targetViewport) {
                     gameView.viewport = targetViewport
@@ -347,6 +354,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                 if (!gameView.screenRegions.contentEquals(targetRegions)) {
                     gameView.screenRegions = targetRegions
                 }
+                gameView.immersiveBackgroundVisible = blurVisible
             }
 
             if (skin != null) {
@@ -376,6 +384,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                     gameView = fullPos,
                     takesScreenTouches = skinTakesScreenTouches,
                     art = skinArt,
+                    glassBody = glassBody,
                 )
             } else {
                 ConstraintLayout(
@@ -527,6 +536,7 @@ private fun PadKitScope.SkinnedGameLayout(
     gameView: Rect?,
     takesScreenTouches: Boolean,
     art: SkinArt?,
+    glassBody: Boolean,
 ) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -570,11 +580,15 @@ private fun PadKitScope.SkinnedGameLayout(
         val defaultEditorWindows =
             if (controlsVisible) placement.defaultGameWindows(shell, spec) else placement.defaultWindows
 
+        // With a gamepad (no controls, no shell) the DS sideways is still shown big screen plus small
+        // screen, like the 3DS: the windows are cut out of the core's picture and fitted in the screen.
+        val cutWindows =
+            if (!shell && spec?.cutsWithoutShell == true) placement.gameWindows(false, spec) else windows
         val regions =
-            if (shell &&
+            if ((shell || spec?.cutsWithoutShell == true) &&
                 spec != null &&
                 spec.srcScreens.size > 1 &&
-                windows.size == spec.srcScreens.size &&
+                cutWindows.size == spec.srcScreens.size &&
                 gameView != null &&
                 gameView.width > 0f &&
                 gameView.height > 0f &&
@@ -583,7 +597,7 @@ private fun PadKitScope.SkinnedGameLayout(
             ) {
                 FloatArray(spec.srcScreens.size * 8).also { arr ->
                     spec.srcScreens.forEachIndexed { idx, src ->
-                        val dst = windows[idx].translate(origin)
+                        val dst = cutWindows[idx].translate(origin)
                         val base = idx * 8
                         arr[base] = src.x / spec.srcWidth
                         arr[base + 1] = src.y / spec.srcHeight
@@ -636,6 +650,7 @@ private fun PadKitScope.SkinnedGameLayout(
                 panel = panel.takeIf { !isLandscape },
                 art = art.takeIf { !isLandscape },
                 cutoutScreens = true,
+                bodyAlpha = if (glassBody) GLASS_BODY_ALPHA else 1f,
             )
         }
 
@@ -863,3 +878,6 @@ private fun MenuEditTouchControlRow(
         slider()
     }
 }
+
+/** How solid a Minimal skin's body is while Immersive mode shows the blur behind it. */
+private const val GLASS_BODY_ALPHA = 0.55f

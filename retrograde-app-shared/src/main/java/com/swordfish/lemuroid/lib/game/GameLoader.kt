@@ -140,7 +140,11 @@ class GameLoader(
                             }
 
                         // The automatic save is read right away; whether it is still valid (not older
-                        // than the battery save) is decided once the battery save is known.
+                        // than the battery save) is decided once the battery save is known. The read
+                        // hands back its outcome instead of throwing: when the automatic save is not
+                        // used, the read is cancelled, and neither that nor a damaged file it no longer
+                        // needs may stop the game from starting (it used to: "Something bad happened
+                        // with your save file" every time a battery save was newer than the auto save).
                         val autoSaveJob =
                             async {
                                 val autoSaveWanted =
@@ -149,9 +153,9 @@ class GameLoader(
                                     runCatching {
                                         statesManager.getAutoSave(game, systemCoreConfig.coreID)
                                             ?.takeIf { it.metadata.version == systemCoreConfig.statesVersion }
-                                    }.getOrElse { throw GameLoaderException(GameLoaderError.Saves) }
+                                    }
                                 } else {
-                                    null
+                                    Result.success(null)
                                 }
                             }
 
@@ -172,7 +176,7 @@ class GameLoader(
                             }.getOrElse { throw GameLoaderException(GameLoaderError.Saves) }
                         val quickSaveData =
                             if (keepAutoSave) {
-                                autoSaveJob.await()
+                                autoSaveJob.await().getOrElse { throw GameLoaderException(GameLoaderError.Saves) }
                             } else {
                                 autoSaveJob.cancel()
                                 null

@@ -381,6 +381,48 @@ class ShellPlacementTest {
         assertEquals(1024f, desmumeHybrid.srcWidth, 0.01f)
         assertEquals(SkinRect(768f, 384f, 256f, 192f), desmumeHybrid.srcScreens[1])
 
+        // The DS sideways, on both cores, normal and swapped: the big and the small window are cut out
+        // of the core's stacked picture (256 x 400, main screen on top), never out of the core's own
+        // "hybrid" picture, whose small screen each core puts somewhere else (issue #2). The touch
+        // screen is the small window, or the big one once swapped.
+        for ((key, normal, swapped) in listOf(
+            Triple("melonds_screen_layout1", "top-bottom", "bottom-top"),
+            Triple("desmume_screens_layout", "top/bottom", "bottom/top"),
+        )) {
+            for ((value, touchWindow) in listOf(normal to 1, swapped to 0)) {
+                val values = mapOf(key to value)
+                val sideways = ScreenSpecs.forController(TouchControllerID.MELONDS, values, landscape = true)!!
+                // With a gamepad (no shell) it is still cut into big + small, as the 3DS is; upright it is not.
+                assertTrue("$value: cut out even without a shell", sideways.cutsWithoutShell)
+                val fitted = sideways.fitIn(Rect(0f, 0f, 800f, 360f))
+                assertTrue("$value: big window is the big one", fitted[0].width > fitted[1].width * 2f)
+                assertTrue(
+                    "$value: both windows fit the screen",
+                    fitted.all { it.left >= 0f && it.top >= 0f && it.right <= 800f && it.bottom <= 360f },
+                )
+                assertFalse(
+                    "$value: upright stays stacked",
+                    ScreenSpecs.forController(TouchControllerID.MELONDS, values, landscape = false)!!.cutsWithoutShell,
+                )
+                assertEquals("$value: source width", 256f, sideways.srcWidth, 0.01f)
+                assertEquals("$value: source height", 400f, sideways.srcHeight, 0.01f)
+                assertEquals("$value: big window", SkinRect(0f, 0f, 256f, 192f), sideways.srcScreens[0])
+                assertEquals("$value: small window", SkinRect(0f, 208f, 256f, 192f), sideways.srcScreens[1])
+                assertTrue(
+                    "$value: big window is the big one",
+                    sideways.screens[0].width > sideways.screens[1].width * 2f,
+                )
+                assertEquals(
+                    "$value: touch screen",
+                    setOf(touchWindow),
+                    ScreenSpecs.touchWindowIndices(TouchControllerID.MELONDS, values, landscape = true),
+                )
+            }
+        }
+        val sidewaysByDefault = ScreenSpecs.forController(TouchControllerID.MELONDS, emptyMap(), landscape = true)!!
+        assertEquals(400f, sidewaysByDefault.srcHeight, 0.01f)
+        assertEquals(setOf(1), ScreenSpecs.touchWindowIndices(TouchControllerID.MELONDS, emptyMap(), landscape = true))
+
         // Game Gear 4:3 cutout & DS/3DS touch-only window filtering:
         val ggSpec = ScreenSpecs.forController(TouchControllerID.GG, emptyMap(), landscape = false)!!
         assertEquals(4f / 3f, ggSpec.width / ggSpec.height, 0.001f)

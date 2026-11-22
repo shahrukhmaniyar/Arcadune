@@ -112,6 +112,7 @@ import com.swordfish.touchinput.skin.SkinVariant
 import com.swordfish.touchinput.skin.clampControlOffset
 import com.swordfish.touchinput.skin.displayName
 import com.swordfish.touchinput.skin.signature
+import com.swordfish.touchinput.skin.spreadForGrowth
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -567,6 +568,7 @@ fun ArcaduneControllerStudio(
                     customizationState = customizationState,
                     variant = variant,
                     isLandscape = isLandscape,
+                    editorSurfaceDp = editorSurfaceDp,
                     editableBodyTop = editableBodyTop,
                     defaultBodyTop = defaultBodyTop,
                     minBodyTop = minBodyTop,
@@ -592,6 +594,8 @@ fun ArcaduneControllerStudio(
                         layout = layout,
                         editorSurfaceDp = editorSurfaceDp,
                         extraUnitsAbove = extraUnitsAbove,
+                        rewindAvailable = rewindAvailable,
+                        fastForwardSupported = fastForwardSupported,
                         customizationState = customizationState,
                         onScrubberBusyChange = { scrubberBusy = it },
                         onHide = {
@@ -1786,6 +1790,8 @@ private fun SelectedButtonScaleBar(
     editorSurfaceDp: Offset,
     extraUnitsAbove: Float,
     customizationState: MutableState<SkinCustomization>,
+    rewindAvailable: Boolean = true,
+    fastForwardSupported: Boolean = true,
     onScrubberBusyChange: (Boolean) -> Unit = {},
     onHide: () -> Unit,
 ) {
@@ -1818,7 +1824,18 @@ private fun SelectedButtonScaleBar(
             } else {
                 scaled.offsets
             }
-        customizationState.value = scaled.copy(offsets = nextOffsets)
+        // A bigger button makes room: the buttons it would run into move aside, and if there is no
+        // room at all the size stops at the biggest one that fits (nothing ever overlaps).
+        customizationState.value =
+            layout.spreadForGrowth(
+                pinToEdges = isLandscape,
+                surfaceWidthDp = editorSurfaceDp.x,
+                surfaceHeightDp = editorSurfaceDp.y,
+                before = latest,
+                after = scaled.copy(offsets = nextOffsets),
+                rewindAvailable = rewindAvailable,
+                fastForwardSupported = fastForwardSupported,
+            )
     }
 
     Surface(
@@ -2121,6 +2138,7 @@ private fun GlobalControllerOptionsCard(
     customizationState: MutableState<SkinCustomization>,
     variant: SkinVariant,
     isLandscape: Boolean,
+    editorSurfaceDp: Offset = Offset.Zero,
     editableBodyTop: Float? = null,
     defaultBodyTop: Float? = null,
     minBodyTop: Float = 0f,
@@ -2134,6 +2152,22 @@ private fun GlobalControllerOptionsCard(
     onSelectController: ((ControllerConfig) -> Unit)? = null,
 ) {
     val sizeVal by remember(customizationState) { derivedStateOf { customizationState.value.size } }
+
+    // Making all buttons bigger makes room: buttons that would overlap move aside, and if there is
+    // no room the size stops at the biggest one that fits. Smaller sizes change nothing else.
+    fun applySize(nextSize: Float) {
+        val latest = customizationState.value
+        customizationState.value =
+            layout.spreadForGrowth(
+                pinToEdges = isLandscape,
+                surfaceWidthDp = editorSurfaceDp.x,
+                surfaceHeightDp = editorSurfaceDp.y,
+                before = latest,
+                after = latest.copy(size = nextSize),
+                rewindAvailable = rewindAvailable,
+                fastForwardSupported = fastForwardSupported,
+            )
+    }
     val opacityVal by remember(customizationState) { derivedStateOf { customizationState.value.opacity } }
     val customization = customizationState.value
     val toggleableButtons =
@@ -2234,16 +2268,14 @@ private fun GlobalControllerOptionsCard(
                     gestureKey = "global_size",
                     onDragStart = { onScrubberBusyChange(true) },
                     onDragEnd = { onScrubberBusyChange(false) },
-                    onValueChange = { nextSize ->
-                        customizationState.value = customizationState.value.copy(size = nextSize)
-                    },
+                    onValueChange = { nextSize -> applySize(nextSize) },
                     onStepMinus = {
                         val stepped =
                             (((sizeVal - 0.05f) * 20f).roundToInt() / 20f).coerceIn(
                                 SkinCustomization.MIN_SIZE,
                                 SkinCustomization.MAX_SIZE,
                             )
-                        customizationState.value = customizationState.value.copy(size = stepped)
+                        applySize(stepped)
                     },
                     onStepPlus = {
                         val stepped =
@@ -2251,7 +2283,7 @@ private fun GlobalControllerOptionsCard(
                                 SkinCustomization.MIN_SIZE,
                                 SkinCustomization.MAX_SIZE,
                             )
-                        customizationState.value = customizationState.value.copy(size = stepped)
+                        applySize(stepped)
                     },
                 )
             }

@@ -334,6 +334,7 @@ void LibretroDroid::recreateVideoSurfaceLocked() {
     if (!screenRegions.empty()) {
         video->updateScreenRegions(screenRegions);
     }
+    video->updateImmersiveBackgroundVisible(immersiveBackgroundVisible);
 
     if (Environment::getInstance().getHwContextReset() != nullptr) {
         Environment::getInstance().getHwContextReset()();
@@ -1223,6 +1224,15 @@ void LibretroDroid::completeAchievementHttpRequest(
 NativeAchievementsSnapshot LibretroDroid::captureAchievementsSnapshot() {
     std::lock_guard<std::mutex> lock(coreLock);
     return Achievements::getInstance().captureSnapshotLocked();
+}
+
+
+void LibretroDroid::setImmersiveBackgroundVisible(bool visible) {
+    this->immersiveBackgroundVisible = visible;
+
+    if (video) {
+        this->video->updateImmersiveBackgroundVisible(visible);
+    }
 }
 
 } //namespace libretrodroid

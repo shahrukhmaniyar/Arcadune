@@ -21,6 +21,7 @@
 #include <GLES2/gl2.h>
 #include <optional>
 #include <array>
+#include <atomic>
 
 #include "renderers/renderer.h"
 #include "shadermanager.h"
@@ -72,6 +73,7 @@ public:
     void updateViewportSize(Rect viewportRect);
     void updateViewportAlignment(unsigned int viewportAlignment);
     void updateScreenRegions(const std::vector<VideoLayout::ScreenRegion>& regions);
+    void updateImmersiveBackgroundVisible(bool visible);
     void updateRendererSize(unsigned width, unsigned height);
     void updateRotation(float rotation);
     void updateShaderType(ShaderManager::Config shaderConfig);
@@ -109,6 +111,7 @@ private:
     std::vector<ShaderChainEntry> shadersChain;
 
     bool immersiveModeEnabled = false;
+    std::atomic<bool> immersiveBackgroundVisible{true};
     ImmersiveMode immersiveMode;
     VideoLayout videoLayout;
 

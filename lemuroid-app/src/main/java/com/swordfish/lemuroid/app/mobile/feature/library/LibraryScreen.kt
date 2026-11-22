@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -88,6 +91,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -102,6 +106,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -461,7 +466,21 @@ private fun GameTile(
     val density = LocalDensity.current
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.93f else 1f, ArcaduneMotion.press(), label = "press")
+    // Where a gamepad or keyboard is: the tile comes forward a little and its cover gets a ring.
+    val focused by interactions.collectIsFocusedAsState()
+    val focusRing = ArcaduneColors.Purple
+    val scale by animateFloatAsState(
+        if (pressed) {
+            0.93f
+        } else if (focused) {
+            1.05f
+        } else {
+            1f
+        },
+        ArcaduneMotion.press(),
+        label = "press",
+    )
+    val ringPx = with(density) { 3.dp.toPx() }
 
     val name = remember(game) { game.displayName() }
     val fallback = rememberDrawablePainter(remember { CoverUtils.getFallbackDrawable(context) })
@@ -477,9 +496,33 @@ private fun GameTile(
                 .build()
         }
 
+    // When the focus arrives (a gamepad moves it), the list scrolls to show the whole tile with some
+    // room around it, clear of the title above and of the floating bar with the pages and the search below.
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    var tileHeightPx by remember { mutableStateOf(0) }
+    val marginTopPx = with(density) { 44.dp.toPx() }
+    val marginBottomPx = with(density) { 160.dp.toPx() }
+
     Column(
         modifier =
             Modifier
+                .onSizeChanged { tileHeightPx = it.height }
+                .bringIntoViewRequester(bringIntoView)
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        scope.launch {
+                            bringIntoView.bringIntoView(
+                                androidx.compose.ui.geometry.Rect(
+                                    0f,
+                                    -marginTopPx,
+                                    1f,
+                                    tileHeightPx + marginBottomPx,
+                                ),
+                            )
+                        }
+                    }
+                }
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -523,13 +566,27 @@ private fun GameTile(
                                 cornerRadius = CornerRadius(cornerPx, cornerPx),
                                 style = Stroke(width = strokePx),
                             )
+                            if (focused) {
+                                drawRoundRect(
+                                    color = focusRing,
+                                    topLeft = Offset(left - ringPx / 2f, top - ringPx / 2f),
+                                    size = Size(w - strokePx + ringPx, h - strokePx + ringPx),
+                                    cornerRadius = CornerRadius(cornerPx + ringPx / 2f, cornerPx + ringPx / 2f),
+                                    style = Stroke(width = ringPx),
+                                )
+                            }
                         }
                     },
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = name,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
+            style =
+                MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = if (focused) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                ),
             color = ArcaduneColors.OnSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,
@@ -751,12 +808,21 @@ private fun PageIndicator(
             // other slots never move.
             val emphasis by animateFloatAsState(if (selected) 1f else 0f, ArcaduneMotion.press(), label = "emphasis")
             val isSystem = page is LibraryViewModel.Page.System
+            val pageInteractions = remember { MutableInteractionSource() }
+            val pageFocused by pageInteractions.collectIsFocusedAsState()
             Box(
                 modifier =
                     Modifier
                         .size(width = 24.dp, height = height)
+                        .then(
+                            if (pageFocused) {
+                                Modifier.border(2.dp, ArcaduneColors.Purple, RoundedCornerShape(12.dp))
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = pageInteractions,
                             indication = null,
                         ) {
                             ticks.click()

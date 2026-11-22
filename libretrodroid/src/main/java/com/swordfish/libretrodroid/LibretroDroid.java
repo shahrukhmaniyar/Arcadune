@@ -121,6 +121,7 @@ public class LibretroDroid {
     public static native void setViewport(float x, float y, float width, float height);
     public static native void setViewportAlignment(int viewportAlignment);
     public static native void setScreenRegions(float[] regionsFlat);
+    public static native void setImmersiveBackgroundVisible(boolean visible);
 
     public static native byte[] serializeState();
     public static native boolean unserializeState(byte[] state);

@@ -41,6 +41,8 @@
 
     <string name="settings_title_immersive_mode">Immersive mode</string>
     <string name="settings_description_immersive_mode">Dynamically colors the background based on game visuals</string>
+    <string name="settings_title_blur_fill">Immersive mode</string>
+    <string name="settings_description_blur_fill">Fills the empty space around the game with a soft blur of the picture. Minimal skins turn see-through.</string>
 
     <string name="settings_title_gamepad_settings">External devices</string>
     <string name="settings_description_gamepad_settings">Configure external gamepads and keyboards</string>

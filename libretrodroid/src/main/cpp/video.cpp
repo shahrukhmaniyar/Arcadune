@@ -147,7 +147,7 @@ void Video::renderFrame() {
     glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (immersiveModeEnabled) {
+    if (immersiveModeEnabled && immersiveBackgroundVisible) {
         immersiveMode.renderBackground(
             videoLayout.getScreenWidth(),
             videoLayout.getScreenHeight(),
@@ -339,6 +339,13 @@ void Video::initializeRenderer(RenderingOptions renderingOptions) {
 
 void Video::updateAspectRatio(float aspectRatio) {
     videoLayout.updateAspectRatio(aspectRatio);
+}
+
+
+void Video::updateImmersiveBackgroundVisible(bool visible) {
+    if (immersiveBackgroundVisible.exchange(visible) != visible) {
+        isDirty = true;
+    }
 }
 
 } //namespace libretrodroid

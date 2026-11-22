@@ -1,7 +1,7 @@
 # Arcadune — RetroAchievements Hardcore Compliance Review Package
 
 **Emulator:** Arcadune (`io.github.shahrukhmaniyar.arcadune`)  
-**Current Version:** `1.1.2` (`versionCode = 264`)  
+**Current Version:** `1.1.3` (`versionCode = 265`)  
 **Pinned `rcheevos` SDK:** `12.5.0` (`RCHEEVOS_VERSION_STRING = "12.5"`, `libretrodroid/src/main/cpp/rcheevos/src/rc_version.h`)  
 **Supported Platforms:** Android 6.0+ (`minSdk = 23`, `targetSdk = 35`) — Mobile (Phone/Tablet) and Android TV (Leanback), `arm64-v8a` & `armeabi-v7a`  
 **Repositories:**

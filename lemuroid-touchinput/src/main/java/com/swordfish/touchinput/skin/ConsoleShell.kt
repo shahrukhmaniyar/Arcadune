@@ -49,6 +49,11 @@ data class ScreenSpec(
     val srcWidth: Float = width,
     val srcHeight: Float = height,
     val srcScreens: List<SkinRect> = screens,
+    /**
+     * Set, the windows are cut out of the core's picture even when no console shell is shown (a gamepad is
+     * in use and the controls are hidden): the core itself does not draw this arrangement (the DS sideways).
+     */
+    val cutsWithoutShell: Boolean = false,
 ) {
     /** The screens placed as big as they fit in [area], centred. */
     fun fitIn(area: Rect): List<Rect> {
@@ -83,6 +88,24 @@ object ScreenSpecs {
             256f,
             384f + DS_SCREEN_GAP,
             listOf(SkinRect(0f, 0f, 256f, 192f), SkinRect(0f, 192f + DS_SCREEN_GAP, 256f, 192f)),
+        )
+
+    /**
+     * The DS sideways: the main screen big and the other one small at its lower right, cut out of
+     * the core's ordinary stacked picture (main screen on top). The core does not resize anything,
+     * so each window shows the DS screen at its own pixels: the screen filters work on both, Swap
+     * only changes which screen the core puts on top, and both DS cores (which place their own
+     * "hybrid" small screen differently) look the same.
+     */
+    private val DS_SIDEWAYS =
+        ScreenSpec(
+            width = 768f + DS_SCREEN_GAP + 256f,
+            height = 576f,
+            screens = listOf(SkinRect(0f, 0f, 768f, 576f), SkinRect(768f + DS_SCREEN_GAP, 384f, 256f, 192f)),
+            srcWidth = 256f,
+            srcHeight = 384f + DS_SCREEN_GAP,
+            srcScreens = listOf(SkinRect(0f, 0f, 256f, 192f), SkinRect(0f, 192f + DS_SCREEN_GAP, 256f, 192f)),
+            cutsWithoutShell = true,
         )
 
     // Hybrid: the top screen three times as big, and the touch screen small at the bottom of a
@@ -139,7 +162,7 @@ object ScreenSpecs {
                 val dsLayout =
                     values["melonds_screen_layout1"]
                         ?: values["desmume_screens_layout"]
-                        ?: if (landscape) "hybrid-top" else "top-bottom"
+                        ?: "top-bottom"
                 when (dsLayout) {
                     "bottom-top", "bottom/top", "right-left", "right/left", "hybrid-bottom", "hybrid/bottom" ->
                         setOf(0)
@@ -176,9 +199,9 @@ object ScreenSpecs {
                 val dsLayout =
                     values["melonds_screen_layout1"]
                         ?: values["desmume_screens_layout"]
-                        ?: if (landscape) "hybrid-top" else "top-bottom"
+                        ?: "top-bottom"
                 when (dsLayout) {
-                    "top-bottom", "top/bottom", "bottom-top", "bottom/top" -> DS_STACKED
+                    "top-bottom", "top/bottom", "bottom-top", "bottom/top" -> if (landscape) DS_SIDEWAYS else DS_STACKED
                     "hybrid-top", "hybrid-bottom", "hybrid/top", "hybrid/bottom" ->
                         if (isDesmume) DS_DESMUME_HYBRID else DS_HYBRID
                     "left-right", "left/right", "right-left", "right/left" ->
@@ -298,6 +321,8 @@ fun ConsoleShell(
     panel: Rect? = null,
     art: SkinArt? = null,
     cutoutScreens: Boolean = true,
+    /** How solid the body is: 1 normally; less lets the immersive blur behind the game show through (Minimal). */
+    bodyAlpha: Float = 1f,
 ) {
     val grain = art?.grain
     val grainTile =
@@ -454,7 +479,7 @@ fun ConsoleShell(
                         gradStart,
                         size.height.coerceAtLeast(gradStart + 1f),
                     )
-                drawPath(bodyShape, bodyBrush)
+                drawPath(bodyShape, bodyBrush, alpha = bodyAlpha)
                 drawDeckOverlays(bodyShape, bgArtTop = gradStart)
 
                 if (clampedTop > 1f) {
@@ -495,9 +520,15 @@ fun ConsoleShell(
             } else if (screenPanel != null) {
                 val outline = SCREEN_OUTLINE_DP.dp.toPx()
                 val bodyBrush = Brush.verticalGradient(listOf(palette.body.shade(0.06f), palette.bodyShade))
-                drawRect(bodyBrush)
+                drawRect(bodyBrush, alpha = bodyAlpha)
                 val corner = CornerRadius(18.dp.toPx())
-                drawRoundRect(palette.body.shade(-0.04f), screenPanel.topLeft, screenPanel.size, corner)
+                drawRoundRect(
+                    palette.body.shade(-0.04f),
+                    screenPanel.topLeft,
+                    screenPanel.size,
+                    corner,
+                    alpha = bodyAlpha,
+                )
                 drawRoundRect(
                     Color.Black.copy(alpha = 0.16f),
                     screenPanel.topLeft,
@@ -534,7 +565,7 @@ fun ConsoleShell(
                         Path.combine(PathOperation.Union, path, next)
                     }
                 val bodyBrush = Brush.verticalGradient(listOf(palette.body, palette.bodyShade))
-                drawRect(bodyBrush)
+                drawRect(bodyBrush, alpha = bodyAlpha)
                 drawDeckOverlays(null)
 
                 drawPath(bezels, bezelColor)

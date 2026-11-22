@@ -28,6 +28,16 @@ Arcadune is an open-source multi-system retro game emulator for Android built on
 
 Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), so you can install either one on top of the other without losing your library, saves, or settings. All releases are available on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). Arcadune requires Android 6.0 or newer and includes built-in update checks under **Settings > Updates**.
 
+## What's New in 1.1.3
+
+- **Buttons stay apart:** making buttons bigger in Edit Controls no longer piles them on top of each other. Groups like the A/B/X/Y diamond grow as one, and the size stops where everything still fits.
+- **Fixed a game that would not start:** "Something bad happened with your save file" (from 1.1.0) could stop a game from opening on any console.
+- **DS screens:** the DS now shows a big and a small screen sideways on both melonDS and DeSmuME, with Swap, filters and touch working, and also with a gamepad connected.
+- **Immersive mode (off by default):** a soft blur fills the empty space around the game. Console skins keep their look, and the Minimal skins turn see-through.
+- **Gamepad cursor in the library:** the selected cover now has a ring and the list scrolls with it.
+
+The full list is in the [1.1.3 release notes](docs/RELEASE_NOTES_1.1.3.md).
+
 ## What's New in 1.1.2
 
 - **Library fix:** if Android took back access to your ROMs folder, Arcadune could remove every game from your library. Games, favourites and saves are now kept, the library asks you to choose the folder again, and Factory reset keeps your folder. If you are on 1.1.0 or 1.1.1, please update.

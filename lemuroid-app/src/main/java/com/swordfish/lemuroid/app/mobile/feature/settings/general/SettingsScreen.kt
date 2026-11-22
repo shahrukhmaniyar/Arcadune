@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeveloperBoard
@@ -362,6 +363,13 @@ private fun GeneralSettings(navController: NavController) {
                 ),
             title = { Text(text = stringResource(id = R.string.settings_title_viewport_alignment)) },
             items = stringListResource(R.array.pref_key_viewport_alignment_display_names),
+        )
+        ArcaduneRowDivider(startIndent = 68.dp)
+        LemuroidSettingsSwitch(
+            icon = { ArcaduneIconBadge(icon = Icons.Filled.BlurOn) },
+            state = booleanPreferenceState(R.string.pref_key_blur_fill, false),
+            title = { Text(text = stringResource(id = R.string.settings_title_blur_fill)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_blur_fill)) },
         )
     }
 }

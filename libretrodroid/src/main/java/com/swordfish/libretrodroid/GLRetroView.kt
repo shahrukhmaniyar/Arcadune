@@ -80,6 +80,22 @@ class GLRetroView(
         LibretroDroid.setViewportAlignment(value.value)
     }
 
+    /**
+     * Whether the blurred picture of the immersive mode is drawn behind the game (only has an effect
+     * when the view was created with [GLRetroViewData.immersiveMode]). Lets a skin that covers the
+     * background with its own body switch the blur off and on again without restarting the game.
+     */
+    var immersiveBackgroundVisible: Boolean by Delegates.observable(true) { _, old, value ->
+        if (old == value) return@observable
+        if (Thread.currentThread().name.startsWith("GLThread")) {
+            LibretroDroid.setImmersiveBackgroundVisible(value)
+        } else {
+            queueEvent {
+                LibretroDroid.setImmersiveBackgroundVisible(value)
+            }
+        }
+    }
+
     var screenRegions: FloatArray by Delegates.observable(FloatArray(0)) { _, old, value ->
         if (old.contentEquals(value)) return@observable
         val copy = value.copyOf()

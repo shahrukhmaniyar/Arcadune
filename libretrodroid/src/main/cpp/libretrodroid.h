@@ -137,6 +137,7 @@ public:
 
     void setViewportAlignment(unsigned int viewportAlignment);
     void setScreenRegions(const std::vector<VideoLayout::ScreenRegion>& regions);
+    void setImmersiveBackgroundVisible(bool visible);
 
     void configureAchievements(const AchievementsConfig& config);
     bool setHardcoreMode(bool enabled);
@@ -203,6 +204,7 @@ private:
     int openglESVersion = 2;
     bool skipDuplicateFrames = false;
     bool immersiveModeEnabled = false;
+    bool immersiveBackgroundVisible = true;
     ImmersiveMode::Config immersiveModeConfig {};
 
     float defaultAspectRatio = 1.0;

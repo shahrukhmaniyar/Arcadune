@@ -1065,6 +1065,14 @@ JNIEXPORT jobject JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_getAchi
     return result;
 }
 
+JNIEXPORT void JNICALL Java_com_swordfish_libretrodroid_LibretroDroid_setImmersiveBackgroundVisible(
+        JNIEnv* env,
+        jclass obj,
+        jboolean visible
+) {
+    LibretroDroid::getInstance().setImmersiveBackgroundVisible(visible);
+}
+
 }
 
 }
