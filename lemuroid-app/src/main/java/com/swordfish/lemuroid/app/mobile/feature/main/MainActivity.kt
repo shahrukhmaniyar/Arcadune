@@ -1,12 +1,15 @@
 package com.swordfish.lemuroid.app.mobile.feature.main
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -66,6 +70,7 @@ import com.swordfish.lemuroid.lib.bios.BiosManager
 import com.swordfish.lemuroid.lib.core.CoreUpdater
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.injection.PerActivity
+import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -74,6 +79,9 @@ import com.swordfish.lemuroid.lib.saves.SavesManager
 import com.swordfish.lemuroid.lib.savesync.SaveSyncManager
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import dagger.Provides
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class MainActivity : RetrogradeComponentActivity(), BusyActivity {
@@ -111,6 +119,51 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
     lateinit var savesManager: SavesManager
 
     private val reviewManager = ReviewManager()
+
+    // What to do once Android has answered the microphone question (grant or refusal, the game starts either way).
+    private var afterMicrophoneAnswer: (() -> Unit)? = null
+
+    private val microphoneRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            afterMicrophoneAnswer?.invoke()
+            afterMicrophoneAnswer = null
+        }
+
+    /**
+     * Starts a game. The very first time a game that can use the microphone (the DS) starts, Android
+     * asks for it; the question is asked only once, a refusal is final and the game starts without it.
+     */
+    private fun startGame(
+        game: Game,
+        start: (Game) -> Unit,
+    ) {
+        lifecycleScope.launch {
+            if (shouldAskForMicrophone(game)) {
+                afterMicrophoneAnswer = { start(game) }
+                microphoneRequest.launch(Manifest.permission.RECORD_AUDIO)
+            } else {
+                start(game)
+            }
+        }
+    }
+
+    private suspend fun shouldAskForMicrophone(game: Game): Boolean {
+        val prefs = SharedPreferencesHelper.getLegacySharedPreferences(applicationContext)
+        if (prefs.getBoolean(MICROPHONE_ASKED_KEY, false)) return false
+        val granted =
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        if (granted) return false
+        val canUseMicrophone =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    coresSelection.getCoreConfigForSystem(GameSystem.findById(game.systemId)).supportsMicrophone
+                }.getOrDefault(false)
+            }
+        if (!canUseMicrophone) return false
+        prefs.edit().putBoolean(MICROPHONE_ASKED_KEY, true).apply()
+        return true
+    }
 
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(applicationContext, saveSyncManager)
@@ -169,7 +222,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             }
 
             val onGameClick = { game: Game ->
-                gameInteractor.onGamePlay(game)
+                startGame(game) { gameInteractor.onGamePlay(it) }
             }
 
             val onHelpPressed = {
@@ -418,9 +471,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 selectedGameState = selectedGameState,
                 liveGame = liveSelectedGame,
                 shortcutSupported = gameInteractor.supportShortcuts(),
-                onGamePlay = { gameInteractor.onGamePlay(it) },
-                onGameQuickResume = { gameInteractor.onGameQuickResume(it) },
-                onGameRestart = { gameInteractor.onGameRestart(it) },
+                onGamePlay = { game -> startGame(game) { gameInteractor.onGamePlay(it) } },
+                onGameQuickResume = { game -> startGame(game) { gameInteractor.onGameQuickResume(it) } },
+                onGameRestart = { game -> startGame(game) { gameInteractor.onGameRestart(it) } },
                 onFavoriteToggle = { game: Game, isFavorite: Boolean ->
                     gameInteractor.onFavoriteToggle(game, isFavorite)
                 },
@@ -487,3 +540,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         }
     }
 }
+
+/** Set once the microphone question has been asked, so a refusal is never asked about again. */
+private const val MICROPHONE_ASKED_KEY = "microphone_permission_asked"

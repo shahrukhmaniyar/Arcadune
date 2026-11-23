@@ -28,6 +28,14 @@ Arcadune is an open-source multi-system retro game emulator for Android built on
 
 Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), so you can install either one on top of the other without losing your library, saves, or settings. All releases are available on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). Arcadune requires Android 6.0 or newer and includes built-in update checks under **Settings > Updates**.
 
+## What's New in 1.1.4
+
+- **Pull down to rescan:** scroll to the top of the game list and pull down, like in other apps, to rescan your ROMs folder (the same as Settings > Rescan). The whole list follows your finger, a small circular arrow turns as you pull (it takes a deliberate pull) and spins while the scan runs.
+- **DS display filters fixed:** LCD and CRT were almost invisible on the DS (melonDS and DeSmuME). Each screen now gets its own filter strength, so they show properly.
+- **Microphone question for the DS:** the "Enable microphone" card is gone. Android now asks once, the first time you start a DS game, and a refusal is never asked about again.
+
+The full list is in the [1.1.4 release notes](docs/RELEASE_NOTES_1.1.4.md).
+
 ## What's New in 1.1.3
 
 - **Buttons stay apart:** making buttons bigger in Edit Controls no longer piles them on top of each other. Groups like the A/B/X/Y diamond grow as one, and the size stops where everything still fits.

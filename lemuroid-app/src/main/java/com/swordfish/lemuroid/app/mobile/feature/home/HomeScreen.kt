@@ -84,14 +84,6 @@ fun HomeNotices(
                 enabled = !state.indexInProgress,
             )
         }
-        AnimatedVisibility(state.showNoMicrophonePermissionCard) {
-            HomeNotification(
-                titleId = R.string.home_microphone_title,
-                messageId = R.string.home_microphone_message,
-                actionId = R.string.home_microphone_action,
-                onAction = { permissionsLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-            )
-        }
     }
 }
 

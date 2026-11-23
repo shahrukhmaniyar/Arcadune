@@ -11,21 +11,16 @@ import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.app.shared.library.PendingOperationsMonitor
 import com.swordfish.lemuroid.app.shared.settings.StorageFrameworkPickerLauncher
 import com.swordfish.lemuroid.lib.core.CoresSelection
-import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
@@ -52,13 +47,11 @@ class HomeViewModel(
     data class UIState(
         val indexInProgress: Boolean = true,
         val showNoNotificationPermissionCard: Boolean = false,
-        val showNoMicrophonePermissionCard: Boolean = false,
         val showNoGamesCard: Boolean = false,
         val showRomsAccessLostCard: Boolean = false,
     )
 
     private val romsFolderReadableState = MutableStateFlow(true)
-    private val microphonePermissionEnabledState = MutableStateFlow(true)
     private val notificationsPermissionEnabledState = MutableStateFlow(true)
     private val uiStates = MutableStateFlow(UIState())
 
@@ -72,7 +65,6 @@ class HomeViewModel(
 
     fun updatePermissions(context: Context) {
         notificationsPermissionEnabledState.value = isNotificationsPermissionGranted(context)
-        microphonePermissionEnabledState.value = isMicrophonePermissionGranted(context)
         romsFolderReadableState.value = isRomsFolderReadable(context)
     }
 
@@ -104,27 +96,15 @@ class HomeViewModel(
         return permissionResult == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun isMicrophonePermissionGranted(context: Context): Boolean {
-        val permissionResult =
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO,
-            )
-
-        return permissionResult == PackageManager.PERMISSION_GRANTED
-    }
-
     private fun buildViewState(
         totalGamesCount: Int,
         indexInProgress: Boolean,
         notificationsPermissionEnabled: Boolean,
-        showMicrophoneCard: Boolean,
         romsFolderReadable: Boolean,
     ): UIState {
         return UIState(
             indexInProgress = indexInProgress,
             showNoNotificationPermissionCard = !notificationsPermissionEnabled,
-            showNoMicrophonePermissionCard = showMicrophoneCard,
             showNoGamesCard = totalGamesCount == 0 && romsFolderReadable,
             showRomsAccessLostCard = !romsFolderReadable,
         )
@@ -137,7 +117,6 @@ class HomeViewModel(
                     retrogradeDb.gameDao().countGames().distinctUntilChanged(),
                     indexingInProgress(appContext),
                     notificationsPermissionEnabledState,
-                    microphoneNotification(retrogradeDb),
                     romsFolderReadableState,
                     ::buildViewState,
                 )
@@ -151,34 +130,4 @@ class HomeViewModel(
 
     private fun indexingInProgress(appContext: Context) =
         PendingOperationsMonitor(appContext).anyLibraryOperationInProgress()
-
-    private fun dsGamesCount(retrogradeDb: RetrogradeDatabase): Flow<Int> {
-        return retrogradeDb.gameDao().selectSystemsWithCount()
-            .map { systems ->
-                systems
-                    .firstOrNull { it.systemId == SystemID.NDS.dbname }
-                    ?.count
-                    ?: 0
-            }
-            .distinctUntilChanged()
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun microphoneNotification(db: RetrogradeDatabase): Flow<Boolean> {
-        return microphonePermissionEnabledState
-            .flatMapLatest { isMicrophoneEnabled ->
-                if (isMicrophoneEnabled) {
-                    flowOf(false)
-                } else {
-                    combine(
-                        coresSelection.getAllSelectedCores(),
-                        dsGamesCount(db),
-                    ) { cores, dsCount ->
-                        cores.any { it.coreConfig.supportsMicrophone } &&
-                            dsCount > 0
-                    }
-                }
-                    .distinctUntilChanged()
-            }
-    }
 }

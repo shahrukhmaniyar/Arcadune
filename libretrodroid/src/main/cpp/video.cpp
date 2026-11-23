@@ -199,6 +199,16 @@ void Video::renderFrame() {
             std::array<float, 12> regionVerts {};
             std::array<float, 12> regionTexCoords {};
             for (const auto& region : regions) {
+                // The LCD and CRT filters size their effect by how many screen pixels one picture pixel
+                // takes. Each DS/3DS screen is drawn at its own size, so work the density out per screen,
+                // not from the whole stacked picture (that made the effect almost invisible).
+                const float textureWidth = getTextureWidth();
+                const float textureHeight = getTextureHeight();
+                if (region.srcW > 0.0001F && region.srcH > 0.0001F && textureWidth > 0.0F && textureHeight > 0.0F) {
+                    const float densityX = (region.dstW * videoLayout.getScreenWidth()) / (region.srcW * textureWidth);
+                    const float densityY = (region.dstH * videoLayout.getScreenHeight()) / (region.srcH * textureHeight);
+                    glUniform1f(shader.gScreenDensityHandle, std::min(densityX, densityY));
+                }
                 videoLayout.buildRegionQuad(region, regionVerts, regionTexCoords);
                 glVertexAttribPointer(shader.gvPositionHandle, 2, GL_FLOAT, GL_FALSE, 0, regionVerts.data());
                 glVertexAttribPointer(shader.gvCoordinateHandle, 2, GL_FLOAT, GL_FALSE, 0, regionTexCoords.data());

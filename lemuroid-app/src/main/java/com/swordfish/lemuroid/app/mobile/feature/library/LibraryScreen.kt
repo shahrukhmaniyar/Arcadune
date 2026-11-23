@@ -1,4 +1,4 @@
-package com.swordfish.lemuroid.app.mobile.feature.library
+﻿package com.swordfish.lemuroid.app.mobile.feature.library
 
 import android.content.Context
 import android.os.Build
@@ -9,7 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -44,6 +47,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -55,6 +59,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -69,6 +74,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.StarOutline
@@ -81,6 +87,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -104,6 +111,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -111,6 +122,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -119,6 +131,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -133,6 +146,7 @@ import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneColors
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneIconPill
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.ArcaduneMotion
 import com.swordfish.lemuroid.app.shared.covers.CoverUtils
+import com.swordfish.lemuroid.app.shared.library.LibraryIndexScheduler
 import com.swordfish.lemuroid.lib.library.MetaSystemID
 import com.swordfish.lemuroid.lib.library.db.dao.GameSortOrder
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -140,6 +154,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -167,6 +182,15 @@ fun LibraryScreen(
     }.collectAsState(initial = false)
     val focusManager = LocalFocusManager.current
     val hazeState = remember { HazeState() }
+
+    // Dragging up past the end of a page rescans the ROMs folder, like Settings > Rescan. The line under
+    // the title shows it is running, and a pull while a scan is already running is ignored.
+    val appContext = LocalContext.current.applicationContext
+    val scanRunning by rememberUpdatedState(indexingInProgress)
+    val rescan: () -> Unit =
+        remember(appContext) {
+            { if (!scanRunning) LibraryIndexScheduler.scheduleLibrarySync(appContext) }
+        }
 
     BackHandler(enabled = searching) {
         viewModel.searchQuery.value = ""
@@ -270,6 +294,8 @@ fun LibraryScreen(
                                 },
                             onGameClick = onGameClick,
                             onGameLongClick = onGameLongClick,
+                            onPullToRefresh = rescan,
+                            scanning = indexingInProgress,
                         )
                     }
                 }
@@ -385,6 +411,145 @@ private fun LibraryTopBar(
     }
 }
 
+/**
+ * How far (in dp) the finger has to travel down from the top of the list to arm the rescan. The list only
+ * follows the finger by [PULL_RESISTANCE] of that, so it takes a deliberate pull and a casual drag is not enough.
+ */
+private const val PULL_TO_RESCAN_DP = 170
+
+/** The list follows the finger with this share of its travel (it feels heavier the more you pull). */
+private const val PULL_RESISTANCE = 0.4f
+
+/** The most (in dp) the list moves down while pulling, and where it rests while the scan runs. */
+private const val PULL_MAX_OFFSET_DP = 84
+private const val PULL_REST_OFFSET_DP = 60
+
+/**
+ * Pull to refresh, like in other apps: with the list at its very top, dragging down moves the whole list
+ * down with the finger; past [thresholdPx] it is armed (a buzz), and the rescan of the ROMs folder starts
+ * when the finger is lifted while armed. Pulling back up before letting go cancels it. It only counts when
+ * the list was already at the top when the finger went down, so scrolling back up to the top is one drag
+ * and the pull is a new one. [onDistance] follows the finger travel for the list and the indicator. It never
+ * takes any of the scrolling itself.
+ */
+private class PullToRefreshConnection(
+    private val thresholdPx: Float,
+    private val atTop: () -> Boolean,
+    private val onDistance: (Float) -> Unit,
+    private val onArmed: () -> Unit,
+    private val onPull: () -> Unit,
+) : NestedScrollConnection {
+    private var dragging = false
+    private var startedAtTop = false
+    private var pulled = 0f
+    private var armed = false
+
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (source == NestedScrollSource.UserInput && !dragging) {
+            dragging = true
+            startedAtTop = atTop()
+            pulled = 0f
+            armed = false
+        }
+        return Offset.Zero
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (source != NestedScrollSource.UserInput || !startedAtTop) return Offset.Zero
+        if (consumed.y != 0f) {
+            // The list itself moved (going down the list): not a pull.
+            pulled = 0f
+            armed = false
+        } else {
+            pulled = (pulled + available.y).coerceAtLeast(0f)
+            if (!armed && pulled >= thresholdPx) {
+                armed = true
+                onArmed()
+            } else if (armed && pulled < thresholdPx) {
+                armed = false
+            }
+        }
+        onDistance(pulled)
+        return Offset.Zero
+    }
+
+    override suspend fun onPostFling(
+        consumed: Velocity,
+        available: Velocity,
+    ): Velocity {
+        val release = armed
+        dragging = false
+        startedAtTop = false
+        pulled = 0f
+        armed = false
+        if (release) onPull()
+        onDistance(0f)
+        return Velocity.Zero
+    }
+}
+
+/** The small round indicator of the pull: it fills as the finger pulls, and spins while the scan runs. */
+@Composable
+private fun RescanIndicator(
+    progress: Float,
+    spinning: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = progress > 0.02f || spinning,
+        modifier = modifier,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(initialScale = 0.6f),
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.6f),
+    ) {
+        val accent = ArcaduneColors.Purple
+        val armed = progress >= 1f
+        // A small pop when the pull is long enough, so the badge answers the buzz.
+        val pop by animateFloatAsState(
+            targetValue = if (armed) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.4f, stiffness = 520f),
+            label = "pop",
+        )
+        val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "spin")
+        val turn by spin.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec =
+                androidx.compose.animation.core.infiniteRepeatable(
+                    animation = tween(1100, easing = androidx.compose.animation.core.LinearEasing),
+                ),
+            label = "turn",
+        )
+        val scale = (0.7f + 0.3f * progress.coerceIn(0f, 1f)) * (1f + 0.18f * pop)
+        // Just the circular arrow: it turns as the finger pulls, goes accent-coloured when the pull
+        // counts, and keeps turning while the scan runs.
+        Icon(
+            imageVector = Icons.Filled.Refresh,
+            contentDescription = null,
+            tint =
+                if (armed || spinning) {
+                    accent
+                } else {
+                    ArcaduneColors.OnSurface.copy(alpha = 0.5f + 0.45f * progress.coerceIn(0f, 1f))
+                },
+            modifier =
+                Modifier
+                    .size(30.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        rotationZ = if (spinning) turn else 300f * progress.coerceIn(0f, 1f)
+                    },
+        )
+    }
+}
+
 @Composable
 private fun GameGrid(
     games: LazyPagingItems<Game>,
@@ -392,6 +557,8 @@ private fun GameGrid(
     emptyIcon: ImageVector = Icons.Outlined.StarOutline,
     onGameClick: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
+    onPullToRefresh: (() -> Unit)? = null,
+    scanning: Boolean = false,
 ) {
     if (games.itemCount == 0) {
         if (emptyMessage != null) CenteredMessage(emptyMessage, emptyIcon)
@@ -402,6 +569,65 @@ private fun GameGrid(
     // In landscape the bar is a single row, so it needs less.
     val keyboard = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val landscape = isLandscape()
+    val haptics = LocalHapticFeedback.current
+    val gridState = rememberLazyGridState()
+    val density = LocalDensity.current
+    val pullThresholdPx = with(density) { PULL_TO_RESCAN_DP.dp.toPx() }
+    val pullMaxOffsetPx = with(density) { PULL_MAX_OFFSET_DP.dp.toPx() }
+    val pullRestOffsetPx = with(density) { PULL_REST_OFFSET_DP.dp.toPx() }
+    val indicatorHalfPx = with(density) { 21.dp.toPx() }
+    val currentPull by rememberUpdatedState(onPullToRefresh)
+    var pullPx by remember { mutableFloatStateOf(0f) }
+    var spinning by remember { mutableStateOf(false) }
+    var sawScan by remember { mutableStateOf(false) }
+    val scanningNow by rememberUpdatedState(scanning)
+    // The spinner stays until the scan that the pull started has finished (or for a moment if none began).
+    LaunchedEffect(scanning) {
+        if (scanning) {
+            sawScan = true
+        } else if (sawScan) {
+            spinning = false
+            sawScan = false
+        }
+    }
+    LaunchedEffect(spinning) {
+        if (spinning) {
+            delay(3000)
+            if (!scanningNow) spinning = false
+        }
+    }
+    val pullConnection =
+        remember(pullThresholdPx) {
+            PullToRefreshConnection(
+                thresholdPx = pullThresholdPx,
+                atTop = { !gridState.canScrollBackward },
+                onDistance = { pullPx = it },
+                onArmed = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+            ) {
+                currentPull?.let {
+                    spinning = true
+                    it()
+                }
+            }
+        }
+    // The whole list follows the finger (heavier the further it goes), rests lower while the scan runs, and
+    // springs back when let go.
+    val listOffsetTarget =
+        when {
+            spinning -> pullRestOffsetPx
+            pullPx > 0f -> (pullPx * PULL_RESISTANCE).coerceAtMost(pullMaxOffsetPx)
+            else -> 0f
+        }
+    val listOffsetPx by animateFloatAsState(
+        targetValue = listOffsetTarget,
+        animationSpec =
+            if (pullPx > 0f && !spinning) {
+                snap()
+            } else {
+                spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+            },
+        label = "listOffset",
+    )
     BoxWithConstraints(
         modifier =
             Modifier
@@ -412,9 +638,14 @@ private fun GameGrid(
                 ),
     ) {
         LazyVerticalGrid(
+            state = gridState,
             // Its own drawing layer: while pages slide, the phone moves the finished picture of the page
             // instead of drawing every cover again on every frame, and skips pages that are off screen.
-            modifier = Modifier.fillMaxSize().graphicsLayer(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(if (onPullToRefresh != null) Modifier.nestedScroll(pullConnection) else Modifier)
+                    .graphicsLayer { translationY = listOffsetPx },
             columns = GridCells.Fixed(libraryColumns(maxWidth)),
             contentPadding =
                 PaddingValues(
@@ -430,6 +661,18 @@ private fun GameGrid(
                 val game = games[index] ?: return@items
                 GameTile(game = game, onClick = { onGameClick(game) }, onLongClick = { onGameLongClick(game) })
             }
+        }
+        if (onPullToRefresh != null) {
+            // Like in other apps: it sits in the gap the list leaves at the top, fills as the pull gets
+            // closer to counting, and spins there while the scan runs.
+            RescanIndicator(
+                progress = (pullPx / pullThresholdPx).coerceIn(0f, 1f),
+                spinning = spinning,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .graphicsLayer { translationY = listOffsetPx / 2f - indicatorHalfPx },
+            )
         }
     }
 }
