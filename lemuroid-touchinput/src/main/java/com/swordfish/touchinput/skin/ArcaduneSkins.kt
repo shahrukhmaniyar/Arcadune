@@ -747,6 +747,15 @@ object ArcaduneSkins {
     private val skinCache =
         java.util.concurrent.ConcurrentHashMap<Pair<TouchControllerID, SkinVariant>, ArcaduneSkin>()
 
+    /** One lock per controller, so two threads asking for the same new skin build it only once. */
+    private val buildLocks = java.util.concurrent.ConcurrentHashMap<TouchControllerID, Any>()
+
+    /** True when [forController] can answer at once, without working the layout out. */
+    fun isReady(
+        id: TouchControllerID,
+        variant: SkinVariant = SkinVariant.CONSOLE,
+    ): Boolean = id == TouchControllerID.DOS || skinCache.containsKey(id to variant) || consoleCache.containsKey(id)
+
     /** The skin of [id]: the Console skin, in its colours and shape, or the Minimal one in outlines. */
     fun forController(
         id: TouchControllerID,
@@ -756,15 +765,19 @@ object ArcaduneSkins {
         val cacheKey = id to variant
         skinCache[cacheKey]?.let { return it }
         // Both looks share one layout, worked out once (placing the extra buttons takes a moment).
+        // A second caller waits for the one already building it instead of doing the same work.
+        val lock = buildLocks[id] ?: Any().let { buildLocks.putIfAbsent(id, it) ?: it }
         val base =
-            consoleCache[id] ?: skinOf(id)
-                ?.let { skin ->
-                    val palette = skin.landscape.palette ?: skin.portrait.palette ?: SkinPalettes.NES
-                    shellLandscape(id, palette)?.let { skin.copy(landscape = it) } ?: skin
-                }
-                ?.withExtrasClearOfScreens(id)
-                ?.handTuned(id)
-                ?.also { consoleCache.putIfAbsent(id, it) }
+            consoleCache[id] ?: synchronized(lock) {
+                consoleCache[id] ?: skinOf(id)
+                    ?.let { skin ->
+                        val palette = skin.landscape.palette ?: skin.portrait.palette ?: SkinPalettes.NES
+                        shellLandscape(id, palette)?.let { skin.copy(landscape = it) } ?: skin
+                    }
+                    ?.withExtrasClearOfScreens(id)
+                    ?.handTuned(id)
+                    ?.also { consoleCache.putIfAbsent(id, it) }
+            }
         val built = base?.let { if (variant == SkinVariant.MINIMAL) it.minimal() else it }
         if (built != null) {
             skinCache.putIfAbsent(cacheKey, built)

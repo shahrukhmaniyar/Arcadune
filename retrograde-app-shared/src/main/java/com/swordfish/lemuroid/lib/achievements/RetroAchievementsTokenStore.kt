@@ -6,7 +6,6 @@ import android.security.keystore.KeyProperties
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -21,13 +20,13 @@ interface TokenCipherEngine {
 class AesGcmSecretKeyCipherEngine(
     private val secretKey: SecretKey,
 ) : TokenCipherEngine {
-    private val random = SecureRandom()
-
     override fun encrypt(plaintext: String): String {
-        val iv = ByteArray(GCM_IV_LENGTH_BYTES)
-        random.nextBytes(iv)
+        // Let the cipher pick the IV. Android Keystore keys refuse an IV chosen by the caller
+        // ("Caller-provided IV not permitted"), which made every sign-in fail to be stored.
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_BITS, iv))
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = cipher.iv
+        check(iv != null && iv.size == GCM_IV_LENGTH_BYTES) { "Unexpected IV from the cipher" }
         val encrypted = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
         val combined = ByteArray(iv.size + encrypted.size)
         System.arraycopy(iv, 0, combined, 0, iv.size)
@@ -64,11 +63,29 @@ object RetroAchievementsTokenStore {
     @Volatile
     var cipherOverrideForTesting: TokenCipherEngine? = null
 
-    private val defaultCipherEngine: TokenCipherEngine by lazy {
-        createAndroidKeystoreCipherOrFallback()
+    // Only a working engine is kept. A failure is not remembered, so the next sign-in tries again.
+    @Volatile
+    private var defaultCipherEngine: TokenCipherEngine? = null
+
+    private fun engine(): TokenCipherEngine {
+        cipherOverrideForTesting?.let { return it }
+        defaultCipherEngine?.let { return it }
+        return synchronized(this) {
+            defaultCipherEngine ?: createAndroidKeystoreCipherOrFallback().also {
+                if (it !== UnavailableCipherEngine) defaultCipherEngine = it
+            }
+        }
     }
 
-    private fun engine(): TokenCipherEngine = cipherOverrideForTesting ?: defaultCipherEngine
+    /** Drops the stored key and the cached engine, so the next use creates a fresh key. */
+    private fun resetKeystoreKey() {
+        synchronized(this) {
+            defaultCipherEngine = null
+            runCatching {
+                KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
+            }
+        }
+    }
 
     fun readToken(prefs: SharedPreferences): String {
         val encrypted = prefs.getString(KEY_ENCRYPTED_TOKEN, null)
@@ -105,7 +122,24 @@ object RetroAchievementsTokenStore {
         if (token.isBlank()) {
             editor.remove(KEY_ENCRYPTED_TOKEN)
         } else {
-            editor.putString(KEY_ENCRYPTED_TOKEN, engine().encrypt(token))
+            editor.putString(KEY_ENCRYPTED_TOKEN, encryptWithRecovery(token))
+        }
+    }
+
+    /**
+     * Encrypts the token. If the stored key turns out to be unusable (for example after a restore
+     * from backup, or a lock-screen change on some phones), it is replaced by a new one and the
+     * write is tried once more. The old token is lost with the old key, so the player signs in again.
+     */
+    private fun encryptWithRecovery(token: String): String {
+        return try {
+            engine().encrypt(token)
+        } catch (e: TokenStorageUnavailableException) {
+            throw e
+        } catch (e: Exception) {
+            if (cipherOverrideForTesting != null) throw e
+            resetKeystoreKey()
+            engine().encrypt(token)
         }
     }
 
@@ -117,7 +151,13 @@ object RetroAchievementsTokenStore {
     private fun createAndroidKeystoreCipherOrFallback(): TokenCipherEngine {
         return runCatching {
             val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-            val existing = (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+            // A key that cannot be read back (broken or invalidated) is replaced instead of failing.
+            val existing =
+                runCatching { (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey }
+                    .getOrElse {
+                        runCatching { ks.deleteEntry(KEY_ALIAS) }
+                        null
+                    }
             val secretKey =
                 existing ?: run {
                     val keyGen =

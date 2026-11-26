@@ -180,6 +180,16 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             reviewManager.initialize(applicationContext)
         }
 
+        // Work out every controller's layout in the background soon after the library is up, so
+        // Settings > Controllers shows its cards at once instead of building them when opened.
+        lifecycleScope.safeLaunch {
+            kotlinx.coroutines.delay(2_500L)
+            com.swordfish.lemuroid.app.mobile.feature.settings.skins.prewarmControllerGallery(
+                applicationContext,
+                includeArt = false,
+            )
+        }
+
         setContent {
             val navController = rememberNavController()
             MainScreen(navController)
@@ -491,6 +501,22 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
     }
 
     override fun activity(): Activity = this
+
+    // A gamepad's shoulder buttons turn the library's pages (see LibraryPageKeys). Nothing on the
+    // screens uses them, so they always reach the activity, with or without a focused cover.
+    override fun onKeyDown(
+        keyCode: Int,
+        event: android.view.KeyEvent,
+    ): Boolean =
+        com.swordfish.lemuroid.app.mobile.feature.library.LibraryPageKeys.handle(event) ||
+            super.onKeyDown(keyCode, event)
+
+    override fun onKeyUp(
+        keyCode: Int,
+        event: android.view.KeyEvent,
+    ): Boolean =
+        com.swordfish.lemuroid.app.mobile.feature.library.LibraryPageKeys.handle(event) ||
+            super.onKeyUp(keyCode, event)
 
     override fun isBusy(): Boolean = mainViewModel.state.value.operationInProgress ?: false
 

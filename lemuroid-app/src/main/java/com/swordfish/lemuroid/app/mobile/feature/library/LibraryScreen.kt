@@ -1,4 +1,4 @@
-﻿package com.swordfish.lemuroid.app.mobile.feature.library
+package com.swordfish.lemuroid.app.mobile.feature.library
 
 import android.content.Context
 import android.os.Build
@@ -84,6 +84,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -115,6 +116,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -333,6 +335,23 @@ fun LibraryScreen(
 
         val scope = rememberCoroutineScope()
         var scrubGlide by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+        // L1 / R1 on a gamepad: the previous or next page. Quick presses add up (from the page it is
+        // going to), and the ends do not wrap round. The cursor is let go of, so the d-pad starts again
+        // on the new page instead of on a game of the old one.
+        val pageCount by rememberUpdatedState(pages.size)
+        DisposableEffect(pagerState, searching) {
+            val turn: (Int) -> Unit = { direction ->
+                val target = (pagerState.targetPage + direction).coerceIn(0, pageCount - 1)
+                if (target != pagerState.targetPage) {
+                    focusManager.clearFocus()
+                    scrubGlide?.cancel()
+                    scrubGlide = scope.launch { pagerState.animateScrollToPage(target) }
+                }
+            }
+            if (!searching) LibraryPageKeys.attach(turn)
+            onDispose { LibraryPageKeys.detach(turn) }
+        }
         val keyboardOpen = WindowInsets.isImeVisible
         LibraryBottomBar(
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -435,6 +454,9 @@ private const val PULL_REST_OFFSET_DP = 60
 private class PullToRefreshConnection(
     private val thresholdPx: Float,
     private val atTop: () -> Boolean,
+    // Only a real finger pulls. Moving the gamepad cursor also scrolls the list "as user input",
+    // which used to leave the arrow half shown and the list nudged down with no finger to let go.
+    private val isTouching: () -> Boolean,
     private val onDistance: (Float) -> Unit,
     private val onArmed: () -> Unit,
     private val onPull: () -> Unit,
@@ -448,7 +470,7 @@ private class PullToRefreshConnection(
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
-        if (source == NestedScrollSource.UserInput && !dragging) {
+        if (source == NestedScrollSource.UserInput && !dragging && isTouching()) {
             dragging = true
             startedAtTop = atTop()
             pulled = 0f
@@ -462,7 +484,7 @@ private class PullToRefreshConnection(
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
-        if (source != NestedScrollSource.UserInput || !startedAtTop) return Offset.Zero
+        if (source != NestedScrollSource.UserInput || !startedAtTop || !isTouching()) return Offset.Zero
         if (consumed.y != 0f) {
             // The list itself moved (going down the list): not a pull.
             pulled = 0f
@@ -596,11 +618,14 @@ private fun GameGrid(
             if (!scanningNow) spinning = false
         }
     }
+    // How many fingers are on the list right now (watched, never used up, so taps and scrolling work as before).
+    val fingersDown = remember { intArrayOf(0) }
     val pullConnection =
         remember(pullThresholdPx) {
             PullToRefreshConnection(
                 thresholdPx = pullThresholdPx,
                 atTop = { !gridState.canScrollBackward },
+                isTouching = { fingersDown[0] > 0 },
                 onDistance = { pullPx = it },
                 onArmed = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
             ) {
@@ -644,7 +669,22 @@ private fun GameGrid(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .then(if (onPullToRefresh != null) Modifier.nestedScroll(pullConnection) else Modifier)
+                    .then(
+                        if (onPullToRefresh != null) {
+                            Modifier
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            fingersDown[0] = event.changes.count { it.pressed }
+                                        }
+                                    }
+                                }
+                                .nestedScroll(pullConnection)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .graphicsLayer { translationY = listOffsetPx },
             columns = GridCells.Fixed(libraryColumns(maxWidth)),
             contentPadding =

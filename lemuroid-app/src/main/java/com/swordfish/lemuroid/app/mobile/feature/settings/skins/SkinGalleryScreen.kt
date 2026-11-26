@@ -187,23 +187,92 @@ private data class GalleryControllerState(
     val isCustomized: Boolean get() = upright.isCustomized || sideways.isCustomized
 }
 
-internal suspend fun prewarmControllerGallery(context: Context) =
-    withContext(Dispatchers.IO) {
-        val appContext = context.applicationContext
-        val store = SkinCustomizationStore(appContext)
-        Controllers.forEachIndexed { index, (id, _) ->
-            val variant = store.variant(id.name)
-            val skin = ArcaduneSkins.forController(id, variant)
-            if (skin != null) {
-                SkinCustomizationStore.keyOf(id.name, false, skin.portrait)
-                SkinCustomizationStore.keyOf(id.name, true, skin.landscape)
-            }
-            if (index < 8 && variant == SkinVariant.CONSOLE) {
-                SkinArtLoader.load(appContext, id.name, false)
-                SkinArtLoader.load(appContext, id.name, true)
-            }
+/** Every controller with its saved changes and whether it is the one in use. */
+private fun loadGalleryStates(
+    store: SkinCustomizationStore,
+    prefs: android.content.SharedPreferences,
+): List<GalleryControllerState> = Controllers.mapNotNull { (id, name) -> loadGalleryState(id, name, store, prefs) }
+
+/** True when every controller's layout is already worked out, so the list can be built at once. */
+private fun galleryReady(store: SkinCustomizationStore): Boolean =
+    Controllers.all { (id, _) -> ArcaduneSkins.isReady(id, store.variant(id.name)) }
+
+/** One controller's card. Slow the first time a controller's layout is worked out: call off the main thread then. */
+private fun loadGalleryState(
+    id: TouchControllerID,
+    name: String,
+    store: SkinCustomizationStore,
+    prefs: android.content.SharedPreferences,
+): GalleryControllerState? {
+    val variant = store.variant(id.name)
+    val skin = ArcaduneSkins.forController(id, variant) ?: return null
+    val upright =
+        store.load(
+            SkinCustomizationStore.keyOf(id.name, false, skin.portrait),
+            skin.portrait.defaultCustomization,
+        )
+    val sideways =
+        store.load(
+            SkinCustomizationStore.keyOf(id.name, true, skin.landscape),
+            skin.landscape.defaultCustomization,
+        )
+    val targets = MultiControllerTargets[id]
+    val primarySystem = targets?.firstOrNull()?.systemId
+    val selectedCoreName =
+        primarySystem?.let { sysId ->
+            prefs.getString(CoresSelection.computeSystemPreferenceKey(sysId), null)
+        }
+    val primaryTarget =
+        targets?.firstOrNull { it.systemId == primarySystem && it.coreId.coreName == selectedCoreName }
+            ?: targets?.firstOrNull()
+    val isActive =
+        if (primaryTarget != null) {
+            val prefKey =
+                ControllerConfigsManager.getSharedPreferencesId(
+                    primaryTarget.systemId.dbname,
+                    primaryTarget.coreId,
+                    0,
+                )
+            val saved = prefs.getString(prefKey, null) ?: primaryTarget.defaultConfigName
+            saved == primaryTarget.configName
+        } else {
+            false
+        }
+    return GalleryControllerState(
+        id = id,
+        name = name,
+        variant = variant,
+        upright = upright,
+        sideways = sideways,
+        isSelectableController = primaryTarget != null,
+        isActiveController = isActive,
+    )
+}
+
+/**
+ * Works out every controller's layout ahead of time, so Settings > Controllers opens at once. With
+ * [includeArt] it also reads the first controllers' skin pictures, which are big: only from Settings,
+ * never at app start, so players who never open it do not pay for them in memory.
+ */
+internal suspend fun prewarmControllerGallery(
+    context: Context,
+    includeArt: Boolean = true,
+) = withContext(Dispatchers.IO) {
+    val appContext = context.applicationContext
+    val store = SkinCustomizationStore(appContext)
+    Controllers.forEachIndexed { index, (id, _) ->
+        val variant = store.variant(id.name)
+        val skin = ArcaduneSkins.forController(id, variant)
+        if (skin != null) {
+            SkinCustomizationStore.keyOf(id.name, false, skin.portrait)
+            SkinCustomizationStore.keyOf(id.name, true, skin.landscape)
+        }
+        if (includeArt && index < 8 && variant == SkinVariant.CONSOLE) {
+            SkinArtLoader.load(appContext, id.name, false)
+            SkinArtLoader.load(appContext, id.name, true)
         }
     }
+}
 
 /**
  * The controllers of every console, with family filter chips, instant Console / Minimal style
@@ -231,58 +300,32 @@ fun SkinGalleryScreen(
     }
 
     val prefs = remember { SharedPreferencesHelper.getSharedPreferences(context.applicationContext) }
-    val allStates =
-        remember(refreshEpoch) {
-            Controllers.mapNotNull { (id, name) ->
-                val variant = store.variant(id.name)
-                val skin = ArcaduneSkins.forController(id, variant) ?: return@mapNotNull null
-                val upright =
-                    store.load(
-                        SkinCustomizationStore.keyOf(id.name, false, skin.portrait),
-                        skin.portrait.defaultCustomization,
-                    )
-                val sideways =
-                    store.load(
-                        SkinCustomizationStore.keyOf(id.name, true, skin.landscape),
-                        skin.landscape.defaultCustomization,
-                    )
-                val targets = MultiControllerTargets[id]
-                val primarySystem = targets?.firstOrNull()?.systemId
-                val selectedCoreName =
-                    primarySystem?.let { sysId ->
-                        prefs.getString(CoresSelection.computeSystemPreferenceKey(sysId), null)
-                    }
-                val primaryTarget =
-                    targets?.firstOrNull { it.systemId == primarySystem && it.coreId.coreName == selectedCoreName }
-                        ?: targets?.firstOrNull()
-                val isActive =
-                    if (primaryTarget != null) {
-                        val prefKey =
-                            ControllerConfigsManager.getSharedPreferencesId(
-                                primaryTarget.systemId.dbname,
-                                primaryTarget.coreId,
-                                0,
-                            )
-                        val saved = prefs.getString(prefKey, null) ?: primaryTarget.defaultConfigName
-                        saved == primaryTarget.configName
-                    } else {
-                        false
-                    }
-                GalleryControllerState(
-                    id = id,
-                    name = name,
-                    variant = variant,
-                    upright = upright,
-                    sideways = sideways,
-                    isSelectableController = primaryTarget != null,
-                    isActiveController = isActive,
-                )
+    // Usually the layouts were worked out in the background soon after the app opened (see
+    // prewarmControllerGallery), and the whole list is built at once. Otherwise (right after an
+    // update, or on a slow phone) the cards come in one by one as each layout is ready, instead of the
+    // screen freezing or staying empty until the last one.
+    var loadedStates by remember {
+        mutableStateOf(if (galleryReady(store)) loadGalleryStates(store, prefs) else null)
+    }
+    LaunchedEffect(refreshEpoch) {
+        if (refreshEpoch == 0 && loadedStates != null) return@LaunchedEffect
+        if (galleryReady(store)) {
+            loadedStates = loadGalleryStates(store, prefs)
+            return@LaunchedEffect
+        }
+        val loaded = mutableListOf<GalleryControllerState>()
+        for ((id, name) in Controllers) {
+            withContext(Dispatchers.Default) { loadGalleryState(id, name, store, prefs) }?.let {
+                loaded += it
+                loadedStates = loaded.toList()
             }
         }
+    }
+    val allStates = loadedStates.orEmpty()
 
     val hasAnyCustomized = remember(allStates) { allStates.any { it.isCustomized } }
-    LaunchedEffect(hasAnyCustomized, selectedFamily) {
-        if (selectedFamily == ControllerFamily.CUSTOMIZED && !hasAnyCustomized) {
+    LaunchedEffect(hasAnyCustomized, selectedFamily, loadedStates == null) {
+        if (loadedStates != null && selectedFamily == ControllerFamily.CUSTOMIZED && !hasAnyCustomized) {
             selectedFamily = ControllerFamily.ALL
         }
     }

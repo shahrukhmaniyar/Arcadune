@@ -28,6 +28,13 @@ Arcadune is an open-source multi-system retro game emulator for Android built on
 
 Both editions share the same package ID (`io.github.shahrukhmaniyar.arcadune`), so you can install either one on top of the other without losing your library, saves, or settings. All releases are available on the [Releases page](https://github.com/shahrukhmaniyar/Arcadune/releases). Arcadune requires Android 6.0 or newer and includes built-in update checks under **Settings > Updates**.
 
+## What's New in 1.1.5
+
+- **RetroAchievements sign-in fixed:** signing in worked, but the sign-in was not kept ("could not store your sign-in securely") on any phone. It is now stored properly, still encrypted. If you saw that message, sign in again once after updating.
+- **Gamepad L/R in the library:** with a controller connected, L1/L2 and R1/R2 switch to the previous or next console.
+
+The full list is in the [1.1.5 release notes](docs/RELEASE_NOTES_1.1.5.md).
+
 ## What's New in 1.1.4
 
 - **Pull down to rescan:** scroll to the top of the game list and pull down, like in other apps, to rescan your ROMs folder (the same as Settings > Rescan). The whole list follows your finger, a small circular arrow turns as you pull (it takes a deliberate pull) and spins while the scan runs.
